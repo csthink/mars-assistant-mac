@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
@@ -21,6 +21,9 @@ import {
   validProjectCommand,
   validProjectHostCommand,
 } from "../../src/shared/projects";
+import { warmSystemGit } from "./git-warmup";
+
+before(warmSystemGit);
 
 function fixture() {
   mkdirSync(".test-data/disposable", { recursive: true });
