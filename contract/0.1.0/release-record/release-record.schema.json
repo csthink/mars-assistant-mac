@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:csthink:runtime-release-record:0.1.0-candidate",
+  "title": "Runtime bundle release record (candidate, not frozen, not referenced by schema.json)",
+  "definitions": {
+    "Digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "RelativePath": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(^|/)\\.\\.?(/|$))(?!.*\\\\)[^\\u0000]+$" },
+    "Identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9:._/-]{0,127}$" },
+    "Version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$" },
+    "FileEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "bytes", "sha256", "mode"],
+      "properties": {
+        "path": { "$ref": "#/definitions/RelativePath" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/definitions/Digest" },
+        "mode": { "type": "string", "enum": ["0644", "0755"] }
+      }
+    },
+    "Dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": { "$ref": "#/definitions/Identifier" },
+        "version": { "$ref": "#/definitions/Version" },
+        "digest": { "$ref": "#/definitions/Digest" }
+      }
+    },
+    "PublisherIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "signatureAlgorithm", "publicKeyDigest"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^publisher:[A-Za-z0-9._-]{1,120}$" },
+        "signatureAlgorithm": { "type": "string", "enum": ["ed25519"] },
+        "publicKeyDigest": { "$ref": "#/definitions/Digest" }
+      }
+    },
+    "Maintenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entrypoint", "argv"],
+      "properties": {
+        "entrypoint": { "$ref": "#/definitions/RelativePath" },
+        "argv": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 256 }, "maxItems": 32 }
+      }
+    },
+    "Source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "reference"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["built-in", "catalog", "offline-import"] },
+        "reference": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "ReleaseRecord": {
+      "description": "The signed release description. It is signed in a detached file outside the archive; it lists the archive digest and the manifest digest, and it never contains its own digest or its own signature.",
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "runtimeId", "publisher", "version", "platform", "dataFormat", "archive", "manifest", "files", "limits", "dependencies", "permissionProfileDigest", "maintenance", "source"],
+      "not": { "anyOf": [ { "required": ["releaseDigest"] }, { "required": ["signature"] }, { "required": ["recordDigest"] } ] },
+      "properties": {
+        "schema": { "type": "string", "enum": ["csthink-runtime-release/v1-candidate"] },
+        "runtimeId": { "type": "string", "pattern": "^runtime:[A-Za-z0-9._-]{1,120}$" },
+        "publisher": { "$ref": "#/definitions/PublisherIdentity" },
+        "version": { "$ref": "#/definitions/Version" },
+        "platform": { "type": "string", "enum": ["darwin-arm64", "darwin-x86_64"] },
+        "dataFormat": { "$ref": "#/definitions/Identifier" },
+        "archive": {
+          "type": "object", "additionalProperties": false, "required": ["digest", "bytes", "format"],
+          "properties": { "digest": { "$ref": "#/definitions/Digest" }, "bytes": { "type": "integer", "minimum": 1 }, "format": { "type": "string", "enum": ["ustar"] } }
+        },
+        "manifest": {
+          "type": "object", "additionalProperties": false, "required": ["path", "digest", "bytes"],
+          "properties": { "path": { "type": "string", "enum": ["manifest.json"] }, "digest": { "$ref": "#/definitions/Digest" }, "bytes": { "type": "integer", "minimum": 1 } }
+        },
+        "files": { "type": "array", "minItems": 1, "maxItems": 4096, "items": { "$ref": "#/definitions/FileEntry" } },
+        "limits": {
+          "type": "object", "additionalProperties": false, "required": ["expandedBytesMax", "membersMax"],
+          "properties": { "expandedBytesMax": { "type": "integer", "minimum": 1 }, "membersMax": { "type": "integer", "minimum": 1 } }
+        },
+        "dependencies": { "type": "array", "maxItems": 256, "items": { "$ref": "#/definitions/Dependency" } },
+        "permissionProfileDigest": { "$ref": "#/definitions/Digest" },
+        "maintenance": { "oneOf": [ { "$ref": "#/definitions/Maintenance" }, { "type": "null" } ] },
+        "source": { "$ref": "#/definitions/Source" }
+      }
+    },
+    "InstalledArtifact": {
+      "description": "Host-side record of a verified installation; identity is the actual bytes, never the download URL.",
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "runtimeId", "version", "artifactDigest", "releaseRecordDigest", "signature", "verification", "stage", "validatedLaunch", "restrictedEntrypoints"],
+      "properties": {
+        "schema": { "type": "string", "enum": ["csthink-runtime-installed-artifact/v1-candidate"] },
+        "runtimeId": { "type": "string", "pattern": "^runtime:[A-Za-z0-9._-]{1,120}$" },
+        "version": { "$ref": "#/definitions/Version" },
+        "artifactDigest": { "$ref": "#/definitions/Digest" },
+        "releaseRecordDigest": { "$ref": "#/definitions/Digest" },
+        "signature": {
+          "type": "object", "additionalProperties": false, "required": ["verified", "publisherPublicKeyDigest", "algorithm"],
+          "properties": { "verified": { "type": "boolean" }, "publisherPublicKeyDigest": { "$ref": "#/definitions/Digest" }, "algorithm": { "type": "string", "enum": ["ed25519"] } }
+        },
+        "verification": {
+          "type": "object", "additionalProperties": false, "required": ["result", "checkedFiles", "expandedBytes", "reasons"],
+          "properties": {
+            "result": { "type": "string", "enum": ["verified", "rejected"] },
+            "checkedFiles": { "type": "integer", "minimum": 0 },
+            "expandedBytes": { "type": "integer", "minimum": 0 },
+            "reasons": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 }, "maxItems": 64 }
+          }
+        },
+        "stage": { "type": "string", "enum": ["staged", "verified", "installed", "active", "rejected"] },
+        "validatedLaunch": { "oneOf": [ { "$ref": "#/definitions/Maintenance" }, { "type": "null" } ] },
+        "restrictedEntrypoints": { "type": "array", "maxItems": 32, "items": { "$ref": "#/definitions/RelativePath" } }
+      },
+      "if": { "properties": { "stage": { "enum": ["installed", "active"] } } },
+      "then": { "properties": { "signature": { "properties": { "verified": { "const": true } } }, "verification": { "properties": { "result": { "const": "verified" } } } } }
+    }
+  }
+}

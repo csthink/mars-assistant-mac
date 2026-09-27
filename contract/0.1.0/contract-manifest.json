@@ -1,0 +1,74 @@
+{
+  "candidate": "0.1.0-draft.5",
+  "digestAlgorithm": "SHA-256 over the raw bytes of this file; the file is not in its own list",
+  "excludes": "fixtures/ and validation-plan.md (evidence transcripts, derived coverage files and experiment registrations; listed by the freeze record, not by the protocol identity)",
+  "files": [
+    {
+      "bytes": 51845,
+      "path": "README.md",
+      "sha256": "ae1b0be0fbc83d54fb80d4b0f1ae845e632c62c16428fc1b6ae0b1e618e7a4e0"
+    },
+    {
+      "bytes": 29571,
+      "path": "schema-source.py",
+      "sha256": "6d4bf46e6200b83601a4a1f6f497aae47f622b51cdb12c4caac889096aff0cb2"
+    },
+    {
+      "bytes": 212952,
+      "path": "schema.json",
+      "sha256": "3bde9dfb96dcffe7e14c1117e6e7f48a7e14d9c9b1bbd7bb6a12a7515ac7a7b8"
+    },
+    {
+      "bytes": 4575,
+      "path": "methods.json",
+      "sha256": "7790a61fa238ba045b7511716ddca557b0818222b0e39f223a0d4c851375796e"
+    },
+    {
+      "bytes": 115117,
+      "path": "examples.json",
+      "sha256": "e11539ce4680eb8405fbf0f33b1cf5b4722b988392b8f529971ab5f2509d064b"
+    },
+    {
+      "bytes": 109233,
+      "path": "interaction-examples.json",
+      "sha256": "8ac29f93daed2d37ebc7533f3d3cf2958006f771d423343a187232e167f7f605"
+    },
+    {
+      "bytes": 6365,
+      "path": "revision-r2.md",
+      "sha256": "1745fd731f0d28927538e41ff5194963cf9001f32c2f1193ff00aec76512efb9"
+    },
+    {
+      "bytes": 7478,
+      "path": "revision-r3.md",
+      "sha256": "ab3a0236de9b7b659a74dc301a744c6b23043ac5b4b1665b96b8317981cff922"
+    },
+    {
+      "bytes": 12599,
+      "path": "revision-r4.md",
+      "sha256": "60a3503e5fa591e1a131b071e54e5847d89c699301f4a69b60bcdcd2a32522af"
+    },
+    {
+      "bytes": 21563,
+      "path": "revision-r5.md",
+      "sha256": "469e3f6aa27469eb74818eef88a6f44c46e577531e0ae35f8b8a6ab347f7966b"
+    },
+    {
+      "bytes": 5596,
+      "path": "release-record/README.md",
+      "sha256": "b28ac87e63f4996d97987929dccbf0c37a41df6d0af267eb8d92740569ef44c5"
+    },
+    {
+      "bytes": 7116,
+      "path": "release-record/release-record.schema.json",
+      "sha256": "38c30b0b6acf55b7078a03f35922fc10e50f0fd6a261aeb35f52ecf03b79e0aa"
+    },
+    {
+      "bytes": 23441,
+      "path": "release-record/examples.json",
+      "sha256": "61c1d9db3c61942e2c4b7878bc610f88a1a2bb369585b30c6855fe985b599315"
+    }
+  ],
+  "generatedBy": "contract-manifest.py; do not edit manually",
+  "schema": "csthink-runtime-contract-manifest/v1"
+}

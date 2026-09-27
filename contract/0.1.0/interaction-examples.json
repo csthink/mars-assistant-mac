@@ -1,0 +1,2937 @@
+{
+  "notice": "Synthetic static specification examples, NOT an executed transcript. Context and release digests are placeholders. Nested request/response order and OS preconditions are described per flow.",
+  "flows": [
+    {
+      "id": "R5-first-connection-and-R6-profiles",
+      "exchanges": [
+        {
+          "method": "runtime.initialize",
+          "params": {
+            "installationId": "install:1",
+            "instanceId": "instance:1",
+            "incarnationId": "process:2",
+            "connectionId": "connection:3",
+            "bundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+            "protocols": [
+              {
+                "version": "0.1.0-draft.2",
+                "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111"
+              }
+            ],
+            "capabilities": [
+              {
+                "id": "example.coding.review",
+                "version": "0.1.0-draft.2",
+                "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                "required": true
+              }
+            ],
+            "launchAuthorization": {
+              "authorizationRef": "launch:1",
+              "bundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+              "permissionProfileDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+              "expiresAt": "2026-09-10T23:59:59Z"
+            },
+            "executionProfiles": [
+              {
+                "id": "profile:review",
+                "version": "1",
+                "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+                "trustModel": "current-user",
+                "purpose": "review",
+                "programIdentity": {
+                  "launcher": "/opt/homebrew/bin/codex",
+                  "binaryDigest": "6666666666666666666666666666666666666666666666666666666666666666",
+                  "version": "0.154.0"
+                },
+                "nativeApprovalPolicy": "expected-range-gate",
+                "configurationDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+                "capabilities": [
+                  "model-readback",
+                  "native-approval-readback",
+                  "interrupt"
+                ],
+                "limitations": [
+                  "read-evidence-not-exclusive"
+                ],
+                "operations": [
+                  "repository.read"
+                ],
+                "maxContextBytes": 1024,
+                "maxToolCalls": 2,
+                "maxRunSeconds": 60
+              }
+            ],
+            "limits": {
+              "frameBytes": 1048576,
+              "depth": 32,
+              "members": 1000,
+              "inFlight": 32,
+              "bufferBytes": 4194304,
+              "eventWindow": 128,
+              "pageObjects": 100,
+              "textCharacters": 65536
+            }
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "selectedProtocol": {
+              "version": "0.1.0-draft.2",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "capabilities": [
+              {
+                "id": "example.coding.review",
+                "version": "0.1.0-draft.2",
+                "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                "required": true
+              }
+            ],
+            "executionProfiles": [
+              {
+                "id": "profile:review",
+                "version": "1",
+                "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+              }
+            ],
+            "limits": {
+              "frameBytes": 1048576,
+              "depth": 32,
+              "members": 1000,
+              "inFlight": 32,
+              "bufferBytes": 4194304,
+              "eventWindow": 128,
+              "pageObjects": 100,
+              "textCharacters": 65536
+            },
+            "recovery": "snapshot-and-operation-query"
+          }
+        },
+        {
+          "method": "runtime.ready",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            }
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "ready": true
+          }
+        },
+        {
+          "method": "runtime.scope.open",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "binding": {
+              "bindingRef": "binding:1",
+              "resourceHandle": "repository:1",
+              "expiresAt": "2026-09-10T23:59:59Z"
+            }
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "bindingRef": "binding:1",
+            "state": "inactive"
+          }
+        },
+        {
+          "method": "runtime.scope.authorize",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "grantRefs": [
+              {
+                "id": "grant:1",
+                "revision": "2"
+              }
+            ]
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "state": "active"
+          }
+        },
+        {
+          "method": "host.grants.get",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "grantRefs": [
+              {
+                "id": "grant:1",
+                "revision": "2"
+              }
+            ]
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "grants": [
+              {
+                "ref": {
+                  "id": "grant:1",
+                  "revision": "2"
+                },
+                "installationId": "install:1",
+                "instanceId": "instance:1",
+                "scopeRef": "scope:1",
+                "resourceHandle": "repository:1",
+                "capability": "example.coding.review",
+                "operation": "repository.read",
+                "executionRef": null,
+                "bundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+                "expiresAt": "2026-09-10T23:59:59Z",
+                "status": "active",
+                "purpose": "合成示例，仅展示授权顺序"
+              }
+            ]
+          }
+        },
+        {
+          "method": "runtime.snapshot.open",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "snapshotId": "snapshot:1",
+            "revision": "revision:17",
+            "streamId": "stream:1",
+            "epoch": "epoch:1",
+            "throughSeq": "9007199254740993",
+            "expiresAt": "2026-09-10T23:59:59Z",
+            "objects": [
+              {
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "title": "合成候选",
+                "stateLabel": "待核对",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "view": {
+                  "kind": "graph",
+                  "nodes": [
+                    {
+                      "id": "node:1",
+                      "label": "检查",
+                      "stateLabel": "通过"
+                    }
+                  ],
+                  "edges": []
+                },
+                "evidence": [
+                  {
+                    "authority": "runtime",
+                    "resourceHandle": "evidence:1",
+                    "scopeRef": "scope:1",
+                    "objectRef": "candidate:1",
+                    "revision": "revision:17",
+                    "mediaType": "text/plain",
+                    "bytes": 3,
+                    "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                  }
+                ]
+              }
+            ],
+            "actions": [
+              {
+                "scopeRef": "scope:1",
+                "actionId": "action:review",
+                "objectRef": "candidate:1",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "label": "确认合成候选",
+                "expectedRevision": "revision:17",
+                "candidateRef": "candidate:1",
+                "payloadSchemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                "enabled": true,
+                "disabledReason": "",
+                "requiresHumanDecision": true,
+                "disabledCode": null
+              }
+            ],
+            "nextPageToken": null,
+            "pendingItems": [
+              {
+                "scopeRef": "scope:1",
+                "itemRef": "pending:1",
+                "revision": "revision:17",
+                "objectRef": "candidate:1",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "title": "确认合成候选",
+                "typeId": "review",
+                "typeLabel": "人工确认",
+                "status": "pending",
+                "pendingSince": "2026-09-10T10:00:00Z",
+                "updatedAt": "2026-09-10T10:00:00Z",
+                "processedAt": null,
+                "blocking": true,
+                "actionIds": [
+                  "action:review"
+                ],
+                "evidence": [
+                  {
+                    "authority": "runtime",
+                    "resourceHandle": "evidence:1",
+                    "scopeRef": "scope:1",
+                    "objectRef": "candidate:1",
+                    "revision": "revision:17",
+                    "mediaType": "text/plain",
+                    "bytes": 3,
+                    "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                  }
+                ]
+              },
+              {
+                "scopeRef": "scope:1",
+                "itemRef": "pending:old",
+                "revision": "revision:17",
+                "objectRef": "candidate:1",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "title": "确认合成候选",
+                "typeId": "review",
+                "typeLabel": "人工确认",
+                "status": "processed",
+                "pendingSince": "2026-09-10T08:00:00Z",
+                "updatedAt": "2026-09-10T09:00:00Z",
+                "processedAt": "2026-09-10T09:00:00Z",
+                "blocking": false,
+                "actionIds": [],
+                "evidence": [
+                  {
+                    "authority": "runtime",
+                    "resourceHandle": "evidence:1",
+                    "scopeRef": "scope:1",
+                    "objectRef": "candidate:1",
+                    "revision": "revision:17",
+                    "mediaType": "text/plain",
+                    "bytes": 3,
+                    "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "ordering": "列出请求发起顺序；scope.authorize 应答必须晚于嵌套 host.grants.get 应答。Grant 在 scope.open 返回后由 Host 可信授权流程建立。示例 grant 只演示 repository.read，其他操作各需匹配授权。"
+    },
+    {
+      "id": "R1-pending-reconstruction",
+      "exchanges": [
+        {
+          "method": "runtime.snapshot.open",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "snapshotId": "snapshot:1",
+            "revision": "revision:17",
+            "streamId": "stream:1",
+            "epoch": "epoch:1",
+            "throughSeq": "9007199254740993",
+            "expiresAt": "2026-09-10T23:59:59Z",
+            "objects": [
+              {
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "title": "合成候选",
+                "stateLabel": "待核对",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "view": {
+                  "kind": "graph",
+                  "nodes": [
+                    {
+                      "id": "node:1",
+                      "label": "检查",
+                      "stateLabel": "通过"
+                    }
+                  ],
+                  "edges": []
+                },
+                "evidence": [
+                  {
+                    "authority": "runtime",
+                    "resourceHandle": "evidence:1",
+                    "scopeRef": "scope:1",
+                    "objectRef": "candidate:1",
+                    "revision": "revision:17",
+                    "mediaType": "text/plain",
+                    "bytes": 3,
+                    "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                  }
+                ]
+              }
+            ],
+            "actions": [
+              {
+                "scopeRef": "scope:1",
+                "actionId": "action:review",
+                "objectRef": "candidate:1",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "label": "确认合成候选",
+                "expectedRevision": "revision:17",
+                "candidateRef": "candidate:1",
+                "payloadSchemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                "enabled": true,
+                "disabledReason": "",
+                "requiresHumanDecision": true,
+                "disabledCode": null
+              }
+            ],
+            "nextPageToken": null,
+            "pendingItems": [
+              {
+                "scopeRef": "scope:1",
+                "itemRef": "pending:1",
+                "revision": "revision:17",
+                "objectRef": "candidate:1",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "title": "确认合成候选",
+                "typeId": "review",
+                "typeLabel": "人工确认",
+                "status": "pending",
+                "pendingSince": "2026-09-10T10:00:00Z",
+                "updatedAt": "2026-09-10T10:00:00Z",
+                "processedAt": null,
+                "blocking": true,
+                "actionIds": [
+                  "action:review"
+                ],
+                "evidence": [
+                  {
+                    "authority": "runtime",
+                    "resourceHandle": "evidence:1",
+                    "scopeRef": "scope:1",
+                    "objectRef": "candidate:1",
+                    "revision": "revision:17",
+                    "mediaType": "text/plain",
+                    "bytes": 3,
+                    "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                  }
+                ]
+              },
+              {
+                "scopeRef": "scope:1",
+                "itemRef": "pending:old",
+                "revision": "revision:17",
+                "objectRef": "candidate:1",
+                "capability": {
+                  "id": "example.coding.review",
+                  "version": "0.1.0-draft.2",
+                  "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+                  "required": true
+                },
+                "title": "确认合成候选",
+                "typeId": "review",
+                "typeLabel": "人工确认",
+                "status": "processed",
+                "pendingSince": "2026-09-10T08:00:00Z",
+                "updatedAt": "2026-09-10T09:00:00Z",
+                "processedAt": "2026-09-10T09:00:00Z",
+                "blocking": false,
+                "actionIds": [],
+                "evidence": [
+                  {
+                    "authority": "runtime",
+                    "resourceHandle": "evidence:1",
+                    "scopeRef": "scope:1",
+                    "objectRef": "candidate:1",
+                    "revision": "revision:17",
+                    "mediaType": "text/plain",
+                    "bytes": 3,
+                    "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "expectedRebuiltPendingItems": [
+        {
+          "scopeRef": "scope:1",
+          "itemRef": "pending:1",
+          "revision": "revision:17",
+          "objectRef": "candidate:1",
+          "capability": {
+            "id": "example.coding.review",
+            "version": "0.1.0-draft.2",
+            "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+            "required": true
+          },
+          "title": "确认合成候选",
+          "typeId": "review",
+          "typeLabel": "人工确认",
+          "status": "pending",
+          "pendingSince": "2026-09-10T10:00:00Z",
+          "updatedAt": "2026-09-10T10:00:00Z",
+          "processedAt": null,
+          "blocking": true,
+          "actionIds": [
+            "action:review"
+          ],
+          "evidence": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ]
+        },
+        {
+          "scopeRef": "scope:1",
+          "itemRef": "pending:old",
+          "revision": "revision:17",
+          "objectRef": "candidate:1",
+          "capability": {
+            "id": "example.coding.review",
+            "version": "0.1.0-draft.2",
+            "schemaDigest": "7e38e2d7b9c996fe88cb747a515f57bcc2d75a08811ea23e3403735369fce8cb",
+            "required": true
+          },
+          "title": "确认合成候选",
+          "typeId": "review",
+          "typeLabel": "人工确认",
+          "status": "processed",
+          "pendingSince": "2026-09-10T08:00:00Z",
+          "updatedAt": "2026-09-10T09:00:00Z",
+          "processedAt": "2026-09-10T09:00:00Z",
+          "blocking": false,
+          "actionIds": [],
+          "evidence": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ]
+        }
+      ],
+      "expectedUnfilteredCounts": {
+        "pending": 1,
+        "blocking": 1,
+        "processed": 1
+      }
+    },
+    {
+      "id": "R2-upgrade-prepared-query-release",
+      "exchanges": [
+        {
+          "method": "runtime.upgrade.prepare",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:upgrade",
+            "idempotencyKey": "intent:upgrade",
+            "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+            "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "sourceDataFormat": "example.data.v1",
+            "targetDataFormat": "example.data.v2",
+            "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:upgrade",
+            "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed",
+            "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+            "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "sourceDataFormat": "example.data.v1",
+            "targetDataFormat": "example.data.v2",
+            "status": "prepared",
+            "barrierRef": "barrier:1",
+            "domainRevision": "domain:17",
+            "preparedGeneration": "4",
+            "protectedReferences": [],
+            "reason": "领域事务检查全部 scope，无保护引用"
+          }
+        },
+        {
+          "method": "runtime.upgrade.get",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:upgrade"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:upgrade",
+            "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed",
+            "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+            "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "sourceDataFormat": "example.data.v1",
+            "targetDataFormat": "example.data.v2",
+            "status": "prepared",
+            "barrierRef": "barrier:1",
+            "domainRevision": "domain:17",
+            "preparedGeneration": "4",
+            "protectedReferences": [],
+            "reason": "领域事务检查全部 scope，无保护引用"
+          }
+        },
+        {
+          "method": "runtime.upgrade.release",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:3",
+              "connectionId": "connection:4",
+              "controlGeneration": "5"
+            },
+            "operationId": "operation:release",
+            "idempotencyKey": "intent:release",
+            "prepareOperationId": "operation:upgrade",
+            "barrierRef": "barrier:1",
+            "disposition": "activated",
+            "runningBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "dataFormat": "example.data.v2",
+            "requestDigest": "2011e328845e0bf4e2d916090a4c3e0091e5e6b98d31913a3167a53b5a05abc1"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:3",
+              "connectionId": "connection:4",
+              "controlGeneration": "5"
+            },
+            "operationId": "operation:release",
+            "scopeRef": "instance",
+            "requestDigest": "2011e328845e0bf4e2d916090a4c3e0091e5e6b98d31913a3167a53b5a05abc1",
+            "status": "accepted",
+            "resultRef": null,
+            "executionRef": null,
+            "reason": "合成设计示例，未执行",
+            "revision": "op-revision:1",
+            "resultCode": null
+          }
+        },
+        {
+          "method": "runtime.upgrade.get",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:3",
+              "connectionId": "connection:4",
+              "controlGeneration": "5"
+            },
+            "operationId": "operation:upgrade"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:3",
+              "connectionId": "connection:4",
+              "controlGeneration": "5"
+            },
+            "operationId": "operation:upgrade",
+            "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed",
+            "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+            "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "sourceDataFormat": "example.data.v1",
+            "targetDataFormat": "example.data.v2",
+            "status": "released",
+            "barrierRef": "barrier:1",
+            "domainRevision": "domain:17",
+            "preparedGeneration": "4",
+            "protectedReferences": [],
+            "reason": "释放已持久记录；释放时领域修订 domain:21，恢复前与当前修订比较",
+            "releasedDomainRevision": "domain:21"
+          }
+        }
+      ],
+      "preconditions": "release 前必须已有 Host 屏障、签名维护入口及 receipt、原包原数据可恢复性、目标进程互斥和只读健康核验。本示例没有执行这些步骤。"
+    },
+    {
+      "id": "R4-human-decision-query",
+      "exchanges": [
+        {
+          "method": "runtime.action.invoke",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:1",
+            "idempotencyKey": "intent:1",
+            "scopeRef": "scope:1",
+            "actionId": "action:review",
+            "objectRef": "candidate:1",
+            "expectedRevision": "revision:17",
+            "candidateRef": "candidate:1",
+            "grantRefs": [
+              {
+                "id": "grant:1",
+                "revision": "2"
+              }
+            ],
+            "payload": {
+              "choice": "confirm"
+            },
+            "decisionRef": "decision:1",
+            "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:1",
+            "scopeRef": "scope:1",
+            "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc",
+            "status": "accepted",
+            "resultRef": null,
+            "executionRef": null,
+            "reason": "合成设计示例，未执行",
+            "revision": "op-revision:1",
+            "resultCode": null
+          }
+        },
+        {
+          "method": "host.decision.get",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "decisionRef": "decision:1"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "decisionRef": "decision:1",
+            "scopeRef": "scope:1",
+            "domainOperationId": "operation:1",
+            "method": "runtime.action.invoke",
+            "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc",
+            "actionId": "action:review",
+            "objectRef": "candidate:1",
+            "candidateRef": "candidate:1",
+            "expectedRevision": "revision:17",
+            "evidence": [
+              {
+                "authority": "runtime",
+                "resourceHandle": "evidence:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              }
+            ],
+            "actorRef": "local-user:1",
+            "source": "host-trusted-ui",
+            "recordedAt": "2026-09-10T10:01:00Z",
+            "status": "valid"
+          }
+        }
+      ],
+      "ordering": "Invoke 的 accepted 应答在嵌套 decision.get 及领域前提核验后；记录由 Host 在发送 Invoke 前持久建立。"
+    },
+    {
+      "id": "R3-context-capture-read-query-execute",
+      "exchanges": [
+        {
+          "method": "host.context.capture",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:capture",
+            "idempotencyKey": "intent:capture",
+            "scopeRef": "scope:1",
+            "domainOperationId": "operation:1",
+            "sources": [
+              {
+                "authority": "runtime",
+                "resourceHandle": "evidence:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              }
+            ],
+            "grantRefs": [
+              {
+                "id": "grant:1",
+                "revision": "2"
+              }
+            ],
+            "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:capture",
+            "scopeRef": "scope:1",
+            "domainOperationId": "operation:1",
+            "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7",
+            "status": "accepted",
+            "snapshots": [],
+            "reason": "已持久接受合成请求"
+          }
+        },
+        {
+          "method": "runtime.resource.read",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "evidence": {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            },
+            "grantRefs": [
+              {
+                "id": "grant:1",
+                "revision": "2"
+              }
+            ],
+            "offset": 0,
+            "length": 3
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "resourceHandle": "evidence:1",
+            "revision": "revision:17",
+            "offset": 0,
+            "dataBase64": "YWJj",
+            "eof": true,
+            "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          }
+        },
+        {
+          "method": "host.context.get",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "operationId": "operation:capture"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:capture",
+            "scopeRef": "scope:1",
+            "domainOperationId": "operation:1",
+            "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7",
+            "status": "succeeded",
+            "snapshots": [
+              {
+                "source": {
+                  "authority": "runtime",
+                  "resourceHandle": "evidence:1",
+                  "scopeRef": "scope:1",
+                  "objectRef": "candidate:1",
+                  "revision": "revision:17",
+                  "mediaType": "text/plain",
+                  "bytes": 3,
+                  "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                },
+                "snapshot": {
+                  "authority": "host",
+                  "resourceHandle": "context:1",
+                  "scopeRef": "scope:1",
+                  "objectRef": "candidate:1",
+                  "revision": "snapshot:1",
+                  "mediaType": "text/plain",
+                  "bytes": 3,
+                  "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                }
+              }
+            ],
+            "reason": ""
+          }
+        },
+        {
+          "method": "host.execution.preflight",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "profileId": "profile:review",
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "connectionRef": "model-connection:1",
+            "configurationRevision": "1",
+            "executionBinding": {
+              "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+              "agent": "agent:codex",
+              "model": "example-model",
+              "modelVendor": "vendor:openai",
+              "routeVendor": null,
+              "credentialRef": "credential:codex-native-login",
+              "configurationRevision": "1"
+            },
+            "constraints": [
+              {
+                "kind": "path",
+                "value": "worktrees/task/T1",
+                "enforcer": "host",
+                "guarantee": "interface-enforced"
+              },
+              {
+                "kind": "budget",
+                "value": "maxToolCalls=2",
+                "enforcer": "host",
+                "guarantee": "interface-enforced"
+              },
+              {
+                "kind": "tool",
+                "value": "native-read-only",
+                "enforcer": "agent",
+                "guarantee": "agent-declared"
+              }
+            ]
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "status": "supported",
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "checks": [
+              {
+                "id": "program-identity",
+                "passed": true,
+                "detail": "固定 launcher、摘要与版本与 profile 一致"
+              },
+              {
+                "id": "print-mode-flags",
+                "passed": true,
+                "detail": "当次帮助文本含全部冻结参数"
+              },
+              {
+                "id": "native-login",
+                "passed": true,
+                "detail": "原生认证状态已存在；不读取秘密"
+              }
+            ],
+            "reason": "静态与协议能力检查通过；未调用模型，未创建执行，不构成评审资格"
+          }
+        },
+        {
+          "method": "host.execution.start",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:execute",
+            "idempotencyKey": "intent:execute",
+            "scopeRef": "scope:1",
+            "profileId": "profile:review",
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "domainOperationId": "operation:1",
+            "resourceHandle": "repository:1",
+            "connectionRef": "model-connection:1",
+            "configurationRevision": "1",
+            "model": "example-model",
+            "executionBinding": {
+              "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+              "agent": "agent:codex",
+              "model": "example-model",
+              "modelVendor": "vendor:openai",
+              "routeVendor": null,
+              "credentialRef": "credential:codex-native-login",
+              "configurationRevision": "1"
+            },
+            "constraints": [
+              {
+                "kind": "path",
+                "value": "worktrees/task/T1",
+                "enforcer": "host",
+                "guarantee": "interface-enforced"
+              },
+              {
+                "kind": "budget",
+                "value": "maxToolCalls=2",
+                "enforcer": "host",
+                "guarantee": "interface-enforced"
+              },
+              {
+                "kind": "tool",
+                "value": "native-read-only",
+                "enforcer": "agent",
+                "guarantee": "agent-declared"
+              }
+            ],
+            "contextRefs": [
+              {
+                "authority": "host",
+                "resourceHandle": "context:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "snapshot:1",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              }
+            ],
+            "grantRefs": [
+              {
+                "id": "grant:1",
+                "revision": "2"
+              }
+            ],
+            "decisionRef": "decision:1",
+            "budget": {
+              "maxToolCalls": 2,
+              "maxRunSeconds": 60
+            },
+            "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+            "domainNodeRef": "node:agent.implementer",
+            "roleIntent": "role:implementer",
+            "targetBinding": {
+              "resourceHandle": "repository:1",
+              "relativePath": "worktrees/task/T1"
+            }
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "operationId": "operation:execute",
+            "scopeRef": "scope:1",
+            "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+            "status": "accepted",
+            "resultRef": null,
+            "executionRef": "execution:1",
+            "reason": "合成设计示例，未执行",
+            "revision": "op-revision:1",
+            "resultCode": null
+          }
+        },
+        {
+          "method": "host.execution.get",
+          "params": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "scopeRef": "scope:1",
+            "executionRef": "execution:1"
+          },
+          "result": {
+            "context": {
+              "protocolVersion": "0.1.0-draft.5",
+              "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "installationId": "install:1",
+              "instanceId": "instance:1",
+              "incarnationId": "process:2",
+              "connectionId": "connection:3",
+              "controlGeneration": "4"
+            },
+            "executionRef": "execution:1",
+            "scopeRef": "scope:1",
+            "state": "reserved",
+            "connectionRef": "model-connection:1",
+            "configurationRevision": "1",
+            "model": "example-model",
+            "requestIdentity": {
+              "operationId": "operation:execute",
+              "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+              "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333"
+            },
+            "supervisor": {
+              "pid": 53142,
+              "startTime": "2026-09-14T08:50:00Z",
+              "image": "/opt/homebrew/bin/codex"
+            },
+            "approvalDecisionRefs": [],
+            "actualBinding": null,
+            "stopReason": null,
+            "accounting": null,
+            "exit": null,
+            "observationCompleteness": "partial",
+            "resultRef": null,
+            "reason": "预约已持久化，独占物理记录已建立，目标尚未放行；合成设计示例"
+          }
+        }
+      ],
+      "preconditions": "grants 为独立场景引用：各 owner 当前必须查得与 source 读取、上下文 capture 和执行匹配的授权。R5 的单个 repository.read Grant 不能用于授权本场景全部操作。 r4：preflight 不创建操作或执行；start 的 accepted 加 executionRef 只表示持久预约，随后的 host.execution.get 读到 reserved，放行前对目标无任何观察。"
+    }
+  ],
+  "relations": [
+    {
+      "id": "decision-binding-valid",
+      "kind": "decision",
+      "value": {
+        "invoke": {
+          "operationId": "operation:1",
+          "idempotencyKey": "intent:1",
+          "scopeRef": "scope:1",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "candidateRef": "candidate:1",
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "payload": {
+            "choice": "confirm"
+          },
+          "decisionRef": "decision:1",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc"
+        },
+        "decision": {
+          "decisionRef": "decision:1",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "method": "runtime.action.invoke",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "candidateRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "evidence": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "actorRef": "local-user:1",
+          "source": "host-trusted-ui",
+          "recordedAt": "2026-09-10T10:01:00Z",
+          "status": "valid"
+        },
+        "evidence": [
+          {
+            "authority": "runtime",
+            "resourceHandle": "evidence:1",
+            "scopeRef": "scope:1",
+            "objectRef": "candidate:1",
+            "revision": "revision:17",
+            "mediaType": "text/plain",
+            "bytes": 3,
+            "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "id": "decision-old-candidate-rejected",
+      "kind": "decision",
+      "value": {
+        "invoke": {
+          "operationId": "operation:1",
+          "idempotencyKey": "intent:1",
+          "scopeRef": "scope:1",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "candidateRef": "candidate:2",
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "payload": {
+            "choice": "confirm"
+          },
+          "decisionRef": "decision:1",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc"
+        },
+        "decision": {
+          "decisionRef": "decision:1",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "method": "runtime.action.invoke",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "candidateRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "evidence": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "actorRef": "local-user:1",
+          "source": "host-trusted-ui",
+          "recordedAt": "2026-09-10T10:01:00Z",
+          "status": "valid"
+        },
+        "evidence": [
+          {
+            "authority": "runtime",
+            "resourceHandle": "evidence:1",
+            "scopeRef": "scope:1",
+            "objectRef": "candidate:1",
+            "revision": "revision:17",
+            "mediaType": "text/plain",
+            "bytes": 3,
+            "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "id": "decision-other-digest-rejected",
+      "kind": "decision",
+      "value": {
+        "invoke": {
+          "operationId": "operation:1",
+          "idempotencyKey": "intent:1",
+          "scopeRef": "scope:1",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "candidateRef": "candidate:1",
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "payload": {
+            "choice": "confirm"
+          },
+          "decisionRef": "decision:1",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc"
+        },
+        "decision": {
+          "decisionRef": "decision:1",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "method": "runtime.action.invoke",
+          "requestDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "candidateRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "evidence": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "actorRef": "local-user:1",
+          "source": "host-trusted-ui",
+          "recordedAt": "2026-09-10T10:01:00Z",
+          "status": "valid"
+        },
+        "evidence": [
+          {
+            "authority": "runtime",
+            "resourceHandle": "evidence:1",
+            "scopeRef": "scope:1",
+            "objectRef": "candidate:1",
+            "revision": "revision:17",
+            "mediaType": "text/plain",
+            "bytes": 3,
+            "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "id": "decision-revoked-rejected",
+      "kind": "decision",
+      "value": {
+        "invoke": {
+          "operationId": "operation:1",
+          "idempotencyKey": "intent:1",
+          "scopeRef": "scope:1",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "candidateRef": "candidate:1",
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "payload": {
+            "choice": "confirm"
+          },
+          "decisionRef": "decision:1",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc"
+        },
+        "decision": {
+          "decisionRef": "decision:1",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "method": "runtime.action.invoke",
+          "requestDigest": "ed780a67e27f500ac8153d09be78e0049b37fcf8cbe5ae976b0ccae28900a3fc",
+          "actionId": "action:review",
+          "objectRef": "candidate:1",
+          "candidateRef": "candidate:1",
+          "expectedRevision": "revision:17",
+          "evidence": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "actorRef": "local-user:1",
+          "source": "host-trusted-ui",
+          "recordedAt": "2026-09-10T10:01:00Z",
+          "status": "revoked"
+        },
+        "evidence": [
+          {
+            "authority": "runtime",
+            "resourceHandle": "evidence:1",
+            "scopeRef": "scope:1",
+            "objectRef": "candidate:1",
+            "revision": "revision:17",
+            "mediaType": "text/plain",
+            "bytes": 3,
+            "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "id": "capture-execution-binding-valid",
+      "kind": "capture",
+      "value": {
+        "request": {
+          "operationId": "operation:capture",
+          "idempotencyKey": "intent:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "sources": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7"
+        },
+        "receipt": {
+          "operationId": "operation:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7",
+          "status": "succeeded",
+          "snapshots": [
+            {
+              "source": {
+                "authority": "runtime",
+                "resourceHandle": "evidence:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              },
+              "snapshot": {
+                "authority": "host",
+                "resourceHandle": "context:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "snapshot:1",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              }
+            }
+          ],
+          "reason": ""
+        },
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "capture-cross-scope-rejected",
+      "kind": "capture",
+      "value": {
+        "request": {
+          "operationId": "operation:capture",
+          "idempotencyKey": "intent:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "sources": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7"
+        },
+        "receipt": {
+          "operationId": "operation:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7",
+          "status": "succeeded",
+          "snapshots": [
+            {
+              "source": {
+                "authority": "runtime",
+                "resourceHandle": "evidence:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              },
+              "snapshot": {
+                "authority": "host",
+                "resourceHandle": "context:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "snapshot:1",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              }
+            }
+          ],
+          "reason": ""
+        },
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:other",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "capture-other-operation-rejected",
+      "kind": "capture",
+      "value": {
+        "request": {
+          "operationId": "operation:capture",
+          "idempotencyKey": "intent:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "sources": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7"
+        },
+        "receipt": {
+          "operationId": "operation:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7",
+          "status": "succeeded",
+          "snapshots": [
+            {
+              "source": {
+                "authority": "runtime",
+                "resourceHandle": "evidence:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              },
+              "snapshot": {
+                "authority": "host",
+                "resourceHandle": "context:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "snapshot:1",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              }
+            }
+          ],
+          "reason": ""
+        },
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:other",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "capture-changed-bytes-rejected",
+      "kind": "capture",
+      "value": {
+        "request": {
+          "operationId": "operation:capture",
+          "idempotencyKey": "intent:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "sources": [
+            {
+              "authority": "runtime",
+              "resourceHandle": "evidence:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "revision:17",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7"
+        },
+        "receipt": {
+          "operationId": "operation:capture",
+          "scopeRef": "scope:1",
+          "domainOperationId": "operation:1",
+          "requestDigest": "8a258118e6ba4aa77fe6f015a80cc4b4eab455d21d778fc1bc20b5c4cc7879f7",
+          "status": "succeeded",
+          "snapshots": [
+            {
+              "source": {
+                "authority": "runtime",
+                "resourceHandle": "evidence:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "revision:17",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              },
+              "snapshot": {
+                "authority": "host",
+                "resourceHandle": "context:1",
+                "scopeRef": "scope:1",
+                "objectRef": "candidate:1",
+                "revision": "snapshot:1",
+                "mediaType": "text/plain",
+                "bytes": 3,
+                "digest": "9999999999999999999999999999999999999999999999999999999999999999"
+              }
+            }
+          ],
+          "reason": ""
+        },
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "scope-grant-valid",
+      "kind": "scope",
+      "value": {
+        "scopeRef": "scope:1",
+        "resourceHandle": "repository:1",
+        "grant": {
+          "ref": {
+            "id": "grant:1",
+            "revision": "2"
+          },
+          "installationId": "install:1",
+          "instanceId": "instance:1",
+          "scopeRef": "scope:1",
+          "resourceHandle": "repository:1",
+          "capability": "example.coding.review",
+          "operation": "repository.read",
+          "executionRef": null,
+          "bundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "expiresAt": "2026-09-10T23:59:59Z",
+          "status": "active",
+          "purpose": "合成示例，仅展示授权顺序"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "scope-other-grant-rejected",
+      "kind": "scope",
+      "value": {
+        "scopeRef": "scope:1",
+        "resourceHandle": "repository:1",
+        "grant": {
+          "ref": {
+            "id": "grant:1",
+            "revision": "2"
+          },
+          "installationId": "install:1",
+          "instanceId": "instance:1",
+          "scopeRef": "scope:other",
+          "resourceHandle": "repository:1",
+          "capability": "example.coding.review",
+          "operation": "repository.read",
+          "executionRef": null,
+          "bundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "expiresAt": "2026-09-10T23:59:59Z",
+          "status": "active",
+          "purpose": "合成示例，仅展示授权顺序"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "upgrade-release-valid",
+      "kind": "upgrade",
+      "value": {
+        "prepare": {
+          "operationId": "operation:upgrade",
+          "idempotencyKey": "intent:upgrade",
+          "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "sourceDataFormat": "example.data.v1",
+          "targetDataFormat": "example.data.v2",
+          "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed"
+        },
+        "state": {
+          "operationId": "operation:upgrade",
+          "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed",
+          "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "sourceDataFormat": "example.data.v1",
+          "targetDataFormat": "example.data.v2",
+          "status": "prepared",
+          "barrierRef": "barrier:1",
+          "domainRevision": "domain:17",
+          "preparedGeneration": "4",
+          "protectedReferences": [],
+          "reason": "领域事务检查全部 scope，无保护引用"
+        },
+        "release": {
+          "operationId": "operation:release",
+          "idempotencyKey": "intent:release",
+          "prepareOperationId": "operation:upgrade",
+          "barrierRef": "barrier:1",
+          "disposition": "activated",
+          "runningBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "dataFormat": "example.data.v2",
+          "requestDigest": "2011e328845e0bf4e2d916090a4c3e0091e5e6b98d31913a3167a53b5a05abc1"
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "upgrade-paused-rejected",
+      "kind": "upgrade",
+      "value": {
+        "prepare": {
+          "operationId": "operation:upgrade",
+          "idempotencyKey": "intent:upgrade",
+          "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "sourceDataFormat": "example.data.v1",
+          "targetDataFormat": "example.data.v2",
+          "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed"
+        },
+        "state": {
+          "operationId": "operation:upgrade",
+          "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed",
+          "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "sourceDataFormat": "example.data.v1",
+          "targetDataFormat": "example.data.v2",
+          "status": "blocked",
+          "barrierRef": null,
+          "domainRevision": "domain:17",
+          "preparedGeneration": "4",
+          "protectedReferences": [
+            {
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:paused",
+              "revision": "revision:18",
+              "reason": "暂停引用仍需旧 bundle"
+            }
+          ],
+          "reason": "领域事务检查全部 scope，无保护引用"
+        },
+        "release": {
+          "operationId": "operation:release",
+          "idempotencyKey": "intent:release",
+          "prepareOperationId": "operation:upgrade",
+          "barrierRef": "barrier:1",
+          "disposition": "activated",
+          "runningBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "dataFormat": "example.data.v2",
+          "requestDigest": "2011e328845e0bf4e2d916090a4c3e0091e5e6b98d31913a3167a53b5a05abc1"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "upgrade-wrong-target-rejected",
+      "kind": "upgrade",
+      "value": {
+        "prepare": {
+          "operationId": "operation:upgrade",
+          "idempotencyKey": "intent:upgrade",
+          "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "sourceDataFormat": "example.data.v1",
+          "targetDataFormat": "example.data.v2",
+          "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed"
+        },
+        "state": {
+          "operationId": "operation:upgrade",
+          "requestDigest": "6351da2d2915b82af2828c9db0fcd76249f24908a49393f287a07d57eba5feed",
+          "sourceBundleDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "targetBundleDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "sourceDataFormat": "example.data.v1",
+          "targetDataFormat": "example.data.v2",
+          "status": "prepared",
+          "barrierRef": "barrier:1",
+          "domainRevision": "domain:17",
+          "preparedGeneration": "4",
+          "protectedReferences": [],
+          "reason": "领域事务检查全部 scope，无保护引用"
+        },
+        "release": {
+          "operationId": "operation:release",
+          "idempotencyKey": "intent:release",
+          "prepareOperationId": "operation:upgrade",
+          "barrierRef": "barrier:1",
+          "disposition": "activated",
+          "runningBundleDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "dataFormat": "example.data.v2",
+          "requestDigest": "2011e328845e0bf4e2d916090a4c3e0091e5e6b98d31913a3167a53b5a05abc1"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "profile-negotiation-valid",
+      "kind": "profile",
+      "value": {
+        "requirement": {
+          "capabilityId": "example.coding.review",
+          "profile": {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        },
+        "offered": [
+          {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "trustModel": "current-user",
+            "purpose": "review",
+            "programIdentity": {
+              "launcher": "/opt/homebrew/bin/codex",
+              "binaryDigest": "6666666666666666666666666666666666666666666666666666666666666666",
+              "version": "0.154.0"
+            },
+            "nativeApprovalPolicy": "expected-range-gate",
+            "configurationDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "capabilities": [
+              "model-readback",
+              "native-approval-readback",
+              "interrupt"
+            ],
+            "limitations": [
+              "read-evidence-not-exclusive"
+            ],
+            "operations": [
+              "repository.read"
+            ],
+            "maxContextBytes": 1024,
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          }
+        ],
+        "selected": [
+          {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "profile-missing-rejected",
+      "kind": "profile",
+      "value": {
+        "requirement": {
+          "capabilityId": "example.coding.review",
+          "profile": {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        },
+        "offered": [],
+        "selected": [
+          {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "profile-changed-digest-rejected",
+      "kind": "profile",
+      "value": {
+        "requirement": {
+          "capabilityId": "example.coding.review",
+          "profile": {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        },
+        "offered": [
+          {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "trustModel": "current-user",
+            "purpose": "review",
+            "programIdentity": {
+              "launcher": "/opt/homebrew/bin/codex",
+              "binaryDigest": "6666666666666666666666666666666666666666666666666666666666666666",
+              "version": "0.154.0"
+            },
+            "nativeApprovalPolicy": "expected-range-gate",
+            "configurationDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+            "capabilities": [
+              "model-readback",
+              "native-approval-readback",
+              "interrupt"
+            ],
+            "limitations": [
+              "read-evidence-not-exclusive"
+            ],
+            "operations": [
+              "repository.read"
+            ],
+            "maxContextBytes": 1024,
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          }
+        ],
+        "selected": [
+          {
+            "id": "profile:review",
+            "version": "1",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "execution": {
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "binding-consistent-valid",
+      "kind": "binding",
+      "value": {
+        "start": {
+          "context": {
+            "protocolVersion": "0.1.0-draft.5",
+            "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "installationId": "install:1",
+            "instanceId": "instance:1",
+            "incarnationId": "process:2",
+            "connectionId": "connection:3",
+            "controlGeneration": "4"
+          },
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "binding-profile-digest-mismatch-rejected",
+      "kind": "binding",
+      "value": {
+        "start": {
+          "context": {
+            "protocolVersion": "0.1.0-draft.5",
+            "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "installationId": "install:1",
+            "instanceId": "instance:1",
+            "incarnationId": "process:2",
+            "connectionId": "connection:3",
+            "controlGeneration": "4"
+          },
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+            "agent": "agent:codex",
+            "model": "example-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "binding-model-mismatch-rejected",
+      "kind": "binding",
+      "value": {
+        "start": {
+          "context": {
+            "protocolVersion": "0.1.0-draft.5",
+            "contractDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "installationId": "install:1",
+            "instanceId": "instance:1",
+            "incarnationId": "process:2",
+            "connectionId": "connection:3",
+            "controlGeneration": "4"
+          },
+          "operationId": "operation:execute",
+          "idempotencyKey": "intent:execute",
+          "scopeRef": "scope:1",
+          "profileId": "profile:review",
+          "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "domainOperationId": "operation:1",
+          "resourceHandle": "repository:1",
+          "connectionRef": "model-connection:1",
+          "configurationRevision": "1",
+          "model": "example-model",
+          "executionBinding": {
+            "profileDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "agent": "agent:codex",
+            "model": "other-model",
+            "modelVendor": "vendor:openai",
+            "routeVendor": null,
+            "credentialRef": "credential:codex-native-login",
+            "configurationRevision": "1"
+          },
+          "constraints": [
+            {
+              "kind": "path",
+              "value": "worktrees/task/T1",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "budget",
+              "value": "maxToolCalls=2",
+              "enforcer": "host",
+              "guarantee": "interface-enforced"
+            },
+            {
+              "kind": "tool",
+              "value": "native-read-only",
+              "enforcer": "agent",
+              "guarantee": "agent-declared"
+            }
+          ],
+          "contextRefs": [
+            {
+              "authority": "host",
+              "resourceHandle": "context:1",
+              "scopeRef": "scope:1",
+              "objectRef": "candidate:1",
+              "revision": "snapshot:1",
+              "mediaType": "text/plain",
+              "bytes": 3,
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            }
+          ],
+          "grantRefs": [
+            {
+              "id": "grant:1",
+              "revision": "2"
+            }
+          ],
+          "decisionRef": "decision:1",
+          "budget": {
+            "maxToolCalls": 2,
+            "maxRunSeconds": 60
+          },
+          "requestDigest": "fd674a1e1b4b5fe12a25ffaf11ab8bdcd05e528177022eea83db75f50c9b58d3",
+          "domainNodeRef": "node:agent.implementer",
+          "roleIntent": "role:implementer",
+          "targetBinding": {
+            "resourceHandle": "repository:1",
+            "relativePath": "worktrees/task/T1"
+          }
+        }
+      },
+      "valid": false
+    }
+  ]
+}

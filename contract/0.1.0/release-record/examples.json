@@ -1,0 +1,717 @@
+{
+  "notice": "Synthetic examples for the release record candidate; digests are SHA-256 of short test strings, not of any real bundle.",
+  "cases": [
+    {
+      "id": "release-record-valid-built-in",
+      "definition": "ReleaseRecord",
+      "valid": true,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        }
+      }
+    },
+    {
+      "id": "release-record-valid-offline-import-without-maintenance",
+      "definition": "ReleaseRecord",
+      "valid": true,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": null,
+        "source": {
+          "kind": "offline-import",
+          "reference": "file:example-domain-1.bundle"
+        }
+      }
+    },
+    {
+      "id": "installed-artifact-valid-active",
+      "definition": "InstalledArtifact",
+      "valid": true,
+      "value": {
+        "schema": "csthink-runtime-installed-artifact/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "version": "1",
+        "artifactDigest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+        "releaseRecordDigest": "597c28c381ef1feee61f3e9677a628b4cbd41cfb2539c8938062e1df2a882d39",
+        "signature": {
+          "verified": true,
+          "publisherPublicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc",
+          "algorithm": "ed25519"
+        },
+        "verification": {
+          "result": "verified",
+          "checkedFiles": 3,
+          "expandedBytes": 40903,
+          "reasons": []
+        },
+        "stage": "active",
+        "validatedLaunch": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "serve"
+          ]
+        },
+        "restrictedEntrypoints": [
+          "runtime_v10.py"
+        ]
+      }
+    },
+    {
+      "id": "installed-artifact-valid-rejected-with-reason",
+      "definition": "InstalledArtifact",
+      "valid": true,
+      "value": {
+        "schema": "csthink-runtime-installed-artifact/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "version": "1",
+        "artifactDigest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+        "releaseRecordDigest": "597c28c381ef1feee61f3e9677a628b4cbd41cfb2539c8938062e1df2a882d39",
+        "signature": {
+          "verified": false,
+          "publisherPublicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc",
+          "algorithm": "ed25519"
+        },
+        "verification": {
+          "result": "rejected",
+          "checkedFiles": 0,
+          "expandedBytes": 0,
+          "reasons": [
+            "release signature does not verify against the trusted publisher key"
+          ]
+        },
+        "stage": "rejected",
+        "validatedLaunch": null,
+        "restrictedEntrypoints": [
+          "runtime_v10.py"
+        ]
+      }
+    },
+    {
+      "id": "release-record-self-digest-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        },
+        "releaseDigest": "06c604b332b386b6cce8355ccf27fffd3a98b7a7a5b9b3a550c039c6ebae38e4"
+      }
+    },
+    {
+      "id": "release-record-embedded-signature-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        },
+        "signature": "abcd"
+      }
+    },
+    {
+      "id": "release-record-path-traversal-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          },
+          {
+            "path": "../escape.txt",
+            "bytes": 7,
+            "sha256": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        }
+      }
+    },
+    {
+      "id": "release-record-absolute-entrypoint-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "/usr/bin/python3",
+          "argv": []
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        }
+      }
+    },
+    {
+      "id": "release-record-missing-manifest-digest-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        }
+      }
+    },
+    {
+      "id": "release-record-short-digest-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "a33c571ef1ec",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        }
+      }
+    },
+    {
+      "id": "release-record-download-url-as-identity-rejected",
+      "definition": "ReleaseRecord",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-release/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "publisher": {
+          "id": "publisher:example-lab",
+          "signatureAlgorithm": "ed25519",
+          "publicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc"
+        },
+        "version": "1",
+        "platform": "darwin-arm64",
+        "dataFormat": "example.f1",
+        "archive": {
+          "digest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "bytes": 51200,
+          "format": "ustar"
+        },
+        "manifest": {
+          "path": "manifest.json",
+          "digest": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "bytes": 897
+        },
+        "files": [
+          {
+            "path": "manifest.json",
+            "bytes": 897,
+            "sha256": "62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+            "mode": "0644"
+          },
+          {
+            "path": "runtime_v10.py",
+            "bytes": 40048,
+            "sha256": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+            "mode": "0644"
+          },
+          {
+            "path": "deps/dep-common.txt",
+            "bytes": 58,
+            "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+            "mode": "0644"
+          }
+        ],
+        "limits": {
+          "expandedBytesMax": 4194304,
+          "membersMax": 64
+        },
+        "dependencies": [
+          {
+            "id": "dep-common",
+            "version": "1",
+            "digest": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+          }
+        ],
+        "permissionProfileDigest": "d53315bea08cec50d2591fcaf3b32dc5d289cdc6c16b7e8bed8c8e3f7ceaa34e",
+        "maintenance": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "maintain"
+          ]
+        },
+        "source": {
+          "kind": "built-in",
+          "reference": "product-bundle/example-domain-1"
+        },
+        "downloadUrl": "https://example.invalid/bundle.tar"
+      }
+    },
+    {
+      "id": "installed-artifact-active-without-verified-signature-rejected",
+      "definition": "InstalledArtifact",
+      "valid": false,
+      "value": {
+        "schema": "csthink-runtime-installed-artifact/v1-candidate",
+        "runtimeId": "runtime:example-domain",
+        "version": "1",
+        "artifactDigest": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+        "releaseRecordDigest": "597c28c381ef1feee61f3e9677a628b4cbd41cfb2539c8938062e1df2a882d39",
+        "signature": {
+          "verified": false,
+          "publisherPublicKeyDigest": "eb3102a6cb586765d01fad324523ec0bc67b9efd6a2d9589c135adfedf7922cc",
+          "algorithm": "ed25519"
+        },
+        "verification": {
+          "result": "verified",
+          "checkedFiles": 3,
+          "expandedBytes": 40903,
+          "reasons": []
+        },
+        "stage": "active",
+        "validatedLaunch": {
+          "entrypoint": "runtime_v10.py",
+          "argv": [
+            "serve"
+          ]
+        },
+        "restrictedEntrypoints": [
+          "runtime_v10.py"
+        ]
+      }
+    }
+  ]
+}

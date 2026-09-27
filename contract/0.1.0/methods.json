@@ -1,0 +1,146 @@
+{
+  "generatedBy": "schema-source.py",
+  "version": "0.1.0-draft.5",
+  "methods": {
+    "runtime.initialize": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeInitializeParams",
+      "result": "RuntimeInitializeResult"
+    },
+    "runtime.ready": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeReadyParams",
+      "result": "RuntimeReadyResult"
+    },
+    "runtime.health": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeHealthParams",
+      "result": "RuntimeHealthResult"
+    },
+    "runtime.scope.open": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeScopeOpenParams",
+      "result": "RuntimeScopeOpenResult"
+    },
+    "runtime.scope.authorize": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeScopeAuthorizeParams",
+      "result": "RuntimeScopeAuthorizeResult"
+    },
+    "runtime.snapshot.open": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeSnapshotOpenParams",
+      "result": "RuntimeSnapshotOpenResult"
+    },
+    "runtime.snapshot.next": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeSnapshotNextParams",
+      "result": "RuntimeSnapshotNextResult"
+    },
+    "runtime.events.subscribe": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeEventsSubscribeParams",
+      "result": "RuntimeEventsSubscribeResult"
+    },
+    "runtime.events.ack": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeEventsAckParams",
+      "result": "RuntimeEventsAckResult"
+    },
+    "runtime.action.invoke": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeActionInvokeParams",
+      "result": "RuntimeActionInvokeResult"
+    },
+    "runtime.operation.get": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeOperationGetParams",
+      "result": "RuntimeOperationGetResult"
+    },
+    "runtime.operation.cancel": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeOperationCancelParams",
+      "result": "RuntimeOperationCancelResult"
+    },
+    "runtime.quiesce": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeQuiesceParams",
+      "result": "RuntimeQuiesceResult"
+    },
+    "runtime.shutdown": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeShutdownParams",
+      "result": "RuntimeShutdownResult"
+    },
+    "runtime.upgrade.prepare": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeUpgradePrepareParams",
+      "result": "RuntimeUpgradePrepareResult"
+    },
+    "runtime.upgrade.get": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeUpgradeGetParams",
+      "result": "RuntimeUpgradeGetResult"
+    },
+    "runtime.upgrade.release": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeUpgradeReleaseParams",
+      "result": "RuntimeUpgradeReleaseResult"
+    },
+    "host.grants.get": {
+      "direction": "runtime-to-host",
+      "params": "HostGrantsGetParams",
+      "result": "HostGrantsGetResult"
+    },
+    "host.decision.get": {
+      "direction": "runtime-to-host",
+      "params": "HostDecisionGetParams",
+      "result": "HostDecisionGetResult"
+    },
+    "host.context.capture": {
+      "direction": "runtime-to-host",
+      "params": "HostContextCaptureParams",
+      "result": "HostContextCaptureResult"
+    },
+    "host.context.get": {
+      "direction": "runtime-to-host",
+      "params": "HostContextGetParams",
+      "result": "HostContextGetResult"
+    },
+    "host.resource.read": {
+      "direction": "runtime-to-host",
+      "params": "HostResourceReadParams",
+      "result": "HostResourceReadResult"
+    },
+    "runtime.resource.read": {
+      "direction": "host-to-runtime",
+      "params": "RuntimeResourceReadParams",
+      "result": "RuntimeResourceReadResult"
+    },
+    "host.execution.preflight": {
+      "direction": "runtime-to-host",
+      "params": "HostExecutionPreflightParams",
+      "result": "HostExecutionPreflightResult"
+    },
+    "host.execution.start": {
+      "direction": "runtime-to-host",
+      "params": "HostExecutionStartParams",
+      "result": "HostExecutionStartResult"
+    },
+    "host.operation.get": {
+      "direction": "runtime-to-host",
+      "params": "HostOperationGetParams",
+      "result": "HostOperationGetResult"
+    },
+    "host.execution.get": {
+      "direction": "runtime-to-host",
+      "params": "HostExecutionGetParams",
+      "result": "HostExecutionGetResult"
+    },
+    "host.execution.cancel": {
+      "direction": "runtime-to-host",
+      "params": "HostExecutionCancelParams",
+      "result": "HostExecutionCancelResult"
+    }
+  }
+}
