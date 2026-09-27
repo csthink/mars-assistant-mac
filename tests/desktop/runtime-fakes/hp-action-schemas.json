@@ -1,0 +1,919 @@
+{
+  "source": "hp main 73502f20a70e67a664ef45cc01af99e129d33c05, apps/harness/domain/*/schema.py, transcribed read-only (feature-t31 S-06, OD-423)",
+  "digests": "payloadSchemaDigest and capabilitySchemaDigest as the delivery-r3 Runtime announced them in the V-10 run (s06-r9 v07); each equals the SHA-256 of the canonical JSON of the schema below",
+  "actions": {
+    "budget.decide": {
+      "capability": "harness.autonomous-budget",
+      "capabilitySchemaDigest": "5e9254094c800abef8feb92b42b0d5e769c769bddd2452866d0aca3947faea29",
+      "payloadSchemaDigest": "5e9254094c800abef8feb92b42b0d5e769c769bddd2452866d0aca3947faea29",
+      "label": "budget.decide",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:budget-decide:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "definition.decide": {
+      "capability": "harness.definition",
+      "capabilitySchemaDigest": "bf251bca5a17d4986f5881933d917ba727a7ebd6edc8c408f7d952d992beb0ae",
+      "payloadSchemaDigest": "470994791495ce4f83f871df2c19f41dbd886cd781249141886dbe4fc3053f0b",
+      "label": "definition.decide",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:definition-decide:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "Authorize & Freeze",
+              "Accept With reservation",
+              "Dispose findings"
+            ]
+          },
+          "decisionText": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "findings": {
+            "additionalProperties": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "reservation": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "decision",
+          "decisionText",
+          "expectedRuntimeVersion"
+        ],
+        "type": "object"
+      }
+    },
+    "definition.dispatch": {
+      "capability": "harness.definition",
+      "capabilitySchemaDigest": "bf251bca5a17d4986f5881933d917ba727a7ebd6edc8c408f7d952d992beb0ae",
+      "payloadSchemaDigest": "a89068adca83e396cde9e188b6a12536d0bccce32caaf93dcb70d785aa529d42",
+      "label": "definition.dispatch",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:definition-dispatch:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "definition.formal-authorize": {
+      "capability": "harness.definition",
+      "capabilitySchemaDigest": "bf251bca5a17d4986f5881933d917ba727a7ebd6edc8c408f7d952d992beb0ae",
+      "payloadSchemaDigest": "0f1074eef4ed56e88648de9205598b5030f03beb6d8e6d384ba0077d04e4e3df",
+      "label": "definition.formal-authorize",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:definition-formal-authorize:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxCalls": {
+            "maximum": 64,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "portId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "maxCalls", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "definition.submit": {
+      "capability": "harness.definition",
+      "capabilitySchemaDigest": "bf251bca5a17d4986f5881933d917ba727a7ebd6edc8c408f7d952d992beb0ae",
+      "payloadSchemaDigest": "bf251bca5a17d4986f5881933d917ba727a7ebd6edc8c408f7d952d992beb0ae",
+      "label": "definition.submit",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:definition-submit:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "additionalProperties": false,
+            "properties": {
+              "evidenceRefs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "commit": {
+                      "pattern": "^[0-9a-f]{40}$",
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 1024,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": ["commit", "path"],
+                  "type": "object"
+                },
+                "maxItems": 16,
+                "minItems": 1,
+                "type": "array"
+              },
+              "humanOnly": {
+                "type": "boolean"
+              },
+              "model": {
+                "maxLength": 256,
+                "type": ["string", "null"]
+              },
+              "tool": {
+                "maxLength": 256,
+                "type": ["string", "null"]
+              },
+              "vendor": {
+                "maxLength": 256,
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "tool",
+              "model",
+              "vendor",
+              "humanOnly",
+              "evidenceRefs"
+            ],
+            "type": "object"
+          },
+          "commit": {
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "commit", "author", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "implement.dispatch": {
+      "capability": "harness.implement-verify",
+      "capabilitySchemaDigest": "81b656cefa29d26941ace00de13077fab1f3cb975d690d7168ab4e6f32f2d871",
+      "payloadSchemaDigest": "81b656cefa29d26941ace00de13077fab1f3cb975d690d7168ab4e6f32f2d871",
+      "label": "implement.dispatch",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:implement-dispatch:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "additionalProperties": false,
+            "properties": {
+              "cleanupSeconds": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "maxOutputBytes": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "maxRunSeconds": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "maxToolCalls": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "maxToolCalls",
+              "maxRunSeconds",
+              "maxOutputBytes",
+              "cleanupSeconds"
+            ],
+            "type": "object"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "finalizationRef": {
+            "pattern": "^RU-[0-9]{2,}$",
+            "type": "string"
+          },
+          "portId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "portId",
+          "finalizationRef",
+          "budget",
+          "expectedRuntimeVersion"
+        ],
+        "type": "object"
+      }
+    },
+    "publish.authorize": {
+      "capability": "harness.publish",
+      "capabilitySchemaDigest": "cb00367256e1e1b1f8a323e628ddc270c9077daaaf5c5d23abb357f48f791f55",
+      "payloadSchemaDigest": "2d1688a3ac769baff3a93db6ab1e6ae44e08682f29c95472a059095909fe3a52",
+      "label": "publish.authorize",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:publish-authorize:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "contextDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "decisionText": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "publishBinding": {
+            "additionalProperties": false,
+            "properties": {
+              "candidateCommit": {
+                "pattern": "^[0-9a-f]{40}$",
+                "type": "string"
+              },
+              "pullRequest": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 60000,
+                    "type": "string"
+                  },
+                  "title": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": ["title", "body"],
+                "type": "object"
+              },
+              "remote": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sourceBranch": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "targetBranch": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "candidateCommit",
+              "sourceBranch",
+              "remote",
+              "targetBranch",
+              "pullRequest"
+            ],
+            "type": "object"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "expectedRuntimeVersion",
+          "decisionText",
+          "contextDigest",
+          "publishBinding"
+        ],
+        "type": "object"
+      }
+    },
+    "publish.dispatch": {
+      "capability": "harness.publish",
+      "capabilitySchemaDigest": "cb00367256e1e1b1f8a323e628ddc270c9077daaaf5c5d23abb357f48f791f55",
+      "payloadSchemaDigest": "cb00367256e1e1b1f8a323e628ddc270c9077daaaf5c5d23abb357f48f791f55",
+      "label": "publish.dispatch",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:publish-dispatch:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "publish.query": {
+      "capability": "harness.publish",
+      "capabilitySchemaDigest": "cb00367256e1e1b1f8a323e628ddc270c9077daaaf5c5d23abb357f48f791f55",
+      "payloadSchemaDigest": "f305af43146d48d71aa74e5415cb8b525737be26c2d127db703181ceaff5c87f",
+      "label": "publish.query",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:publish-query:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "publish.reconcile": {
+      "capability": "harness.publish",
+      "capabilitySchemaDigest": "cb00367256e1e1b1f8a323e628ddc270c9077daaaf5c5d23abb357f48f791f55",
+      "payloadSchemaDigest": "6101ebf11075dec7bd005b4ac8432c74debaf2c76495b57462ed9f662e003756",
+      "label": "publish.reconcile",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:publish-reconcile:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "assessmentId": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion", "assessmentId"],
+        "type": "object"
+      }
+    },
+    "task.accept": {
+      "capability": "harness.task-acceptance",
+      "capabilitySchemaDigest": "2001e1cc2936292f26c4c38682055b70583bb530fb46a9b2746f1bb5d8b1d98a",
+      "payloadSchemaDigest": "2001e1cc2936292f26c4c38682055b70583bb530fb46a9b2746f1bb5d8b1d98a",
+      "label": "Accept a milestones task",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:task-acceptance:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "baseRef": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "taskType": {
+            "enum": ["feature", "hotfix"]
+          },
+          "worktreeRoot": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": ["taskType", "taskId", "baseRef", "worktreeRoot"],
+        "type": "object"
+      }
+    },
+    "validate.configure": {
+      "capability": "harness.validate-change",
+      "capabilitySchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "payloadSchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "label": "validate.configure",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:validate-configure:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "validate.decide": {
+      "capability": "harness.validate-change",
+      "capabilitySchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "payloadSchemaDigest": "db46743dfbbd062be77eb118e8f45e2a66108d4b8b5f761748b8618fe4e445fa",
+      "label": "validate.decide",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:validate-decide:v2",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "contextDigest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "decisionText": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "publishBinding": {
+            "additionalProperties": false,
+            "properties": {
+              "candidateCommit": {
+                "pattern": "^[0-9a-f]{40}$",
+                "type": "string"
+              },
+              "pullRequest": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 60000,
+                    "type": "string"
+                  },
+                  "title": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": ["title", "body"],
+                "type": "object"
+              },
+              "remote": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sourceBranch": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "targetBranch": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "candidateCommit",
+              "sourceBranch",
+              "remote",
+              "targetBranch",
+              "pullRequest"
+            ],
+            "type": "object"
+          },
+          "reservation": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "expectedRuntimeVersion",
+          "decisionText",
+          "reservation",
+          "publishBinding",
+          "contextDigest"
+        ],
+        "type": "object"
+      }
+    },
+    "validate.dispatch": {
+      "capability": "harness.validate-change",
+      "capabilitySchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "payloadSchemaDigest": "112d10e748368bb42a7af460629d058580c2988a04c1dc5f1801dbaf203f7b56",
+      "label": "validate.dispatch",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:validate-dispatch:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "portId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "roundExtensions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "added_rounds": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "at": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "authorized_by": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "note": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": ["authorized_by", "at", "added_rounds", "note"],
+              "type": "object"
+            },
+            "maxItems": 16,
+            "type": "array"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "validate.dispose": {
+      "capability": "harness.validate-change",
+      "capabilitySchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "payloadSchemaDigest": "7eea861784c687d761993dcaef087e8630ac7dceff3ca1954afd84a25e79d3c8",
+      "label": "validate.dispose",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:validate-dispose:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "decisionText": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "findings": {
+            "additionalProperties": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "minProperties": 1,
+            "type": "object"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "expectedRuntimeVersion",
+          "decisionText",
+          "findings"
+        ],
+        "type": "object"
+      }
+    },
+    "validate.formal-authorize": {
+      "capability": "harness.validate-change",
+      "capabilitySchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "payloadSchemaDigest": "debfcf53fbf58fcdcc2866fbf94b101258ef6578b86806d7f5aa5563ec004fec",
+      "label": "validate.formal-authorize",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:validate-formal-authorize:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "maxCalls": {
+            "maximum": 2,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "portId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion", "maxCalls"],
+        "type": "object"
+      }
+    },
+    "validate.resume": {
+      "capability": "harness.validate-change",
+      "capabilitySchemaDigest": "eec9cc91ce03b879883e1d07d5e9b3eb7ddf743cb1968183c30ed20a277f16c9",
+      "payloadSchemaDigest": "293d8563b9a26db9d218ee797e87430073cbdd1e7329b24f979f04179dfc0090",
+      "label": "validate.resume",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:validate-resume:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "verify.run": {
+      "capability": "harness.implement-verify",
+      "capabilitySchemaDigest": "81b656cefa29d26941ace00de13077fab1f3cb975d690d7168ab4e6f32f2d871",
+      "payloadSchemaDigest": "3f9cc5e422dcdeeb9ff96c47cdb4d9573a9963545d971f658ab105fee3bddefc",
+      "label": "verify.run",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:verify-run:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "workflow.close": {
+      "capability": "harness.workflow",
+      "capabilitySchemaDigest": "e9bb6be5b537a9c914a55dececf3eb8ad8a0e68fa5ffff70069efc286053b673",
+      "payloadSchemaDigest": "43d632c64d5c383eab64a5db7a5f31e16e0ab41873c41652ac31a83624cd6328",
+      "label": "Close a non-terminal task",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:workflow-close:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "reasonCategory": {
+            "enum": ["human-initiated", "blocked-escalation"]
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "reasonCategory", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    },
+    "workflow.decide": {
+      "capability": "harness.workflow",
+      "capabilitySchemaDigest": "e9bb6be5b537a9c914a55dececf3eb8ad8a0e68fa5ffff70069efc286053b673",
+      "payloadSchemaDigest": "e9bb6be5b537a9c914a55dececf3eb8ad8a0e68fa5ffff70069efc286053b673",
+      "label": "Record a Human Gate decision",
+      "requiresHumanDecision": true,
+      "schema": {
+        "$id": "urn:hp:harness:workflow-decision:v1",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRuntimeVersion": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["taskId", "decision", "expectedRuntimeVersion"],
+        "type": "object"
+      }
+    }
+  }
+}

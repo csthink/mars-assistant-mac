@@ -1,0 +1,1548 @@
+.workbench-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--home-edge);
+  padding-bottom: 12px;
+}
+.workbench-tabs button {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 20px;
+  background: transparent;
+  color: var(--home-muted);
+  font-size: 15px;
+}
+.workbench-tabs button[aria-selected="true"] {
+  color: var(--home-blue);
+  background: var(--home-hover);
+  font-weight: 600;
+}
+.projects-workspace {
+  color: var(--home-ink);
+}
+.projects-workspace svg,
+.project-form-dialog svg,
+.project-menu svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.project-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.project-total {
+  color: var(--home-muted);
+  white-space: nowrap;
+}
+.project-controls {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.project-controls select {
+  width: auto;
+  max-width: 160px;
+  border: 1px solid var(--home-edge);
+  background: var(--home-glass);
+  color: var(--home-ink);
+  padding: 9px 12px;
+  border-radius: 10px;
+}
+.project-search-anchor {
+  position: relative;
+}
+.project-search-popover {
+  position: absolute;
+  z-index: 5;
+  top: 42px;
+  left: 0;
+  width: 300px;
+  padding: 12px;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 35px #19345620;
+}
+.project-search-popover input {
+  width: 100%;
+}
+.button.project-primary {
+  background: var(--home-blue);
+  color: var(--project-primary-text, #fff);
+  border-color: var(--home-blue);
+}
+.project-table-wrap {
+  border: 1px solid var(--home-edge);
+  border-radius: 15px;
+  padding: 0 7px;
+  background: var(--home-glass);
+}
+.project-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.project-table th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--home-muted);
+  padding: 16px 14px 10px;
+}
+.project-table th:first-child {
+  width: 53%;
+  padding-left: 20px;
+}
+.project-table th:last-child {
+  width: 54px;
+}
+.project-table td {
+  height: 84px;
+  padding: 0 14px;
+  border-top: 1px solid var(--home-edge);
+  font-size: 14px;
+  cursor: pointer;
+}
+.project-table td:first-child {
+  padding: 0;
+}
+.project-table tr:first-child td {
+  border-top-color: transparent;
+}
+.project-table tbody tr:hover td,
+.project-table tr:focus-within td {
+  background: var(--home-hover);
+}
+.project-table td:first-child {
+  border-radius: 12px 0 0 12px;
+}
+.project-table td:last-child {
+  border-radius: 0 12px 12px 0;
+}
+.project-open {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 18px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--home-ink);
+}
+.project-open > span:last-child {
+  min-width: 0;
+}
+.project-open strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+.project-open small,
+.project-same-name {
+  display: block;
+  color: var(--home-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 4px;
+}
+.project-symbol,
+.project-folder-symbol {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--home-hover);
+  border: 1px solid var(--home-edge);
+  border-radius: 14px;
+  color: var(--home-blue);
+}
+.project-more {
+  border: 0;
+  background: transparent;
+  color: var(--home-ink);
+  font-size: 27px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  line-height: 1;
+}
+.project-more:hover {
+  background: var(--home-edge);
+}
+.project-empty {
+  padding: 54px 18px 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.project-empty h2 {
+  font-size: 22px;
+  margin: 18px 0 6px;
+}
+.project-empty p {
+  color: var(--home-muted);
+  margin: 0 0 24px;
+}
+.project-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 70px;
+  height: 70px;
+  border: 1px solid var(--home-edge);
+  background: var(--home-glass);
+  border-radius: 22px;
+  color: var(--home-blue);
+}
+.project-empty-icon svg {
+  width: 32px;
+  height: 32px;
+}
+.project-menu {
+  position: fixed;
+  z-index: 1000;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--home-edge);
+  background: var(--surface);
+  color: var(--home-ink);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px #19345626;
+}
+.project-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 14px;
+}
+.project-menu button:hover,
+.project-menu button:focus-visible {
+  background: var(--home-hover);
+  color: var(--home-blue);
+}
+.project-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.project-detail-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.project-detail-heading h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 25px;
+}
+.project-tag {
+  border: 1px solid var(--home-edge);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--home-muted);
+  white-space: nowrap;
+}
+.project-goal-full {
+  color: var(--home-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+  margin: 24px 0;
+}
+.project-detail-card {
+  border: 1px solid var(--home-edge);
+  border-radius: 15px;
+  padding: 20px 24px;
+  background: var(--home-glass);
+}
+.project-detail-card h3 {
+  font-size: 15px;
+  margin: 0 0 16px;
+}
+.project-folder-path {
+  overflow-wrap: anywhere;
+  margin: 0 0 5px;
+}
+.project-folder-details > span {
+  color: var(--home-muted);
+  font-size: 13px;
+}
+.project-remote {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding-top: 12px;
+}
+.project-remote b {
+  font-size: 13px;
+}
+.project-remote code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--home-muted);
+}
+.project-form-dialog {
+  width: 720px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 40px);
+  border: 1px solid var(--home-edge);
+  border-radius: 21px;
+  padding: 26px 32px 22px;
+  background: var(--surface);
+  color: var(--home-ink);
+  box-shadow: 0 24px 90px #1934562e;
+  overflow: hidden;
+}
+.project-form-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.project-form-head,
+.project-form-subtitle,
+.project-form-actions {
+  flex-shrink: 0;
+}
+.project-form-dialog::backdrop {
+  background: #22334c43;
+  backdrop-filter: blur(3px);
+}
+.project-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.project-form-head h2 {
+  font-size: 27px;
+  margin: 0;
+  font-weight: 650;
+}
+.project-form-subtitle {
+  color: var(--home-muted);
+  margin: 7px 0 24px;
+}
+.project-form-dialog form {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.project-form-dialog label {
+  font-weight: 600;
+  font-size: 15px;
+}
+.project-form-dialog label > span,
+.project-field-title > span {
+  font-weight: 400;
+  color: var(--home-muted);
+  font-size: 13px;
+  margin-left: 10px;
+}
+.project-form-dialog input,
+.project-form-dialog textarea {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 9px;
+  background: var(--home-glass);
+  color: var(--home-ink);
+  font-size: 15px;
+}
+.project-form-dialog textarea {
+  resize: vertical;
+  min-height: 85px;
+  max-height: 150px;
+}
+.project-folder-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  margin-top: 10px;
+}
+.project-folder-choice > div {
+  flex: 1;
+  min-width: 0;
+}
+.project-folder-choice p {
+  font-size: 13px;
+  color: var(--home-muted);
+}
+.project-folder-choice > .button {
+  flex-shrink: 0;
+}
+.project-form-hint {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--home-muted);
+  margin: 0;
+}
+.project-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--home-edge);
+}
+.project-error {
+  background: var(--home-glass);
+  border: 1px solid #ba5656;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--home-ink);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.project-notice {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+  background: var(--home-hover);
+  margin-bottom: 16px;
+}
+.project-notice button {
+  border: 0;
+  background: transparent;
+  color: var(--home-blue);
+  text-decoration: underline;
+}
+.project-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 15px;
+  padding: 18px 0;
+  color: var(--home-muted);
+}
+@media (max-width: 1000px) {
+  .project-controls {
+    gap: 6px;
+  }
+  .project-toolbar {
+    gap: 8px;
+  }
+  .project-controls select {
+    max-width: 115px;
+  }
+  .project-open {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .project-symbol {
+    width: 40px;
+    height: 40px;
+  }
+  .project-table th:first-child {
+    width: 49%;
+  }
+  .project-table td {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+
+:root:not([data-theme="light"]) {
+  --project-primary-text: #082747;
+}
+
+.project-form-dialog input:focus-visible,
+.project-form-dialog textarea:focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: 1px;
+}
+
+.project-work-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 36%);
+  gap: 20px;
+  align-items: start;
+  margin: 20px 0;
+}
+.project-work-grid .project-detail-card {
+  margin: 0 0 20px;
+  padding: 20px;
+  min-width: 0;
+}
+.project-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.project-section-heading h3,
+.project-section-heading h4 {
+  margin: 0;
+}
+.project-runtime-pane,
+.project-chat-pane {
+  min-width: 0;
+}
+.project-work-grid label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--home-muted);
+  margin-bottom: 14px;
+}
+.project-work-grid select,
+.project-work-grid input,
+.project-work-grid textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--home-edge);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--home-ink);
+  font: inherit;
+}
+.project-work-grid :is(select, input, textarea, button):focus-visible {
+  outline: 2px solid var(--home-blue);
+  outline-offset: 2px;
+}
+.project-work-grid textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+.project-inline-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 14px 0;
+}
+.project-inline-controls input {
+  flex: 1;
+}
+.project-inline-controls select {
+  flex: 1;
+}
+.project-runtime-warning {
+  padding: 12px 14px;
+  background: var(--home-hover);
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+/* The registered resource handle of the project folder (feature-t31 S-06, OD-412). */
+.project-runtime-facts .runtime-fact {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--home-muted);
+  background: var(--home-hover);
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.project-runtime-facts .runtime-fact code {
+  color: var(--home-ink);
+}
+.project-runtime-facts .runtime-fact-hint {
+  color: var(--home-muted);
+}
+.project-source {
+  font-size: 12px;
+  color: var(--home-muted);
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.project-role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.project-role {
+  min-width: 0;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  padding: 14px;
+}
+.project-role legend {
+  font-weight: 600;
+  font-size: 14px;
+  padding: 0 5px;
+}
+.project-role legend span {
+  display: block;
+  font-size: 12px;
+  color: var(--home-muted);
+  font-weight: 400;
+}
+.project-role .button {
+  width: 100%;
+}
+.project-object-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.project-object-tabs [aria-pressed="true"] {
+  color: var(--home-blue);
+  border-color: var(--home-blue);
+}
+.project-domain-content {
+  padding-top: 15px;
+  border-top: 1px solid var(--home-edge);
+}
+.project-task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.project-task-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--home-edge);
+  font-size: 14px;
+  /* A row title keeps its words whole; only the detail (paths, digests) may break anywhere. */
+  overflow-wrap: break-word;
+}
+.project-task-list li span {
+  min-width: 0;
+  color: var(--home-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.project-empty-small {
+  color: var(--home-muted);
+  line-height: 1.8;
+  padding: 18px 0;
+  font-size: 14px;
+}
+.project-chat-transcript {
+  max-height: 350px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 15px 0;
+}
+.project-chat-transcript .transcript {
+  padding: 0;
+}
+.project-chat-transcript .bubble {
+  max-width: 100%;
+}
+.project-chat-send {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.project-chat-send span {
+  color: var(--home-muted);
+  font-size: 12px;
+}
+.project-text-button {
+  border: 0;
+  background: transparent;
+  color: var(--home-blue);
+  cursor: pointer;
+  padding: 4px;
+}
+@media (max-width: 1100px) {
+  .project-work-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .project-chat-transcript {
+    max-height: 300px;
+  }
+}
+
+.project-work-grid .button:disabled {
+  opacity: 1;
+  color: var(--home-muted);
+  background: var(--home-hover);
+  border-color: var(--home-edge);
+  cursor: not-allowed;
+}
+/* KB-314: in the dark appearance the base .button fill (--palette-1a1c24, near black) stood out on the blue
+   workbench cards. The project workspace and the 待处理 and 运行记录 pages take the accepted prototype's
+   secondary workbench button instead (pending.css .pending-dialog .btn, projects.css dark .dialog-footer .btn):
+   no fill, the workbench edge and ink, the hover tint on hover; a closed one keeps the tint and the muted text
+   of the rule above. Primary, danger and selected-tab buttons keep their own colours; the light appearance
+   keeps its fill. */
+:root:not([data-theme="light"])
+  :is(.projects-workspace, .record-page)
+  .button:not(.primary, .project-primary, .danger, [aria-selected="true"]) {
+  background: transparent;
+  border-color: var(--home-edge);
+  color: var(--home-ink);
+}
+:root:not([data-theme="light"])
+  :is(.projects-workspace, .record-page)
+  .button:not(
+    .primary,
+    .project-primary,
+    .danger,
+    [aria-selected="true"]
+  ):hover:not(:disabled) {
+  background: var(--home-hover);
+}
+:root:not([data-theme="light"])
+  :is(.projects-workspace, .record-page)
+  .button:not(.primary, .project-primary, .danger):disabled {
+  opacity: 1;
+  color: var(--home-muted);
+  background: var(--home-hover);
+}
+.project-chat-pane > .button {
+  margin-bottom: 10px;
+}
+
+.project-chat-summary {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.project-chat-summary small {
+  color: var(--home-muted);
+}
+.project-chat-summary .button {
+  justify-self: start;
+}
+
+.project-action-dialog {
+  width: min(720px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--home-edge);
+  border-radius: 16px;
+  color: var(--home-ink);
+  background: var(--surface);
+}
+.project-action-dialog::backdrop {
+  background: rgb(0 0 0 / 30%);
+}
+.project-action-dialog fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+  min-width: 0;
+}
+.project-action-fields {
+  display: grid;
+  gap: 12px;
+}
+.project-action-field {
+  display: grid;
+  gap: 6px;
+}
+.project-action-field input,
+.project-action-field select,
+.project-action-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--home-ink);
+  background: var(--home-glass);
+  border: 1px solid var(--home-edge);
+  border-radius: 8px;
+  padding: 9px;
+  font: inherit;
+}
+/* Nested payload structure (feature-t31 S-06, OD-423): a group per object, list or map; entries on a quiet tint. */
+.project-action-dialog .project-action-group {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+  min-width: 0;
+}
+.project-action-group > legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--home-ink);
+}
+.project-action-entry {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-radius: 8px;
+  background: var(--home-hover);
+  min-width: 0;
+}
+.project-action-entry-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.project-action-entry-tools {
+  display: flex;
+  gap: 6px;
+}
+.project-action-entry-tools .project-text-button {
+  font-size: 12px;
+}
+.project-text-button:disabled {
+  color: var(--home-muted);
+  cursor: default;
+  opacity: 0.55;
+}
+.project-action-group-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.project-action-nullable {
+  display: grid;
+  gap: 6px;
+}
+.project-work-grid .project-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+}
+.project-work-grid .project-checkbox input {
+  width: auto;
+}
+/* In the action form the grid gap spaces fields; a checkbox that opens a field sits right above it. */
+.project-action-dialog label.project-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  font-size: 13px;
+}
+.project-action-slot {
+  display: grid;
+  gap: 8px;
+}
+/* The same spacing wherever the dialog opens (project detail or 待处理): no inherited label margin. */
+.project-action-dialog .project-action-field {
+  margin: 0;
+}
+.project-action-dialog > label.project-checkbox {
+  margin: 14px 0 4px;
+}
+/* KB-320: the form's problem (a required field left empty) keeps the same distance from the confirmation box
+   above it and from the submit hint below it. */
+.project-action-dialog > .project-form-problem {
+  margin: 12px 0;
+}
+/* The submit hint is a paragraph without margins: the confirm button keeps its distance from it. */
+.project-action-dialog > .button.project-primary {
+  margin-top: 12px;
+}
+.project-actions {
+  border-top: 1px solid var(--home-edge);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.project-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+/* KB-315: the object's actions as aligned rows (buttons in one column of equal widths, a closed action's
+   reason on the same row beside it) instead of wrapped blocks of different widths. */
+.project-action-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px 14px;
+}
+.project-action-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+.project-action-row > .button {
+  grid-column: 1;
+  justify-self: stretch;
+}
+.project-action-row > .project-form-hint {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+/* KB-308: after a success, until the projection catches up; the same surface as the runtime warning. */
+.project-awaiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-block: 0 12px;
+  padding: 10px 14px;
+  background: var(--home-hover);
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+}
+.project-awaiting p {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--home-ink);
+  overflow-wrap: anywhere;
+}
+.project-awaiting strong {
+  margin-right: 8px;
+  color: var(--home-blue);
+}
+.project-awaiting .project-error {
+  flex-basis: 100%;
+}
+.project-action-evidence {
+  margin: 14px 0;
+  display: grid;
+  gap: 8px;
+}
+.project-action-evidence pre {
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--home-edge);
+  padding: 12px;
+  border-radius: 8px;
+}
+.project-operation {
+  border: 1px solid var(--home-edge);
+  padding: 12px;
+  border-radius: 10px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+
+.project-view-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.project-view-tools select {
+  width: min(280px, 100%);
+}
+/* Scoped to its section so the workspace's 22 px icon rule (.projects-workspace svg) cannot shrink it. */
+.project-graph .project-graph-canvas {
+  display: block;
+  width: 100%;
+  height: 380px;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  background: var(--home-glass);
+  touch-action: none;
+  cursor: grab;
+}
+.project-graph-canvas:active {
+  cursor: grabbing;
+}
+.project-graph-canvas marker path {
+  fill: var(--home-muted);
+}
+.project-graph-edge path {
+  fill: none;
+  stroke: var(--home-muted);
+  stroke-width: 1.5px;
+}
+/* Titles, states and edge labels are text, not icon strokes (the global svg rule strokes its contents). */
+.project-graph-canvas text {
+  stroke: none;
+}
+.project-graph-edge text {
+  fill: var(--home-muted);
+  font-size: 10px;
+}
+.project-graph-node {
+  cursor: pointer;
+  outline: none;
+}
+.project-graph-node rect {
+  fill: var(--surface);
+  stroke: var(--home-edge);
+  stroke-width: 1.5px;
+}
+.project-graph-node text {
+  fill: var(--home-ink);
+  font-size: 14px;
+}
+.project-graph-node .project-node-state {
+  fill: var(--home-muted);
+  font-size: 12px;
+}
+.project-graph-node[aria-pressed="true"] rect,
+.project-graph-node:focus-visible rect {
+  stroke: var(--home-blue);
+  stroke-width: 3px;
+}
+.project-node-detail {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--home-edge);
+  border-radius: 10px;
+}
+.project-node-detail h4 {
+  margin: 0;
+}
+.project-trace {
+  list-style: none;
+  padding: 0;
+  max-height: 540px;
+  overflow: auto;
+}
+.project-trace li {
+  padding: 12px 0 12px 16px;
+  border-left: 2px solid var(--home-edge);
+  overflow-wrap: anywhere;
+}
+.project-trace time,
+.project-trace small {
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.project-trace p {
+  white-space: pre-wrap;
+  margin: 8px 0;
+}
+.project-evidence-reader {
+  min-width: 0;
+  margin: 18px 0;
+}
+.project-evidence-text {
+  max-height: 540px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  font:
+    13px/1.65 ui-monospace,
+    monospace;
+  background: var(--home-glass);
+  color: var(--home-ink);
+}
+.project-evidence-reader details {
+  font-size: 12px;
+}
+.project-diff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.project-chat-slot {
+  min-width: 0;
+}
+.project-layout-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.project-work-grid .project-layout-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  white-space: nowrap;
+}
+.project-layout-controls select {
+  width: auto;
+}
+.project-chat-slot[data-mode="float"] {
+  position: fixed;
+  z-index: 40;
+  right: 24px;
+  bottom: 24px;
+  width: min(430px, calc(100vw - 48px));
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--home-edge);
+  border-radius: 16px;
+  box-shadow: 0 12px 44px rgb(0 0 0 / 15%);
+}
+.project-chat-slot[data-mode="collapsed"] {
+  position: fixed;
+  z-index: 40;
+  right: 24px;
+  bottom: 24px;
+}
+.project-work-grid[data-chat="float"],
+.project-work-grid[data-chat="collapsed"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.project-work-grid[data-full="true"] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: 100dvh;
+  margin: 0;
+  padding: 18px;
+  overflow: hidden;
+  background: var(--surface);
+  box-sizing: border-box;
+  align-items: stretch;
+}
+.project-work-grid[data-full="true"] > .project-runtime-pane {
+  height: 100%;
+  overflow: auto;
+}
+.project-work-grid[data-full="true"] .project-chat-slot[data-mode="docked"] {
+  height: 100%;
+  overflow: auto;
+  padding-top: 42px;
+  box-sizing: border-box;
+}
+.project-work-grid[data-full="true"] .project-chat-slot[data-mode="float"] {
+  max-height: calc(100dvh - 90px);
+  bottom: 18px;
+  right: 18px;
+}
+.project-work-grid[data-full="true"]
+  .project-runtime-pane
+  > [aria-label="执行角色"],
+.project-work-grid[data-full="true"] .project-object-tabs,
+.project-work-grid[data-full="true"]
+  [aria-label="项目进度"]
+  > .project-section-heading,
+.project-work-grid[data-full="true"] [aria-label="项目进度"] > .project-source,
+.project-work-grid[data-full="true"] .project-actions {
+  display: none;
+}
+.project-work-grid[data-full="true"]
+  .project-domain-content
+  > .project-section-heading {
+  padding-right: 80px;
+}
+.project-work-grid[data-full="true"] .project-detail-card {
+  padding: 16px;
+  border: 0;
+  box-shadow: none;
+}
+.app:has(.project-work-grid[data-full="true"]) .home-header {
+  visibility: hidden;
+}
+.project-restore {
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 1050;
+  opacity: 0;
+  transition: opacity 0.15s;
+  -webkit-app-region: no-drag;
+}
+.project-restore:hover,
+.project-restore:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .project-restore {
+    opacity: 1;
+  }
+}
+@media (max-width: 1000px) {
+  .project-diff {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .project-work-grid[data-full="true"][data-chat="docked"] {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 40%);
+    gap: 12px;
+  }
+}
+.project-chat-settings {
+  margin: 0 0 16px;
+}
+.project-chat-settings > summary {
+  padding: 8px 0;
+  color: var(--home-muted);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.project-chat-settings[open] > summary {
+  margin-bottom: 14px;
+}
+
+.project-pending {
+  margin-block: 24px;
+}
+.project-pending > ul,
+.project-pending-history > ul {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.project-pending-item {
+  padding: 18px;
+  border: 1px solid var(--home-edge);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.project-pending-item[data-status="processed"] {
+  border-left: 3px solid var(--home-blue);
+}
+.project-pending-source summary,
+.project-pending-history summary,
+.project-pending-evidence summary {
+  cursor: pointer;
+  padding-block: 10px;
+}
+.project-pending-evidence pre {
+  white-space: pre-wrap;
+  max-height: 360px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  background: var(--home-glass);
+  padding: 14px;
+  border-radius: 10px;
+}
+.project-pending .project-action-buttons {
+  margin-block: 12px;
+}
+.project-domain-runs .project-detail-card {
+  margin-block: 16px;
+}
+.project-domain-runs ol {
+  padding-left: 22px;
+  max-height: 420px;
+  overflow: auto;
+}
+.project-domain-runs li {
+  padding-block: 10px;
+  border-bottom: 1px solid var(--home-edge);
+  overflow-wrap: anywhere;
+}
+
+.record-query-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-block: 16px;
+}
+.record-query-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+/* KB-309: one control height, text size and top edge, so every label sits on the same line
+   (the global select rule is the menu bar panel's 11px compact size). The checkbox row and the
+   reset button take the same 40px band: the box centred on the controls, the button's edges on theirs. */
+.record-query-controls input:not([type="checkbox"]),
+.record-query-controls select {
+  height: 40px;
+  padding: 0 12px;
+  font-size: inherit;
+  border-radius: 10px;
+  border: 1px solid var(--home-edge);
+  color: var(--text);
+  background: var(--surface);
+  max-width: 260px;
+}
+/* KB-318: the search field grows to show its whole placeholder (运行记录's names objects, events and
+   identifiers) where the row has room; in a narrow window it keeps the filter bar on one line (KB-309) and
+   the placeholder ends in an ellipsis instead of a cut glyph. */
+.record-query-controls > label:has(> .record-query-search) {
+  flex: 1 1 200px;
+  max-width: 272px;
+}
+.record-query-controls input.record-query-search {
+  width: 100%;
+  max-width: none;
+  text-overflow: ellipsis;
+}
+.record-query-controls .record-query-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+}
+.record-query-check input {
+  margin: 0;
+}
+.record-query-controls > .button {
+  height: 40px;
+}
+.event-date-group {
+  grid-column: 1 / -1;
+  margin: 8px 0;
+}
+
+.project-list-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block: 12px;
+}
+.project-task-list li:has(.project-task-group) {
+  flex-wrap: wrap;
+}
+.project-task-group {
+  flex-basis: 100%;
+  margin: 4px 0;
+  color: var(--muted);
+}
+
+.record-query .tabs {
+  display: flex;
+  gap: 8px;
+}
+.record-query [role="tab"][aria-selected="true"] {
+  color: white;
+  background: var(--home-blue);
+  border-color: var(--home-blue);
+}
+.project-domain-runs > ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* 仓库治理接入 (feature-t31 S-06, OD-416): no accepted prototype screen; it follows the project detail cards and the
+   访问权限 confirmation dialog. Steps read top to bottom; the current step carries the only primary emphasis. */
+.project-access .project-section-heading {
+  margin-bottom: 8px;
+}
+.access-summary {
+  font-size: 12px;
+  color: var(--home-muted);
+  padding: 3px 9px;
+  border: 1px solid var(--home-edge);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.access-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 16px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.access-facts dt {
+  color: var(--home-muted);
+  white-space: nowrap;
+}
+.access-facts dd {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+  color: var(--home-ink);
+  overflow-wrap: anywhere;
+}
+.access-facts dd > span {
+  color: var(--home-muted);
+}
+.access-facts code {
+  word-break: break-all;
+}
+.access-facts select {
+  max-width: 100%;
+  color: var(--home-ink);
+  background: var(--home-glass);
+  border: 1px solid var(--home-edge);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.access-issue {
+  color: var(--amber) !important;
+}
+.access-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.access-step {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  color: var(--home-muted);
+}
+.access-step.current {
+  border-color: var(--home-blue);
+  color: var(--home-ink);
+}
+.access-step-state {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--home-muted);
+}
+.access-step-heading .access-step-state + .button {
+  margin-left: 0;
+}
+.access-feedback {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.access-feedback.project-error {
+  margin: 0;
+}
+/* Paths, handles and method names read at the size of the text around them. */
+.project-access code,
+.access-review code {
+  font-size: 12px;
+}
+.access-step-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+.access-step-heading strong {
+  font-size: 14px;
+  color: var(--home-ink);
+}
+.access-step.current .access-step-heading .button {
+  background: var(--home-blue);
+  border-color: var(--home-blue);
+  color: var(--project-primary-text, #fff);
+}
+.access-step .project-form-hint {
+  font-size: 13px;
+}
+.access-step .project-form-hint code {
+  word-break: break-all;
+}
+/* A command name stays on one line. */
+.access-binding .project-form-hint code {
+  white-space: nowrap;
+  word-break: normal;
+}
+.access-binding {
+  display: grid;
+  gap: 8px;
+}
+.project-access > .project-form-hint + .project-error,
+.project-access > [role="status"] {
+  margin-top: 12px;
+}
+.access-review h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.access-review-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 16px;
+  margin: 18px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.access-review-list dt {
+  color: var(--home-muted);
+  white-space: nowrap;
+}
+.access-review-list dd {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  min-width: 0;
+}
+.access-review-list dd > span {
+  color: var(--home-muted);
+}
+.access-review-list code {
+  word-break: break-all;
+  color: var(--home-ink);
+}
+.access-review-names {
+  margin: 0;
+}
+.access-review-list .access-review-names code {
+  word-break: normal;
+  white-space: nowrap;
+}
+.access-review-impact {
+  padding: 12px 16px;
+  border: 1px solid var(--home-edge);
+  border-radius: 12px;
+  background: var(--home-hover);
+}
+.access-review-impact h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.access-review-impact ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.access-review-impact strong {
+  display: block;
+  color: var(--home-ink);
+}
+/* The decision stays reachable while the review scrolls (long lists, 900 × 680). */
+.access-review-actions {
+  position: sticky;
+  bottom: -24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 18px -24px -24px;
+  padding: 14px 24px 18px;
+  border-top: 1px solid var(--home-edge);
+  background: var(--surface);
+}
