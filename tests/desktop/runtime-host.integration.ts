@@ -614,6 +614,9 @@ test("runtime host: revocation replaces the authorization set at once and re-aut
     const hostOps = (r: RuntimeSnapshot) =>
       r.runtimeOperations.filter((o) => o.origin === "host");
     expect(hostOps(await records(app))).toHaveLength(4);
+    // The cancel is a domain transaction of its own: its events settle before the next invoke takes its
+    // expectedRevision from the projection (the retry below sends that same request again).
+    await quiescent(app);
     // BUSY without acceptance: recorded as refused with retry-later; the retry keeps the same key and digest.
     fault({ busy: "runtime.action.invoke" });
     const busy = await invoke("忙时");
@@ -868,6 +871,8 @@ test("runtime host: revocation replaces the authorization set at once and re-aut
       /^rev:/,
     );
     expect(released.prepare.result.hostBarrier.releasedAt).not.toBeNull();
+    // The release changes the domain revision; its events settle before the invoke reads the projection.
+    await quiescent(app);
     expect((await invoke("释放后")).status).toBe("succeeded");
   } finally {
     await app.close();
