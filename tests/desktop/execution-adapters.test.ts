@@ -1433,6 +1433,19 @@ test("cancel through the product adapters: the Claude Implementer target (stdin 
     );
     assert.equal(s1.status, "running", JSON.stringify(s1));
     const ref1 = String(s1.executionRef);
+    // The fixture records the prompt and writes its init frame in one synchronous step after stdin
+    // ends; the cancel goes out only after that, so the stopped record carries the init read-back.
+    await new Promise<void>((resolve, reject) => {
+      const start = Date.now();
+      const tick = () => {
+        if (h.calls(h.claude.calls).some((c) => typeof c.prompt === "string"))
+          return resolve();
+        if (Date.now() - start > 20_000)
+          return reject(new Error("the implementer did not read its prompt"));
+        setTimeout(tick, 50);
+      };
+      tick();
+    });
     const c1 = await h.inbound(h.connection, "host.execution.cancel", {
       operationId: "op:cancel-1",
       idempotencyKey: "key:cancel-1",
