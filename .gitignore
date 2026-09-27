@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+._*
+
+# Local secrets and machine configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+.claude/settings.local.json
+
+# Dependencies, generated build output and caches
+node_modules/
+dist/
+build/
+target/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+coverage/
+*.log
+
+# Isolated desktop test data and generated test output
+.test-data/
+test-results/
+playwright-report/
+
+# Installers and packaged applications are Release assets, not source files.
+*.dmg
+*.pkg
+*.app/
+*.app.zip
+*.exe
+*.msi
+*.iso
+*.deb
+*.rpm
