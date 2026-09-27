@@ -234,12 +234,19 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
   const scopeOf = async (instanceId: string) =>
     (await records()).runtimeScopes.find((s) => s.instanceId === instanceId)!;
   /**
-   * The domain's own revision from its state file: the projection has settled when the actions the
-   * Host offers carry that revision (every event of the last transaction has been applied).
+   * The domain's own revision and event stream from its state file. The projection has settled
+   * when the actions the Host offers carry that revision and the Host scope's cursor has reached
+   * the stream's last sequence number. The revision alone does not show that a transaction is
+   * fully applied: the root action's upsert comes before the transaction's later events (the list
+   * domain's pending.upsert), so a poll can match it in the middle of the transaction.
    */
   const domainRevision = new Map<
     string,
-    { revision: () => string; scopeRef: () => string }
+    {
+      revision: () => string;
+      scopeRef: () => string;
+      stream: () => { streamId: string; epoch: string; seq: number };
+    }
   >();
   const settle = async (instanceId: string, ms = 30_000) => {
     const start = Date.now();
@@ -256,9 +263,14 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
           (a) =>
             a.objectRef === "project:1" || a.objectRef === "directory:root",
         );
+        // Every event the domain has written (its stream's seq) has been applied to the Host scope.
+        const stream = domain.stream();
         if (
           rootActions.length &&
-          rootActions.every((a) => a.expectedRevision === expected)
+          rootActions.every((a) => a.expectedRevision === expected) &&
+          scope.cursor?.streamId === stream.streamId &&
+          scope.cursor?.epoch === stream.epoch &&
+          Number(scope.cursor?.seq) === Number(stream.seq)
         )
           return scope;
       } else if (scope?.freshness === "current" && !domain) return scope;
@@ -367,6 +379,12 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
     domainRevision.set(gid, {
       revision: () => "rev:" + String(graphState(gdir).revision),
       scopeRef: () => gscope,
+      stream: () =>
+        graphState(gdir).stream as {
+          streamId: string;
+          epoch: string;
+          seq: number;
+        },
     });
     // Probe: the fake refuses a protocol it cannot match; the Host records the negotiation failure (no ready).
     fault(gdir, { rejectProtocol: true });
@@ -442,6 +460,12 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
           ).revision,
         ),
       scopeRef: () => listScope,
+      stream: () =>
+        (
+          JSON.parse(
+            readFileSync(join(ldir, "list-runtime", "state.json"), "utf8"),
+          ) as Json
+        ).stream as { streamId: string; epoch: string; seq: number },
     });
     // Zero-grant scope: opened, inactive, and the Runtime refuses a snapshot before authorization (PERMISSION_DENIED).
     const opened = await ev(
