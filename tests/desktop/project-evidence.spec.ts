@@ -5,6 +5,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { journeyFixture } from "./project-action-fixture";
 import { closeLocal } from "./local-client";
+import { scrollIntoCenter } from "./scroll-into-center";
 
 async function reader() {
   const f = await journeyFixture({ reader: true });
@@ -261,7 +262,7 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
       .boundingBox();
     expect(restoreBox).not.toBeNull();
     expect(restoreBox!.x + restoreBox!.width).toBeLessThanOrEqual(900);
-    await input.scrollIntoViewIfNeeded();
+    await scrollIntoCenter(input);
     const box = (await input.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(900);

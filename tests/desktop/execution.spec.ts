@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import { closeLocal, launchLocal } from "./local-client";
 import { goTo } from "./shell";
 import { openProvider } from "./provider-ui";
+import { scrollIntoCenter } from "./scroll-into-center";
 import { buildBundle, newPublisher } from "./runtime-fakes/bundle";
 import { graphFakeDir } from "./runtime-fakes/build";
 import { GRAPH_CAPABILITY, GRAPH_SCHEMA } from "./runtime-fakes/graph-contract";
@@ -947,7 +948,7 @@ test("stop unconfirmed in the client: after the extension cancels an Implementer
       field("暂时不能做的事"),
       field("什么时候解除"),
     ]) {
-      await control.scrollIntoViewIfNeeded();
+      await scrollIntoCenter(control);
       const box = (await control.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(900);
@@ -1434,7 +1435,7 @@ test("budgets in the client: 设置 → 模型 → Claude Code 的模型行 has 
     "推理强度",
   ]) {
     const control = field(name);
-    await control.scrollIntoViewIfNeeded();
+    await scrollIntoCenter(control);
     const box = (await control.boundingBox())!;
     expect(box.x, name).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, name).toBeLessThanOrEqual(900);

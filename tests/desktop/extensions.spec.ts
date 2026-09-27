@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { launchLocal } from "./local-client";
 import { goTo, ready } from "./shell";
+import { scrollIntoCenter } from "./scroll-into-center";
 import { buildBundle, newPublisher, sha256 } from "./runtime-fakes/bundle";
 import { buildFake, listFakeEntry } from "./runtime-fakes/build";
 import { LIST_CAPABILITY, LIST_SCHEMA } from "./runtime-fakes/list-contract";
@@ -1004,7 +1005,7 @@ test("extensions: the card follows the real checks: the periodic health check tu
       list.getByRole("button", { name: "检查更新" }),
       page.getByRole("button", { name: "从本地导入运行包…" }),
     ]) {
-      await control.scrollIntoViewIfNeeded();
+      await scrollIntoCenter(control);
       const box = (await control.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(900);
