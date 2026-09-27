@@ -930,6 +930,74 @@ test("cancel: a hanging target is interrupted natively, then SIGTERM by identity
   }
 });
 
+test("cancel: when the target's exit is handled before the helper's SIGTERM reply, the cancel still answers SIGTERM sent by identity (how signal), not an exit on the interrupt", async () => {
+  const h = harness();
+  // The helper sends SIGTERM by identity and answers; its "term" reply reaches the port 50 ms
+  // later, so the target's exit (the hanging fixture ends on SIGTERM at once) is handled first.
+  const real = h.helper + ".real";
+  renameSync(h.helper, real);
+  const delayed = h.helper + ".delayed";
+  writeFileSync(
+    delayed,
+    "#!/bin/sh\n" +
+      `out=$('${real}' "$@")\n` +
+      "code=$?\n" +
+      '[ "$1" = term ] && /bin/sleep 0.05\n' +
+      "printf '%s\\n' \"$out\"\n" +
+      "exit $code\n",
+    { mode: 0o755 },
+  );
+  renameSync(delayed, h.helper);
+  // The port's own answer carries how the stop began; the Host's reply forwards only its reason.
+  const answers: { how?: unknown }[] = [];
+  const cancel = h.port.cancel.bind(h.port);
+  h.port.cancel = async (executionRef, operationId) => {
+    const answer = await cancel(executionRef, operationId);
+    answers.push(answer as { how?: unknown });
+    return answer;
+  };
+  h.fixture.update({ implementer: "hang" });
+  try {
+    const grant = await grantOf(h);
+    h.adapter.variant = { print: true };
+    const accepted = await h.inbound(
+      h.connection,
+      "host.execution.start",
+      startRequest(grant.ref, 16),
+    );
+    const ref = String(accepted.executionRef);
+    assert.equal(accepted.status, "running", JSON.stringify(accepted));
+    const cancelled = await h.inbound(
+      h.connection,
+      "host.execution.cancel",
+      cancelRequest(ref, 7),
+    );
+    assert.equal(cancelled.status, "succeeded", JSON.stringify(cancelled));
+    assert.match(
+      String(cancelled.reason),
+      /^cancel persisted; SIGTERM sent by identity to pid \d+$/,
+    );
+    assert.deepEqual(
+      answers.map((a) => a.how),
+      ["signal"],
+    );
+    const done = await until(
+      () => recordOf(h, ref),
+      (r) => r.state !== "running" && r.state !== "stopping",
+    );
+    assert.equal(done.state, "stopped", JSON.stringify(done));
+    assert.equal(done.stopReason, "cancelled");
+    assert.equal(done.exit?.signal, "SIGTERM");
+    assert.deepEqual(
+      resultDocument(h, ref).signals.map((s) => [s.stage, s.sent]),
+      [["TERM", true]],
+    );
+  } finally {
+    await h.port.close();
+    h.store.close();
+  }
+});
+
 test("cancel: a target that ignores SIGTERM is SIGKILLed after the cleanup budget; meanwhile host.execution.get reports stopping with the cancel time; a target that completed first answers the cancel as completed and is not rewritten", async () => {
   const h = harness();
   try {

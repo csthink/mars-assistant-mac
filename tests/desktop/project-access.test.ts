@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, renameSync } from "node:fs";
@@ -22,6 +22,7 @@ import {
   type RuntimeInstance,
   type RuntimeScope,
 } from "../../src/shared/runtime-host";
+import { warmSystemGit } from "./git-warmup";
 
 const digest = "a".repeat(64);
 const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -92,6 +93,8 @@ function instance(state: RuntimeInstance["state"] = "ready"): RuntimeInstance {
     updatedAt: at,
   };
 }
+
+before(warmSystemGit);
 
 /** A real business store and a Host stand-in whose Runtime answers are scripted. */
 async function fixture(projects = 1) {

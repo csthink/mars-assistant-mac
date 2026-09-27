@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { test } from "node:test";
+import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, renameSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -23,6 +23,7 @@ import type { ProjectRequest } from "../../src/shared/project-work";
 import type { ExecutionProfile } from "../../src/main/runtime-execution-port";
 import { claudeImplementerProfileId } from "../../src/main/execution-claude";
 import { codexReviewerProfileId } from "../../src/main/execution-codex";
+import { warmSystemGit } from "./git-warmup";
 const digest = "a".repeat(64),
   at = new Date().toISOString();
 function installation(): RuntimeInstallation {
@@ -71,6 +72,8 @@ function instance(): RuntimeInstance {
     updatedAt: at,
   };
 }
+
+before(warmSystemGit);
 
 async function fixture() {
   mkdirSync(".test-data/disposable", { recursive: true });

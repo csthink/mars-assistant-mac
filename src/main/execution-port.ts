@@ -955,15 +955,17 @@ export class EmbeddedExecutionPort implements ExecutionPort {
         });
       } else {
         const term = await send("TERM");
-        if (live.exit)
-          initiated({
-            how: "exited",
-            detail: "target exited on the interrupt",
-          });
-        else if (term === "sent")
+        // A SIGTERM the ledger sent is the cause even when the exit it caused is handled
+        // before the helper's reply arrives.
+        if (term === "sent")
           initiated({
             how: "signal",
             detail: "SIGTERM sent by identity to pid " + live.target.pid,
+          });
+        else if (live.exit)
+          initiated({
+            how: "exited",
+            detail: "target exited on the interrupt",
           });
         else if (term === "refused")
           initiated({
