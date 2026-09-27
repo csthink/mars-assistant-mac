@@ -695,6 +695,9 @@ test("project actions: after an action succeeds its object shows 同步中 with 
     if (!r.ok || !r.view) throw Error(JSON.stringify(r));
     return r.view;
   };
+  // The Host commits a change's events one at a time after its answer, so a single read can fall between
+  // them; what the view awaits is polled until it holds.
+  const awaiting = async () => (await view()).awaiting;
   const button = (name: string) =>
     pane.getByRole("button", { name, exact: true });
   async function act(label: string, human = false) {
@@ -720,7 +723,7 @@ test("project actions: after an action succeeds its object shows 同步中 with 
   try {
     // Events in time: the fake sends a change's events before its answer, so nothing awaits.
     await act("接纳任务", true);
-    expect((await view()).awaiting).toEqual([]);
+    await expect.poll(awaiting).toEqual([]);
     await expect(note).toHaveCount(0);
     await expect(button("冻结定义")).toBeEnabled();
 
@@ -764,11 +767,13 @@ test("project actions: after an action succeeds its object shows 同步中 with 
       .getByRole("navigation", { name: "主要页面" })
       .getByRole("button", { name: "工作台", exact: true })
       .click();
-    // The events arrive: the true state, with no timer involved.
-    await expect(note).toHaveCount(0, { timeout: 20_000 });
-    await expect(button("开始实施")).toBeEnabled();
+    // The events arrive: the true state, with no timer involved. Returning to 工作台 mounts the project
+    // detail again and it shows no note until its first read, although the change still awaits its events;
+    // the next action becoming available is what shows that they have arrived.
+    await expect(button("开始实施")).toBeEnabled({ timeout: 20_000 });
+    await expect(note).toHaveCount(0);
     await expect(button("冻结定义")).toBeDisabled();
-    expect((await view()).awaiting).toEqual([]);
+    await expect.poll(awaiting).toEqual([]);
 
     // The events never come: 重新同步 takes a fresh full snapshot, which already holds the change.
     writeFileSync(fault, JSON.stringify({ delayEvents: 600 }));
@@ -780,8 +785,9 @@ test("project actions: after an action succeeds its object shows 同步中 with 
     await note.scrollIntoViewIfNeeded();
     await f.page.screenshot({ path: info.outputPath("awaiting-dark.png") });
     await note.getByRole("button", { name: "重新同步", exact: true }).click();
-    await expect(note).toHaveCount(0, { timeout: 20_000 });
-    await expect(button("执行验证")).toBeEnabled();
+    // As above, the available next action shows the fresh snapshot; the note is checked after it.
+    await expect(button("执行验证")).toBeEnabled({ timeout: 20_000 });
+    await expect(note).toHaveCount(0);
     await expect(button("开始实施")).toBeDisabled();
 
     // Disconnected while awaiting: the existing unavailable rule takes over; a reconnection resynchronises.
@@ -818,7 +824,7 @@ test("project actions: after an action succeeds its object shows 同步中 with 
     await expect(button("提交变更评审")).toBeEnabled({ timeout: 20_000 });
     await expect(button("执行验证")).toBeDisabled();
     await expect(note).toHaveCount(0);
-    expect((await view()).awaiting).toEqual([]);
+    await expect.poll(awaiting).toEqual([]);
     // Each change was invoked once; nothing was sent again by the wait or the resynchronisation.
     const listed = await f.request({ type: "list", projectId: f.projectId });
     expect(
