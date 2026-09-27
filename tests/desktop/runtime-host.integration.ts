@@ -3,7 +3,7 @@ import { launchLocal } from "./local-client";
 import { buildBundle, newPublisher } from "./runtime-fakes/bundle";
 import { buildFake, listFakeEntry } from "./runtime-fakes/build";
 import { LIST_CAPABILITY, LIST_SCHEMA } from "./runtime-fakes/list-contract";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { RuntimeHost } from "../../src/main/runtime-host";
 import { digestOf } from "../../src/main/runtime-admission";
@@ -56,22 +56,40 @@ async function launch(root: string) {
 /** The Host reads the same snapshot records the renderer sees. */
 const records = (app: ElectronApplication) =>
   app.evaluate(() => globalThis.runtimeHost.records() as RuntimeSnapshot);
-/** Waits until the projection is current and its cursor has stopped advancing (all events of a transaction applied). */
+/** The list domain's event stream as its state file records it: every event the domain has written. */
+const domainStream = (r: RuntimeSnapshot) =>
+  (
+    JSON.parse(
+      readFileSync(
+        join(r.runtimeInstances[0].launchArgv[2], "list-runtime", "state.json"),
+        "utf8",
+      ),
+    ) as { stream: { streamId: string; epoch: string; seq: number } }
+  ).stream;
+/**
+ * Waits until the projection is current and the Host scope's cursor has reached the last event the
+ * domain has written (all events of the transactions so far applied). A cursor that has not moved for
+ * a moment does not show this: the next event of the same transaction can still be on its way.
+ */
 const quiescent = async (app: ElectronApplication, ms = 10_000) => {
   const start = Date.now();
-  let last: string | null = null;
   for (;;) {
     const r = await records(app);
     const scope = r.runtimeScopes[0];
-    const seq =
-      scope?.freshness === "current" ? (scope.cursor?.seq ?? null) : null;
-    if (seq !== null && seq === last) return r;
-    last = seq;
+    if (scope?.freshness === "current" && scope.cursor) {
+      const stream = domainStream(r);
+      if (
+        scope.cursor.streamId === stream.streamId &&
+        scope.cursor.epoch === stream.epoch &&
+        Number(scope.cursor.seq) === stream.seq
+      )
+        return r;
+    }
     if (Date.now() - start > ms)
       throw new Error(
         "projection did not settle: " + JSON.stringify(scope).slice(0, 300),
       );
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 };
 const until = async <T>(

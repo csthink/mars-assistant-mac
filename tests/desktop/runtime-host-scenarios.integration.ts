@@ -1023,18 +1023,60 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
           id: gid,
           scope: gscope,
         });
-      const inject = async (vector: string, extra: Json = {}) => {
+      const rejections = async () =>
+        (await ev(
+          (host, a) =>
+            host.supervisor.connectionOf(a.id as string)!.contextRejections,
+          { id: gid },
+        )) as number;
+      type Seen = {
+        scope: Awaited<ReturnType<typeof scopeOf>>;
+        sync: Awaited<ReturnType<typeof syncState>>;
+        rejections: number;
+      };
+      /**
+       * Sends one crafted event behind the inject action's own events and returns what the Host shows
+       * once `handled` holds: each outcome is read when the Host has visibly handled the event, not after
+       * a fixed pause that a slower commit of the events before it can outlast.
+       */
+      const inject = async (
+        vector: string,
+        handled: (seen: Seen) => boolean,
+        extra: Json = {},
+      ) => {
         await gact("inject.events", "project:1", "inject", {
           vector,
           ...extra,
         });
-        await sleep(400);
-        return { scope: await scopeOf(gid), sync: await syncState() };
+        return until(
+          async () => ({
+            scope: await scopeOf(gid),
+            sync: await syncState(),
+            rejections: await rejections(),
+          }),
+          handled,
+        );
+      };
+      /** The Host scope's cursor is at the last event the domain has written (its stream's seq). */
+      const applied = (scope: Seen["scope"]) => {
+        const stream = domainRevision.get(gid)!.stream();
+        return (
+          scope.cursor?.streamId === stream.streamId &&
+          scope.cursor?.epoch === stream.epoch &&
+          Number(scope.cursor?.seq) === Number(stream.seq)
+        );
       };
       const outcomes: Json = {};
-      const dup = await inject("duplicate");
+      // A duplicate changes nothing the Host shows: it is read once the events it repeats are applied.
+      const dup = await inject(
+        "duplicate",
+        (s) => s.scope.freshness !== "current" || applied(s.scope),
+      );
       outcomes.duplicate = dup.scope.freshness;
-      const tamper = await inject("tamper");
+      const tamper = await inject(
+        "tamper",
+        (s) => s.scope.freshness !== "current",
+      );
       outcomes.tamper = tamper.scope.lastError?.code ?? tamper.scope.freshness;
       const paused = await codeOf(
         (host, a) =>
@@ -1055,11 +1097,14 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
       await settle(gid);
       // A skipped sequence makes the Host resynchronise: the subscription that feeds the projection is replaced.
       const sidBeforeGap = (await scopeOf(gid)).subscriptionId!;
-      await inject("gap");
-      const afterGap = await until(
-        async () => await scopeOf(gid),
-        (s) => s.freshness === "current" && s.subscriptionId !== sidBeforeGap,
-      );
+      const afterGap = (
+        await inject(
+          "gap",
+          (s) =>
+            s.scope.freshness === "current" &&
+            s.scope.subscriptionId !== sidBeforeGap,
+        )
+      ).scope;
       outcomes.gap =
         afterGap.subscriptionId !== sidBeforeGap ? "resynced" : "missing";
       const oldSid = afterGap.subscriptionId!;
@@ -1071,25 +1116,29 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
       const newSid = (await scopeOf(gid)).subscriptionId!;
       expect(newSid).not.toBe(oldSid);
       const ignoredBefore = (await syncState())!.ignoredEvents;
-      const oldSub = await inject("old-subscription", { sid: oldSid });
+      const oldSub = await inject(
+        "old-subscription",
+        (s) => s.sync!.ignoredEvents > ignoredBefore,
+        { sid: oldSid },
+      );
       outcomes.oldSubscription =
         oldSub.sync!.ignoredEvents > ignoredBefore ? "ignored" : "missing";
-      const oldEpoch = await inject("old-epoch");
+      // An event of another epoch makes the Host take a full snapshot on a new subscription.
+      const sidBeforeOldEpoch = (await scopeOf(gid)).subscriptionId!;
+      const oldEpoch = await inject(
+        "old-epoch",
+        (s) =>
+          s.scope.freshness === "current" &&
+          s.scope.subscriptionId !== sidBeforeOldEpoch,
+      );
       outcomes.oldEpoch = oldEpoch.scope.freshness;
-      const rejectedBefore = (await ev(
-        (host, a) =>
-          host.supervisor.connectionOf(a.id as string)!.contextRejections,
-        { id: gid },
-      )) as number;
-      await inject("old-context");
+      const rejectedBefore = await rejections();
+      const oldContext = await inject(
+        "old-context",
+        (s) => s.rejections > rejectedBefore,
+      );
       outcomes.oldContext =
-        ((await ev(
-          (host, a) =>
-            host.supervisor.connectionOf(a.id as string)!.contextRejections,
-          { id: gid },
-        )) as number) > rejectedBefore
-          ? "rejected"
-          : "missing";
+        oldContext.rejections > rejectedBefore ? "rejected" : "missing";
       await gact("epoch.rotate", "project:1", "rotate");
       const rotated = await until(
         async () => await scopeOf(gid),
@@ -1527,8 +1576,37 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
       await gact("inject.events", "project:1", "inject", {
         vector: "flood:150",
       });
-      await sleep(2500);
-      const delivered = Number((await scopeOf(gid)).cursor!.seq) - seqBefore;
+      // The Runtime writes every frame the window lets through before it answers the invoke, and the
+      // transcript records each frame as it arrives: delivery is read once the Host has applied the last
+      // event frame of this subscription, not after a fixed pause.
+      const transcript = await ev(
+        (host, a) =>
+          host.supervisor.connectionOf(a.id as string)!.spec.transcriptPath!,
+        { id: gid },
+      );
+      const subscriptionId = (await scopeOf(gid)).subscriptionId;
+      const lastDelivered = Math.max(
+        ...readFileSync(transcript, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as { direction: string; value: Json })
+          .filter(
+            (r) =>
+              r.direction === "runtime-to-host" &&
+              r.value.method === "runtime.event",
+          )
+          .map((r) => (r.value.params as { event: Json }).event)
+          .filter(
+            (e) =>
+              e.subscriptionId === subscriptionId && typeof e.seq === "string",
+          )
+          .map((e) => Number(e.seq)),
+      );
+      const reached = await until(
+        async () => await scopeOf(gid),
+        (s) => Number(s.cursor!.seq) >= lastDelivered,
+      );
+      const delivered = Number(reached.cursor!.seq) - seqBefore;
       fault(gdir, {});
       expect(delivered).toBeLessThanOrEqual(128);
       expect(delivered).toBeGreaterThan(100);
