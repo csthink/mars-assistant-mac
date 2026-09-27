@@ -1,0 +1,69 @@
+name: CI
+
+# 只跑不需要凭据、不调用真实模型的检查：静态检查与三层离线测试（服务层、集成、桌面），
+# 以及与 pre-commit hook 同一份的公开仓安全性检查。
+#
+# 不进入 CI 的测试：
+#   tests/desktop/real-*.spec.ts  调用真实提供方与本地 Agent。playwright.config.ts 中只有 real 项目匹配它们，
+#                                 desktop 项目以 testIgnore 排除，integration 项目只匹配 *.integration.ts；
+#                                 本工作流只运行 desktop 与 integration 两个项目，且不设置任何授权环境变量。
+#   tests/desktop/*.native.ts     使用前台桌面，只由 npm run test:native 运行。
+#
+# 不上传任何 artifact：测试报告与运行记录不对外公开，只留在 runner 上随 job 结束销毁。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    # 这个 name 是 main 分支 ruleset 的必需状态检查名，改名时同步修改 ruleset。
+    name: macOS checks and offline tests
+    # Apple silicon；测试用 fake 运行包要求平台 darwin-arm64、系统不低于 macOS 26.6.2。
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: 检出
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: 公开仓安全性检查
+        run: bash tools/check-public-safety-generic.sh
+
+      - name: 按 .nvmrc 安装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 下载并校验 Electron
+        run: npm exec --no -- install-electron
+
+      - name: 静态检查
+        run: npm run check
+
+      # 服务层测试本身不构建，其中 Claude Code 相关用例调用 dist/ 下的构建产物。
+      - name: 构建
+        run: npm run build
+
+      - name: 服务层测试
+        run: npm run test:service
+
+      - name: 集成测试
+        run: npm run test:integration
+
+      - name: 桌面测试
+        run: npm run test:desktop

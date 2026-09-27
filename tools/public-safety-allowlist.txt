@@ -1,0 +1,82 @@
+# 公开仓安全性检查的白名单（tools/check-public-safety-generic.sh 默认读取本文件）。
+#
+# 格式：每行一个扩展正则（bash [[ =~ ]] 语义），对「<相对路径>:<行内容>」整体匹配，命中即放行；
+# 以 # 开头的行与空行忽略；路径门不受白名单影响。
+#
+# 登记原则：
+#   · 只登记测试用合成值、界面文案与模式误报；真实凭据一律不登记，应当吊销并从历史中清除。
+#   · 每条规则写全路径与整行内容，从 ^ 锚到 $，只放行这一处；该行一旦改动，规则失效，需要重新复核。
+#   · 规则里凭据名后面的分隔符写成 [:] 或 [=]，避免本文件自身被扫描器命中。
+#   · 每条规则上方写明理由；新增或删除规则时，核对扫描输出里「白名单放行 N 处」的数量。
+
+# ── src/ 界面文案：认证方式的显示名称，不是凭据值
+# src/shared/claude.ts：Claude 连接认证方式「API key 登录」的显示名称
+^src/shared/claude\.ts:  apiKey[:] "API key 登录",$
+# src/shared/codex.ts：Codex 连接认证方式「API key 登录」的显示名称
+^src/shared/codex\.ts:  apiKey[:] "API key 登录",$
+
+# ── src/ 合成值
+# src/main/claude-contract.ts：Claude Code 契约探测注入的占位 API key；请求只发往本机回环地址上的探测服务，值本身写明是合成值
+^src/main/claude-contract\.ts:          ANTHROPIC_API_KEY[:] "SYNTHETIC_ONLY_NOT_REAL",$
+
+# ── 桌面测试（Playwright）的合成密钥：填进添加提供方表单或发往本机模拟提供方
+# tests/desktop/attachments.spec.ts：附件用例的模拟提供方密钥
+^tests/desktop/attachments\.spec\.ts:const secret [=] "test-secret-attachments-not-a-real-key";$
+# tests/desktop/capabilities.spec.ts：能力用例添加提供方时填写的密钥
+^tests/desktop/capabilities\.spec\.ts:    secret[:] "synthetic-only-key",$
+# tests/desktop/chat.spec.ts：对话用例的模拟提供方密钥
+^tests/desktop/chat\.spec\.ts:const secret [=] "test-secret-chat-not-a-real-key";$
+# tests/desktop/connections.spec.ts：连接用例的模拟提供方密钥
+^tests/desktop/connections\.spec\.ts:const secret [=] "test-secret-7f3a-not-a-real-key";$
+# tests/desktop/effort.spec.ts：推理强度用例添加提供方时填写的密钥（4 格缩进的一行）
+^tests/desktop/effort\.spec\.ts:    secret[:] "synthetic-key-not-real",$
+# tests/desktop/effort.spec.ts：推理强度用例添加提供方时填写的密钥（6 格缩进）；本文件有两行文本完全相同（快照时为第 303、545 行），扫描器只按路径加行内容匹配、不看行号，所以这条规则覆盖这两行
+^tests/desktop/effort\.spec\.ts:      secret[:] "synthetic-key-not-real",$
+# tests/desktop/models.spec.ts：模型用例添加提供方时填写的密钥
+^tests/desktop/models\.spec\.ts:      secret[:] "synthetic-model-key",$
+# tests/desktop/models.spec.ts：模型用例添加第二个提供方时填写的密钥
+^tests/desktop/models\.spec\.ts:      secret[:] "synthetic-other-key",$
+# tests/desktop/models.spec.ts：模型测试用例添加提供方时填写的密钥
+^tests/desktop/models\.spec\.ts:      secret[:] "synthetic-model-tests",$
+
+# ── 本地 Agent 夹具返回的合成账户状态（保留域邮箱、写明是合成值的令牌）
+# tests/desktop/claude-fixture.ts：Claude Code 夹具的认证状态输出
+^tests/desktop/claude-fixture\.ts: console\.log\(JSON\.stringify\(\{loggedIn:state\.authentication!=='signedOut',authMethod:state\.authentication==='subscription'\?'claude\.ai':state\.authentication==='apiKey'\?'api_key'[:]'unrecognized',subscriptionType:'max',email:'private@synthetic\.invalid',token[:]'SYNTHETIC_SECRET_NOT_REAL'\}\)\);process\.exit\(state\.authentication==='signedOut'\?1:0\);$
+# tests/desktop/codex-fixture.ts：Codex 夹具的配置读取结果
+^tests/desktop/codex-fixture\.ts:  const value = \{model:state\.model,model_provider:'openai',api_key[:]'SYNTHETIC_SECRET_NOT_REAL',developer_instructions:fixtureProvider\?'':state\.inlineInstructions,\.\.\.\(state\.configuredEffort\?\{model_reasoning_effort:state\.configuredEffort\}:\{\}\)\};$
+# tests/desktop/codex-fixture.ts：Codex 夹具 config/read 的返回
+^tests/desktop/codex-fixture\.ts:  \} else if \(m\.method === 'config/read'\) result = \{ config: config\(\), origins: \{\}, layers: \[\{ name: \{ type: 'user', file: '/synthetic/config\.toml' \}, config: \{ token[:] 'SYNTHETIC_SECRET_NOT_REAL' \}\}\] \};$
+# tests/desktop/codex-fixture.ts：Codex 夹具 account/read 的返回
+^tests/desktop/codex-fixture\.ts:  else if \(m\.method === 'account/read'\) result = \{ account: state\.authentication === 'signedOut' \? null : \{ type: state\.authentication, email: 'private@synthetic\.invalid', token[:] 'SYNTHETIC_SECRET_NOT_REAL' \}, requiresOpenaiAuth: true \};$
+
+# ── 服务层测试的合成值：发往本机模拟服务的 API key，或断言被拒绝、被过滤的反例输入
+# tests/desktop/claude.test.ts：环境变量过滤用例的输入，断言无关变量不传给 Claude Code
+^tests/desktop/claude\.test\.ts:    UNRELATED_SECRET[:] "not-real",$
+# tests/desktop/codex.test.ts：环境变量过滤用例的输入，断言 API key 变量不传给 Codex
+^tests/desktop/codex\.test\.ts:      OPENAI_API_KEY[:] "synthetic",$
+# tests/desktop/codex-connection.test.ts：反例输入，断言带令牌字段的连接配置被拒绝
+^tests/desktop/codex-connection\.test\.ts:        configuration: \{ \.\.\.configuration, token[:] "must-not-store" \},$
+# tests/desktop/effort.test.ts：发往本机模拟服务的 API key
+^tests/desktop/effort\.test\.ts:        apiKey[:] "synthetic-key",$
+# tests/desktop/project-actions.test.ts：反例输入，断言索引为负的证据读取请求被拒绝；token 是已准备项目动作的 UUID 形态标识，不是凭据，值为合成值
+^tests/desktop/project-actions\.test\.ts:      token[:] "00000000-0000-0000-0000-000000000001",$
+# tests/desktop/service.test.ts：反例输入，断言以明文字段提交的密钥被拒绝
+^tests/desktop/service\.test\.ts:      \{ \.\.\.base, secret[:] "sk-plain-text" \},$
+# tests/desktop/tool-loop.test.ts：发往本机模拟服务的 API key
+^tests/desktop/tool-loop\.test\.ts:      apiKey[:] "synthetic-tool-key",$
+# tests/desktop/transport.test.ts：发往本机模拟服务的 API key
+^tests/desktop/transport\.test\.ts:  apiKey[:] "test-secret-transport",$
+# tests/desktop/vault.test.ts：vault 加密存取用例的明文样本
+^tests/desktop/vault\.test\.ts:const secret [=] "test-secret-甲-7f3a";$
+
+# ── 分页游标：字段名含 token，值是 Runtime 列表分页的游标，不是凭据
+# tests/desktop/runtime-store.test.ts：本文件有两行文本完全相同（快照时为第 451、458 行），这条规则覆盖这两行
+^tests/desktop/runtime-store\.test\.ts:          page\(\{ nextPageToken[:] "page:1:1" \}\),$
+# tests/desktop/runtime-store.test.ts：同一游标写在数组字面量里的一行
+^tests/desktop/runtime-store\.test\.ts:      \["last not final", \[page\(\{ nextPageToken[:] "page:1:1" \}\)\]\],$
+# tests/desktop/runtime-store.test.ts：第二页的游标
+^tests/desktop/runtime-store\.test\.ts:          nextPageToken[:] "page:2:1",$
+
+# ── 完整版扫描器的邮箱模式误报
+# tests/desktop/real-material.spec.ts：文件名 trayTemplate 加 @2x 倍率后缀，不是邮箱
+^tests/desktop/real-material\.spec\.ts:  const star = readFileSync\(resolve\("dist/trayTemplate@2x\.png"\)\);$
