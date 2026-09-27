@@ -367,8 +367,9 @@ test("widget runtime: actual network, WebSocket, WebRTC, frames, file, permissio
     expect(datagrams).toEqual([]);
     expect(connections).toBe(0);
     // Positive control uses the same Chromium binary, with network policy absent.
-    // It runs only synthetic ICE traffic against the already-owned loopback sockets.
-    const positive = await client.evaluate(
+    // It runs only synthetic ICE traffic against the already-owned loopback sockets. The ICE agent reaches
+    // them on its own schedule, so the peer connection stays open until both have seen its traffic.
+    await client.evaluate(
       async ({ BrowserWindow, session }, { udpPort, tcpPort }) => {
         const partition = session.fromPartition(
           `widget-positive-${Date.now()}`,
@@ -387,27 +388,45 @@ test("widget runtime: actual network, WebSocket, WebRTC, frames, file, permissio
           await window.loadURL(
             "data:text/html,<title>Local ICE positive control</title>",
           );
-          return await window.webContents.executeJavaScript(`(async () => {
+          await window.webContents.executeJavaScript(`(async () => {
           const pc = new RTCPeerConnection({ iceServers: [{urls:'stun:127.0.0.1:${udpPort}'}, {urls:'turn:127.0.0.1:${tcpPort}?transport=tcp',username:'synthetic',credential:'synthetic'}] });
+          globalThis.positivePeer = pc;
           pc.createDataChannel('test'); await pc.setLocalDescription(await pc.createOffer());
-          await new Promise(resolve => setTimeout(resolve, 1200));
+        })()`);
+        } catch (error) {
+          window.destroy();
+          throw error;
+        }
+        Reflect.set(globalThis, "icePositiveWindow", window);
+      },
+      { udpPort: udp.address().port, tcpPort: address.port },
+    );
+    try {
+      await expect.poll(() => connections).toBeGreaterThan(0);
+      await expect.poll(() => datagrams.length).toBeGreaterThan(0);
+    } finally {
+      const positive = await client.evaluate(async () => {
+        const window = Reflect.get(
+          globalThis,
+          "icePositiveWindow",
+        ) as BrowserWindow;
+        try {
+          return await window.webContents.executeJavaScript(`(() => {
+          const pc = globalThis.positivePeer;
           const result = { gathering: pc.iceGatheringState, candidates: (pc.localDescription.sdp.match(/a=candidate:/g) || []).length }; pc.close(); return result;
         })()`);
         } finally {
           window.destroy();
         }
-      },
-      { udpPort: udp.address().port, tcpPort: address.port },
-    );
-    console.log(
-      JSON.stringify({
-        positive,
-        positiveTCP: connections,
-        positiveUDP: datagrams.length,
-      }),
-    );
-    expect(connections).toBeGreaterThan(0);
-    expect(datagrams.length).toBeGreaterThan(0);
+      });
+      console.log(
+        JSON.stringify({
+          positive,
+          positiveTCP: connections,
+          positiveUDP: datagrams.length,
+        }),
+      );
+    }
   } finally {
     await client.evaluate(async () =>
       (Reflect.get(globalThis, "widgetHarness") as Harness).runtime.close(),

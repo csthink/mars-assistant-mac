@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { journeyFixture } from "./project-action-fixture";
@@ -589,27 +589,26 @@ test("record filters: the pending and run-record filter bars share one label lin
   }
 });
 
-/** A button's fill and edge, with the current workbench edge colour (--home-edge) for comparison (KB-314). */
-const surfaceOf = (button: ReturnType<Page["getByRole"]>) =>
-  button.evaluate((el) => {
+/** The current workbench edge colour (--home-edge), read from a probe element (KB-314). */
+const workbenchEdge = (page: Page) =>
+  page.evaluate(() => {
     const probe = document.createElement("span");
     probe.style.border = "1px solid var(--home-edge)";
     document.body.append(probe);
     const edge = getComputedStyle(probe).borderTopColor;
     probe.remove();
-    const style = getComputedStyle(el);
-    return {
-      name: el.textContent,
-      background: style.backgroundColor,
-      border: style.borderTopColor,
-      edge,
-    };
+    return edge;
   });
-function expectWorkbenchSurface(s: Awaited<ReturnType<typeof surfaceOf>>) {
-  // No near-black base fill (--palette-1a1c24) on the blue workbench cards: the accepted prototype's
-  // secondary workbench button has no fill and the workbench edge.
-  expect(s.background, JSON.stringify(s)).toBe("rgba(0, 0, 0, 0)");
-  expect(s.border, JSON.stringify(s)).toBe(s.edge);
+/**
+ * No near-black base fill (--palette-1a1c24) on the blue workbench cards: the accepted prototype's
+ * secondary workbench button has no fill and the workbench edge. The list can render a button again
+ * between finding it and reading its style, and a detached button has no computed style, so the style
+ * is read by retrying assertions on the button that is in the document.
+ */
+async function expectWorkbenchSurface(button: Locator) {
+  const edge = await workbenchEdge(button.page());
+  await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(button).toHaveCSS("border-top-color", edge);
 }
 
 test("workbench appearance: in the dark appearance project, pending and run-record buttons take the workbench surface instead of the near-black base fill (KB-314)", async ({}, info) => {
@@ -625,11 +624,9 @@ test("workbench appearance: in the dark appearance project, pending and run-reco
       .getByRole("region", { name: "项目待处理", exact: true })
       .getByRole("button", { name: "打开原项目", exact: true })
       .first();
-    expectWorkbenchSurface(await surfaceOf(open));
-    expectWorkbenchSurface(
-      await surfaceOf(
-        f.page.getByRole("button", { name: "处理：接纳任务", exact: true }),
-      ),
+    await expectWorkbenchSurface(open);
+    await expectWorkbenchSurface(
+      f.page.getByRole("button", { name: "处理：接纳任务", exact: true }),
     );
     await f.page.screenshot({ path: info.outputPath("pending-dark.png") });
     await f.page.getByRole("tab", { name: "已处理", exact: true }).click();
@@ -641,7 +638,7 @@ test("workbench appearance: in the dark appearance project, pending and run-reco
       name: "读取依据 1",
       exact: true,
     });
-    expectWorkbenchSurface(await surfaceOf(read));
+    await expectWorkbenchSurface(read);
     await read.click();
     await expect(processed.locator("pre")).toContainText("candidate revision");
     await processed.scrollIntoViewIfNeeded();
@@ -649,13 +646,11 @@ test("workbench appearance: in the dark appearance project, pending and run-reco
       path: info.outputPath("pending-processed-dark.png"),
     });
     await goTo(f.page, "运行记录");
-    expectWorkbenchSurface(
-      await surfaceOf(
-        f.page
-          .getByRole("region", { name: "项目运行记录", exact: true })
-          .getByRole("button", { name: "打开原项目", exact: true })
-          .first(),
-      ),
+    await expectWorkbenchSurface(
+      f.page
+        .getByRole("region", { name: "项目运行记录", exact: true })
+        .getByRole("button", { name: "打开原项目", exact: true })
+        .first(),
     );
     await f.page.screenshot({ path: info.outputPath("records-dark.png") });
     await f.page
@@ -671,7 +666,7 @@ test("workbench appearance: in the dark appearance project, pending and run-reco
     const query = pane
       .getByRole("button", { name: "查询该操作", exact: true })
       .first();
-    expectWorkbenchSurface(await surfaceOf(query));
+    await expectWorkbenchSurface(query);
     await query.scrollIntoViewIfNeeded();
     await f.page.screenshot({
       path: info.outputPath("project-actions-dark.png"),

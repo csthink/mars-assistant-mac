@@ -1109,6 +1109,11 @@ test("quit confirmation in plain words: with an Implementer execution running th
           args: {
             profileId: claudeImplementerProfileId,
             preflight: true,
+            // The graph fake runs executions on one worker and polls each one for waitSeconds (default 60)
+            // before it takes the next. The first execution stays stopping (its escaped process lingers),
+            // so the second one starts only when that poll ends; 15 s keeps the start well inside the 60 s
+            // this test waits for it, instead of a fraction of a second after it.
+            waitSeconds: 15,
             binding: {
               connectionRef: "connection:" + claudeConnection.id,
               configurationRevision: String(claudeConnection.revision),
@@ -1201,7 +1206,16 @@ test("quit confirmation in plain words: with an Implementer execution running th
         ) ?? null,
       (r) => !!r && r.state === "running" && r.target !== null,
     )) as HostExecutionRecord;
-    pids.push(secondRecord.target!.pid);
+    const secondPid = secondRecord.target!.pid;
+    pids.push(secondPid);
+    // The second target leaves its own escaped process as well; it is collected for the cleanup below.
+    const secondEscapedPid = (
+      await until(
+        async () => escapedOf(secondPid),
+        (c) => c.length === 1,
+      )
+    )[0];
+    pids.push(secondEscapedPid);
     await answerQuitSheet(1);
     const closed = app.waitForEvent("close", { timeout: 60_000 });
     const child = app.process();
