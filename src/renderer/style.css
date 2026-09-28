@@ -28,7 +28,8 @@ button:disabled {
 /* The hover tint is feedback for a control that is not in a selected state. A control that declares itself
    current, selected, pressed or the checked choice of a group keeps the look of that state under the pointer,
    so every selected state is marked with one of these attributes rather than a class alone. A switch's checked
-   value is a setting rather than a selection and keeps the tint. The exclusion sits in :where() so this rule
+   value is a setting rather than a selection and keeps the tint; a pressed control whose pressed look is its
+   text colour alone adds the tint in its own rule. The exclusion sits in :where() so this rule
    keeps the weight of a bare element hover and component hover rules still take precedence. */
 button:hover:not(:disabled):not(
     :where(

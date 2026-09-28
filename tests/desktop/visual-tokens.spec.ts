@@ -2221,21 +2221,35 @@ test("selected states: every current item keeps its selection colours and weight
         "600",
       );
       // The archived toggle when pressed: accent text as the prototype's pressed toolbar button, regular weight.
+      // Its pressed look is the accent text alone, so under the pointer it takes the hover tint of a button
+      // and keeps the accent text and the weight.
       await page.getByRole("button", { name: "已归档", exact: true }).click();
       const toggle = page.locator('.button[aria-pressed="true"]');
-      await check(page, appearance, "archived toggle", toggle, "400");
-      if (
-        (await toggle.evaluate((el) => getComputedStyle(el).color)) !==
-        (await page.evaluate(() => {
-          const probe = document.createElement("span");
-          probe.style.color = "var(--c-accent)";
-          document.body.append(probe);
-          const color = getComputedStyle(probe).color;
-          probe.remove();
-          return color;
-        }))
-      )
-        failures.push(`${appearance} archived toggle: text is not the accent`);
+      await toggle.waitFor({ timeout: 5000 });
+      const [accent, hoverTint] = await page.evaluate(() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--c-accent)";
+        probe.style.background = "var(--c-hover)";
+        document.body.append(probe);
+        const style = getComputedStyle(probe);
+        const values = [style.color, style.backgroundColor];
+        probe.remove();
+        return values;
+      });
+      const pressed = await selectedLook(page, toggle);
+      const expected = {
+        rest: { ...pressed.rest, color: accent, weight: "400" },
+        hovered: {
+          ...pressed.rest,
+          background: hoverTint,
+          color: accent,
+          weight: "400",
+        },
+      };
+      if (JSON.stringify(pressed) !== JSON.stringify(expected))
+        failures.push(
+          `${appearance} archived toggle: ${JSON.stringify(pressed)} instead of ${JSON.stringify(expected)}`,
+        );
       await toggle.click();
       // Pending tabs: regular, as the prototype's view switch of the pending page.
       await goTo(page, "待处理");

@@ -35,8 +35,13 @@
   margin-bottom: 18px;
   flex-wrap: wrap;
 }
+/* The pressed archived toggle is marked by its accent text alone (the prototype's pressed toolbar button), so
+   under the pointer it takes the hover tint of a button and keeps the accent text. */
 .project-toolbar .button[aria-pressed="true"] {
   color: var(--c-accent);
+}
+.project-toolbar .button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--c-hover);
 }
 .project-total {
   color: var(--c-muted);
