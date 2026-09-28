@@ -503,12 +503,6 @@
   }
 }
 
-.project-form-dialog input:focus-visible,
-.project-form-dialog textarea:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 1px;
-}
-
 .project-work-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 36%);

@@ -21,8 +21,8 @@
   --c-muted: #686c67; /* secondary text */
   --c-accent: #1e6b4e; /* selection text, links, focus ring, running outline */
   --c-accent-strong: #175a41; /* primary button hover */
-  --c-accent-soft: #e4efe8; /* selection block, running icon tint, focus halo */
-  --c-accent-edge: #b8d4c4;
+  --c-accent-soft: #e4efe8; /* selection block, running icon tint, focus halo, user message */
+  --c-accent-edge: #b8d4c4; /* edge of a selected tab and of a user message */
   --c-on-accent: #ffffff;
   --c-primary-bg: #1e6b4e;
   --c-primary-border: #1e6b4e;

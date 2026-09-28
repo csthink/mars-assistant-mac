@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { closeLocal, launchLocal } from "./local-client";
 import { goTo, openConversation, ready, recent } from "./shell";
 import { journeyFixture } from "./project-action-fixture";
+import { openProvider, providersPage } from "./provider-ui";
 import { Store } from "../../src/service/store";
 import { expectedColors, type Appearance } from "./visual-tokens";
 
@@ -162,6 +163,48 @@ async function focusRing(page: Page, selector: string) {
       ];
 }
 
+/**
+ * Keyboard focus on a form field: the accent border with a 2px soft halo drawn at the border (outline
+ * offset 0), so the field shows one accent line and no separate ring outside it; returns what differs.
+ */
+async function fieldFocus(page: Page, selector: string) {
+  await page.locator(selector).first().focus();
+  const got = await page.evaluate(() => {
+    const el = document.activeElement!;
+    const style = getComputedStyle(el);
+    const scratch = document.createElement("span");
+    document.body.append(scratch);
+    scratch.style.color = "var(--c-accent)";
+    const accent = getComputedStyle(scratch).color;
+    scratch.style.color = "var(--c-accent-soft)";
+    const soft = getComputedStyle(scratch).color;
+    scratch.remove();
+    return {
+      visible: el.matches(":focus-visible"),
+      border: [
+        style.borderTopColor,
+        style.borderRightColor,
+        style.borderBottomColor,
+        style.borderLeftColor,
+      ],
+      ring: `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor} offset ${style.outlineOffset}`,
+      accent,
+      expected: `solid 2px ${soft} offset 0px`,
+    };
+  });
+  const found: string[] = [];
+  if (!got.visible) found.push(`field ${selector}: not focus-visible`);
+  if (got.border.some((c) => c !== got.accent))
+    found.push(
+      `field ${selector}: border ${got.border.join(" / ")} instead of ${got.accent}`,
+    );
+  if (got.ring !== got.expected)
+    found.push(
+      `field ${selector}: outline ${got.ring} instead of ${got.expected}`,
+    );
+  return found;
+}
+
 function seedConversations() {
   mkdirSync(".test-data/disposable", { recursive: true });
   const root = mkdtempSync(resolve(".test-data/disposable/visual-tokens-"));
@@ -265,6 +308,8 @@ type View = {
   probes: Probe[];
   /** A control of the view that takes keyboard focus for the focus-ring check. */
   focus?: string;
+  /** A form field of the view that takes keyboard focus for the field-focus check. */
+  field?: string;
   /** Menus, popovers and focused fields are probed with their focus kept. */
   keep?: true;
   /** A control hovered before probing. */
@@ -331,7 +376,8 @@ const chatPages: View[] = [
       ...shellProbes,
       ...composer,
       [".home-chat-title .conversation-title", "color", text],
-      [".bubble.user", "background-color", "var(--c-raised)"],
+      [".bubble.user", "background-color", "var(--c-accent-soft)"],
+      [".bubble.user", "border-top-color", "var(--c-accent-edge)"],
       [".bubble.user p", "color", text],
       [".bubble.assistant", "background-color", surface],
       [".bubble.assistant", "border-top-color", line],
@@ -352,11 +398,13 @@ const chatPages: View[] = [
       [".rename-dialog", "border-top-color", line],
       [".rename-dialog", "box-shadow", "var(--c-shadow)"],
       [".rename-dialog", "color", text],
-      ...field(".rename-dialog input"),
+      // The title field opens focused; its border is checked by the field-focus check.
+      [".rename-dialog input", "background-color", surface],
+      [".rename-dialog input", "color", text],
       ...primaryButton(".rename-dialog .button.primary"),
       ...secondaryButton(".rename-dialog .button:not(.primary)"),
     ],
-    focus: ".rename-dialog input",
+    field: ".rename-dialog input",
     keep: true,
   },
   {
@@ -568,6 +616,12 @@ test("main window: chat, recent chats, avatar menu, search and settings take the
               ),
             );
           }
+          if (width === windowSizes[0][0] && view.field)
+            failures.push(
+              ...(await fieldFocus(page, view.field)).map(
+                (m) => `${appearance} ${view.id} ${m}`,
+              ),
+            );
         }
         await page.keyboard.press("Escape");
       }
@@ -714,13 +768,15 @@ const projectPages: View[] = [
       [".project-form-dialog", "box-shadow", "var(--c-shadow)"],
       [".project-form-dialog", "color", text],
       [".project-form-subtitle", "color", muted],
-      ...field(".project-form-dialog input"),
+      // The name field opens focused; its border is checked by the field-focus check.
+      [".project-form-dialog input", "background-color", surface],
+      [".project-form-dialog input", "color", text],
       ...field(".project-form-dialog textarea"),
       ...primaryButton(".project-form-dialog .button.project-primary"),
       ...secondaryButton(".project-form-actions .button:not(.project-primary)"),
       [".project-form-actions", "border-top-color", line],
     ],
-    focus: ".project-form-dialog input",
+    field: ".project-form-dialog input",
     keep: true,
   },
   {
@@ -838,6 +894,12 @@ test("main window: projects, project detail, widgets, pending and run records ta
               ),
             );
           }
+          if (width === windowSizes[0][0] && view.field)
+            failures.push(
+              ...(await fieldFocus(f.page, view.field)).map(
+                (m) => `${appearance} ${view.id} ${m}`,
+              ),
+            );
         }
       }
     }
@@ -864,6 +926,10 @@ const panelPages: [name: string, probes: Probe[]][] = [
       ...composer,
       [".panel-conversations", "color", muted],
       ...field(".panel-conversations select"),
+      [".bubble.user", "background-color", "var(--c-accent-soft)"],
+      [".bubble.user", "border-top-color", "var(--c-accent-edge)"],
+      [".bubble.user p", "color", text],
+      [".bubble.assistant", "background-color", surface],
     ],
   ],
   [
@@ -926,6 +992,17 @@ test("menu bar panel: every page takes the semantic colour tokens in light and d
   const page = await app.firstWindow();
   try {
     await ready(page);
+    // The panel's chat page shows the main window's conversation: open one with both kinds of message.
+    await openConversation(
+      page,
+      (await (
+        await recent(page)
+      )
+        .locator(".session")
+        .filter({ hasText: "整理读书笔记" })
+        .getAttribute("aria-label"))!,
+    );
+    await expect(page.locator(".bubble.assistant").first()).toBeVisible();
     const opened = app.waitForEvent("window");
     await app.evaluate(({ Menu }) => {
       Menu.getApplicationMenu()!
@@ -1618,4 +1695,159 @@ test("existing page defects: a user bubble sits at the right in the main window 
   } finally {
     await closeLocal(app);
   }
+});
+
+test("form fields: a focused field in dialogs, settings, project settings and widget settings shows the accent border with a soft halo instead of the outer ring, while filter bars and buttons keep the ring, in light and dark", async () => {
+  const failures: string[] = [];
+  const f = await journeyFixture();
+  try {
+    const page = f.page;
+    for (const appearance of ["light", "dark"] as const) {
+      await setAppearance(page, appearance);
+      const fields = async (where: string, selectors: string[]) => {
+        for (const selector of selectors)
+          failures.push(
+            ...(await fieldFocus(page, selector)).map(
+              (m) => `${appearance} ${where} ${m}`,
+            ),
+          );
+      };
+      const rings = async (where: string, selectors: string[]) => {
+        for (const selector of selectors) {
+          await page.keyboard.press("Tab");
+          failures.push(
+            ...(await focusRing(page, selector)).map(
+              (m) => `${appearance} ${where} ${m}`,
+            ),
+          );
+        }
+      };
+      // Project settings: the project chat's settings and input are form fields (the execution roles use the
+      // same rule but are disabled without a configured local Agent); the object list's search and grouping
+      // controls are a filter bar.
+      await page
+        .getByRole("navigation", { name: "主要页面" })
+        .getByRole("button", { name: "工作台", exact: true })
+        .click();
+      if (await page.locator(".project-table").isVisible())
+        await page
+          .locator(".project-open")
+          .filter({ hasText: "合成任务旅程" })
+          .click();
+      await page
+        .getByRole("navigation", { name: "Runtime 内容" })
+        .getByRole("button", { name: "当前阶段：任务开发", exact: true })
+        .click();
+      await expect(
+        page.locator(".project-inline-controls input"),
+      ).toBeVisible();
+      if (
+        !(await page.getByRole("textbox", { name: "项目对话输入" }).isVisible())
+      )
+        await page
+          .getByRole("button", { name: "新建项目对话", exact: true })
+          .click();
+      await expect(
+        page.getByRole("textbox", { name: "项目对话输入" }),
+      ).toBeVisible();
+      await fields("project", [
+        ".project-chat-settings select",
+        ".project-chat-pane form > textarea",
+      ]);
+      await rings("project", [
+        ".project-inline-controls input",
+        ".project-inline-controls select",
+        ".project-chat-send .button",
+      ]);
+      // The decision form of a project action.
+      await goTo(page, "待处理");
+      await page
+        .getByRole("button", { name: "处理：接纳任务", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: "核对项目操作",
+        exact: true,
+      });
+      await expect(dialog).toBeVisible();
+      await fields("action dialog", [".project-action-field select"]);
+      await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      // The pending filter bar keeps the ring.
+      await rings("pending filters", [
+        ".record-query-controls input:not([type=checkbox])",
+        ".record-query-controls select",
+      ]);
+      // A new project's form.
+      await page
+        .getByRole("navigation", { name: "主要页面" })
+        .getByRole("button", { name: "工作台", exact: true })
+        .click();
+      if (await page.getByRole("button", { name: "返回项目列表" }).isVisible())
+        await page.getByRole("button", { name: "返回项目列表" }).click();
+      await page.getByRole("button", { name: "新建项目", exact: true }).click();
+      await expect(page.locator(".project-form-dialog")).toBeVisible();
+      await fields("new project", [
+        ".project-form-dialog input",
+        ".project-form-dialog textarea",
+      ]);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".project-form-dialog")).toHaveCount(0);
+      // Settings: a provider's form and a local Agent's executable path.
+      await providersPage(page);
+      await page
+        .getByRole("button", { name: "添加自定义提供方", exact: true })
+        .click();
+      await expect(
+        page.getByRole("form", { name: "新建提供方" }),
+      ).toBeVisible();
+      await fields("provider form", [
+        ".field input[name=name]",
+        ".field input[name=endpoint]",
+      ]);
+      await openProvider(page, "Claude Code");
+      await fields("Claude Code", [".codex-path-settings > input"]);
+    }
+  } finally {
+    await closeLocal(f.app);
+  }
+  // Widget settings open only for an accepted widget: the acceptance build loads a test candidate.
+  const root = seedConversations();
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`, "--widget-acceptance"],
+    cwd: resolve("."),
+  });
+  const page = await app.firstWindow();
+  try {
+    await ready(page);
+    await goTo(page, "工作台");
+    await page
+      .getByRole("tablist", { name: "工作台内容" })
+      .getByRole("tab", { name: "控件" })
+      .click();
+    await page.getByRole("button", { name: "载入测试候选" }).click();
+    await page
+      .getByRole("region", { name: "测试候选预览" })
+      .getByRole("button", { name: "设置", exact: true })
+      .click();
+    await expect(page.locator(".widget-settings")).toBeVisible();
+    const widgetField = ".widget-config-field input:not([type=checkbox])";
+    for (const appearance of ["light", "dark"] as const) {
+      await setAppearance(page, appearance);
+      // At rest the widget's text field is a form field like the others (it had the browser's own border).
+      await rest(page);
+      failures.push(
+        ...(await mismatches(page, field(widgetField))).map(
+          (m) => `${appearance} widget settings ${m}`,
+        ),
+      );
+      failures.push(
+        ...(await fieldFocus(page, widgetField)).map(
+          (m) => `${appearance} widget settings ${m}`,
+        ),
+      );
+    }
+  } finally {
+    await closeLocal(app);
+  }
+  expect(failures).toEqual([]);
 });
