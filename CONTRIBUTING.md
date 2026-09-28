@@ -33,7 +33,7 @@ npm exec --no -- install-electron
 
 ## 本地检查
 
-提交前按 CI 的顺序跑一遍：
+CI 只跑红线扫描、静态检查、构建与服务层测试。集成测试与桌面测试需要已登录的图形会话，不在 CI 中运行；开 PR 前必须在本机跑完下面全部命令，并且全部通过：
 
 ```bash
 bash tools/check-public-safety-generic.sh
@@ -44,6 +44,7 @@ npm run test:integration
 npm run test:desktop
 ```
 
+- 前四条与 CI 的步骤相同；`test:integration` 与 `test:desktop` 只在本机运行，CI 通过不代表它们通过。
 - `test:integration` 与 `test:desktop` 会先构建，再启动真实 Electron，需要已登录的图形会话；测试窗口透明、不取得焦点。
 - 开发过程中只跑受影响的用例，先 `npm run build`，再用 `npm exec --no -- playwright test --project=<项目> <文件>`，总是带 `--project`。定向结果不能代替提交前的完整检查。
 - 任何失败、跳过或重试都要查明原因，不以重跑通过作为结论。

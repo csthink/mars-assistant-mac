@@ -86,12 +86,12 @@ npm start -- --data-root="<数据目录>"
 | 层 | 入口 | 匹配的文件 | 进入 CI |
 | --- | --- | --- | --- |
 | 服务层 | `npm run test:service` | `package.json` 中列出的 `tests/desktop/*.test.ts` | 是 |
-| 集成 | `npm run test:integration` | `tests/desktop/*.integration.ts` | 是 |
-| 桌面 | `npm run test:desktop` | `tests/desktop/*.spec.ts`，不含 `real-*.spec.ts` | 是 |
+| 集成 | `npm run test:integration` | `tests/desktop/*.integration.ts` | 否，本机运行 |
+| 桌面 | `npm run test:desktop` | `tests/desktop/*.spec.ts`，不含 `real-*.spec.ts` | 否，本机运行 |
 | 原生 | `npm run test:native` | `tests/desktop/*.native.ts` | 否 |
 | 真实调用 | `npm run test:real` | `tests/desktop/real-*.spec.ts` | 否 |
 
-Playwright 的项目划分见 [`playwright.config.ts`](playwright.config.ts)，测试串行运行。服务层、集成与桌面三层离线运行：模型请求发往绑定 `127.0.0.1` 的模拟提供方，本地 Agent 由测试夹具代替，不需要真实账户或密钥。
+Playwright 的项目划分见 [`playwright.config.ts`](playwright.config.ts)，测试串行运行。服务层、集成与桌面三层离线运行：模型请求发往绑定 `127.0.0.1` 的模拟提供方，本地 Agent 由测试夹具代替，不需要真实账户或密钥。集成与桌面两层启动真实 Electron，需要已登录的图形会话，不在 CI 中运行，开 PR 前须在本机全部通过（见 [CONTRIBUTING.md](CONTRIBUTING.md)）。
 
 定向运行时先构建，再指定项目与文件；直接调用 `playwright test` 时总是带 `--project`：
 

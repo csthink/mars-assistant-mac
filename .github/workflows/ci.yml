@@ -1,13 +1,13 @@
 name: CI
 
-# 只跑不需要凭据、不调用真实模型的检查：静态检查与三层离线测试（服务层、集成、桌面），
-# 以及与 pre-commit hook 同一份的公开仓安全性检查。
+# 只跑不需要凭据、不调用真实模型、不需要图形会话的检查：与 pre-commit hook 同一份的公开仓安全性检查、
+# 静态检查、构建与服务层测试。
 #
 # 不进入 CI 的测试：
-#   tests/desktop/real-*.spec.ts  调用真实提供方与本地 Agent。playwright.config.ts 中只有 real 项目匹配它们，
-#                                 desktop 项目以 testIgnore 排除，integration 项目只匹配 *.integration.ts；
-#                                 本工作流只运行 desktop 与 integration 两个项目，且不设置任何授权环境变量。
-#   tests/desktop/*.native.ts     使用前台桌面，只由 npm run test:native 运行。
+#   tests/desktop/*.integration.ts  集成测试（npm run test:integration）与桌面测试（npm run test:desktop）
+#   tests/desktop/*.spec.ts         启动真实 Electron，需要已登录的图形会话，在本机运行；开 PR 前须在本机全部通过。
+#   tests/desktop/real-*.spec.ts    调用真实提供方与本地 Agent，只由 npm run test:real 在显式授权下运行。
+#   tests/desktop/*.native.ts       使用前台桌面，只由 npm run test:native 运行。
 #
 # 不上传任何 artifact：测试报告与运行记录不对外公开，只留在 runner 上随 job 结束销毁。
 
@@ -61,9 +61,3 @@ jobs:
 
       - name: 服务层测试
         run: npm run test:service
-
-      - name: 集成测试
-        run: npm run test:integration
-
-      - name: 桌面测试
-        run: npm run test:desktop
