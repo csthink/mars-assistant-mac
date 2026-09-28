@@ -486,14 +486,14 @@ async function expectBand(page: Page) {
     JSON.stringify(band),
   ).toBeLessThanOrEqual(0.5);
 }
-/** The focused element's ring and the current workbench interaction colour (--home-blue). */
+/** The focused element's ring and the current accent colour. */
 async function focusRing(page: Page) {
   return page.evaluate(() => {
     const el = document.activeElement!,
       probe = document.createElement("span");
-    probe.style.color = "var(--home-blue)";
+    probe.style.color = "var(--c-accent)";
     document.body.append(probe);
-    const blue = getComputedStyle(probe).color;
+    const accent = getComputedStyle(probe).color;
     probe.remove();
     const style = getComputedStyle(el);
     return {
@@ -501,12 +501,12 @@ async function focusRing(page: Page) {
       visible: el.matches(":focus-visible"),
       ring: `${style.outlineStyle} ${style.outlineWidth}`,
       color: style.outlineColor,
-      blue,
+      accent,
     };
   });
 }
 
-test("record filters: the pending and run-record filter bars share one label line, control height, top edge and text size, and focused controls show the blue workbench focus ring in light and dark (KB-309, KB-310)", async ({}, info) => {
+test("record filters: the pending and run-record filter bars share one label line, control height, top edge and text size, and focused controls show the accent focus ring in light and dark", async ({}, info) => {
   mkdirSync(".test-data/disposable", { recursive: true });
   const data = join(
     mkdtempSync(resolve(".test-data/disposable/record-filters-")),
@@ -537,16 +537,16 @@ test("record filters: the pending and run-record filter bars share one label lin
         const rows = await filterGeometry(page);
         expect(rows.map((r) => r.name)).toEqual(names);
         expectAligned(rows);
-        // The search field and, by keyboard, the next select carry the blue workbench ring.
+        // The search field and, by keyboard, the next select carry the accent ring.
         await box.click();
         const text = await focusRing(page);
         expect(text).toMatchObject({ tag: "input", visible: true });
         expect(text.ring).toBe("solid 2px");
-        expect(text.color).toBe(text.blue);
+        expect(text.color).toBe(text.accent);
         await page.keyboard.press("Tab");
         const select = await focusRing(page);
         expect(select).toMatchObject({ tag: "select", visible: true });
-        expect(select.color).toBe(select.blue);
+        expect(select.color).toBe(select.accent);
         await box.fill("筛选");
         await expect(
           page.getByRole("button", { name: "返回全部范围", exact: true }),
@@ -589,29 +589,34 @@ test("record filters: the pending and run-record filter bars share one label lin
   }
 });
 
-/** The current workbench edge colour (--home-edge), read from a probe element (KB-314). */
-const workbenchEdge = (page: Page) =>
+/** The secondary button surface and edge of the current appearance, read from a probe element. */
+const secondaryColours = (page: Page) =>
   page.evaluate(() => {
     const probe = document.createElement("span");
-    probe.style.border = "1px solid var(--home-edge)";
+    probe.style.background = "var(--c-secondary-bg)";
+    probe.style.border = "1px solid var(--c-line-strong)";
     document.body.append(probe);
-    const edge = getComputedStyle(probe).borderTopColor;
+    const style = getComputedStyle(probe);
+    const colours = {
+      background: style.backgroundColor,
+      edge: style.borderTopColor,
+    };
     probe.remove();
-    return edge;
+    return colours;
   });
 /**
- * No near-black base fill (--palette-1a1c24) on the blue workbench cards: the accepted prototype's
- * secondary workbench button has no fill and the workbench edge. The list can render a button again
- * between finding it and reading its style, and a detached button has no computed style, so the style
- * is read by retrying assertions on the button that is in the document.
+ * A secondary button on the project, pending and run-record pages takes the secondary button surface and
+ * edge, the same as on every other page. The list can render a button again between finding it and reading
+ * its style, and a detached button has no computed style, so the style is read by retrying assertions on
+ * the button that is in the document.
  */
 async function expectWorkbenchSurface(button: Locator) {
-  const edge = await workbenchEdge(button.page());
-  await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const { background, edge } = await secondaryColours(button.page());
+  await expect(button).toHaveCSS("background-color", background);
   await expect(button).toHaveCSS("border-top-color", edge);
 }
 
-test("workbench appearance: in the dark appearance project, pending and run-record buttons take the workbench surface instead of the near-black base fill (KB-314)", async ({}, info) => {
+test("workbench appearance: in the dark appearance project, pending and run-record secondary buttons take the secondary button surface and edge", async ({}, info) => {
   const f = await journeyFixture();
   try {
     await goTo(f.page, "待处理");

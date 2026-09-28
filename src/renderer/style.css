@@ -29,7 +29,7 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--c-accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 svg {
   width: 19px;
@@ -244,6 +244,7 @@ p {
   border-radius: 50%;
   background: var(--c-raised);
   font-size: 14px;
+  color: var(--c-text);
 }
 .profile-pending-dot {
   position: absolute;
@@ -252,7 +253,7 @@ p {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--c-accent);
+  background: var(--c-amber-badge);
   box-shadow: 0 0 0 2px var(--c-canvas);
 }
 .home-header button:focus-visible,
@@ -292,7 +293,7 @@ p {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--c-hover);
+  background: var(--c-raised);
   font-size: 14px;
 }
 .profile-menu-heading strong {
@@ -321,7 +322,7 @@ p {
 }
 .profile-menu-item:hover,
 .profile-menu-item.selected {
-  background: var(--c-hover);
+  background: var(--c-selected);
   color: var(--c-accent);
 }
 .profile-menu-count {
@@ -329,8 +330,8 @@ p {
   min-width: 32px;
   padding: 3px 8px;
   border-radius: 18px;
-  background: var(--c-accent-soft);
-  color: var(--c-accent);
+  background: var(--c-amber-badge);
+  color: var(--c-on-amber);
   text-align: center;
   font-size: 15px;
 }
@@ -650,7 +651,7 @@ p {
   width: 53px;
   height: 53px;
   border-radius: 17px;
-  background: var(--c-raised);
+  background: var(--c-accent-soft);
   color: var(--c-accent);
   margin-bottom: 23px;
 }
@@ -705,7 +706,7 @@ p {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 1px solid var(--c-line);
+  border: 1px solid var(--c-line-strong);
   border-radius: 8px;
   padding: 8px 13px;
   font-size: 12px;
@@ -727,9 +728,13 @@ p {
   background: var(--c-surface);
   border-radius: 14px;
   padding: 14px 14px 10px;
+  box-shadow: var(--c-shadow-card);
 }
 .composer:focus-within {
   border-color: var(--c-accent);
+  box-shadow:
+    0 0 0 3px var(--c-accent-soft),
+    var(--c-shadow-card);
 }
 .composer textarea {
   display: block;
@@ -779,7 +784,7 @@ p {
   flex: 1;
 }
 .send {
-  background: var(--c-accent);
+  background: var(--c-primary-bg);
   color: var(--c-on-accent);
   display: grid;
   place-items: center;
@@ -1069,7 +1074,7 @@ p {
 select {
   min-width: 0;
   flex: 1;
-  border: 1px solid var(--c-line);
+  border: 1px solid var(--c-line-strong);
   border-radius: 6px;
   background: var(--c-surface);
   padding: 5px 7px;
@@ -1147,9 +1152,9 @@ select {
 .field select,
 .codex-path-settings > input {
   padding: 8px 10px;
-  border: 1px solid var(--c-line);
+  border: 1px solid var(--c-line-strong);
   border-radius: 8px;
-  background: var(--c-canvas);
+  background: var(--c-surface);
   min-width: 0;
 }
 .field small {
@@ -1174,13 +1179,31 @@ select {
   margin: 0;
 }
 .button.primary {
-  background: var(--c-accent);
-  border-color: var(--c-accent);
+  background: var(--c-primary-bg);
+  border-color: var(--c-primary-border);
   color: var(--c-on-accent);
 }
+.button.primary:hover:not(:disabled) {
+  background: var(--c-accent-strong);
+  border-color: var(--c-accent-strong);
+}
 .button.danger {
-  border-color: color-mix(in srgb, var(--c-red) 35%, transparent);
+  border-color: var(--c-line-strong);
   color: var(--c-red);
+}
+.button.danger:hover:not(:disabled) {
+  background: var(--c-red-bg);
+}
+/* The confirmation of a destructive action is the solid danger button. */
+:is(dialog, .confirm-dialog) .button.danger {
+  background: var(--c-red);
+  border-color: color-mix(in srgb, var(--c-red) 60%, transparent);
+  color: var(--c-on-danger);
+  font-weight: 600;
+}
+:is(dialog, .confirm-dialog) .button.danger:hover:not(:disabled) {
+  background: var(--c-red);
+  filter: brightness(1.06);
 }
 .default-tag {
   color: var(--c-green);
@@ -1236,15 +1259,32 @@ select {
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--c-raised);
-  color: var(--c-text);
+  color: var(--c-muted);
 }
 .state-running,
 .state-queued {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--c-accent-edge);
+  background: var(--c-surface);
+  color: var(--c-accent);
+}
+.state-running::before,
+.state-queued::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.state-completed {
   background: var(--c-green-bg);
   color: var(--c-green);
 }
 .state-stopping,
-.state-interrupted {
+.state-interrupted,
+.state-awaiting_authorization {
   background: var(--c-amber-bg);
   color: var(--c-amber);
 }
@@ -1262,8 +1302,11 @@ select {
   font-size: 11px;
 }
 .send:not(:disabled) {
-  background: var(--c-accent);
+  background: var(--c-primary-bg);
   color: var(--c-on-accent);
+}
+.send:not(:disabled):hover {
+  background: var(--c-accent-strong);
 }
 .event-list,
 .pending-list {
@@ -1315,7 +1358,7 @@ select {
   margin: 4px 0 0;
 }
 .link-button {
-  color: var(--c-text);
+  color: var(--c-accent);
   text-decoration: underline;
   padding: 0;
   font-size: 11px;
@@ -1720,9 +1763,9 @@ dialog::backdrop {
   min-width: 0;
   margin: 10px 0;
   padding: 10px 12px;
-  border: 1px solid var(--c-line);
+  border: 1px solid var(--c-line-strong);
   border-radius: 8px;
-  background: var(--c-canvas);
+  background: var(--c-surface);
 }
 .dialog-actions {
   display: flex;
@@ -1750,7 +1793,7 @@ dialog::backdrop {
   gap: 12px;
   align-items: center;
   padding: 15px 21px;
-  border-bottom: 1px solid var(--c-line);
+  border-bottom: 1px solid var(--c-line-soft);
 }
 .search-input-row > span {
   font-size: 26px;
@@ -1804,7 +1847,7 @@ dialog::backdrop {
   border-radius: 9px;
 }
 .search-result.selected {
-  background: var(--c-selected);
+  background: var(--c-accent-soft);
 }
 .search-result-icon {
   color: var(--c-muted);
@@ -1908,7 +1951,7 @@ dialog::backdrop {
   border-radius: 8px;
 }
 .session-line.active {
-  background: var(--c-raised);
+  background: var(--c-selected);
 }
 .session-line .session {
   display: flex;
@@ -2007,7 +2050,7 @@ dialog::backdrop {
   margin-left: 10px;
 }
 .danger {
-  color: var(--c-accent);
+  color: var(--c-red);
 }
 .organization-dialog {
   width: min(560px, calc(100vw - 32px));
@@ -2071,7 +2114,7 @@ dialog::backdrop {
   gap: 3px;
   padding: 3px;
   border: 1px solid var(--c-line);
-  background: var(--c-canvas);
+  background: var(--c-raised);
   border-radius: 8px;
 }
 .appearance-control button {
@@ -2081,7 +2124,7 @@ dialog::backdrop {
   color: var(--c-muted);
 }
 .appearance-control button[aria-pressed="true"] {
-  background: var(--c-raised);
+  background: var(--c-surface);
   color: var(--c-text);
   box-shadow: var(--c-shadow-sm);
 }
@@ -2135,7 +2178,7 @@ input.setting-switch:disabled {
   margin: 0 0 18px;
   border: 1px solid var(--c-line);
   border-radius: 12px;
-  background: var(--c-surface);
+  background: var(--c-raised);
 }
 .trust-boundary h2 {
   font-size: 14px;
@@ -2450,7 +2493,7 @@ input.setting-switch:disabled {
   height: 42px;
   flex-shrink: 0;
   border-radius: 10px;
-  background: var(--c-raised);
+  background: var(--c-accent-soft);
   color: var(--c-accent);
 }
 .extension-icon svg {
@@ -2473,15 +2516,15 @@ input.setting-switch:disabled {
 }
 .extension-badge.green {
   color: var(--c-green);
-  background: color-mix(in srgb, var(--c-green) 16%, transparent);
+  background: var(--c-green-bg);
 }
 .extension-badge.amber {
   color: var(--c-amber);
-  background: color-mix(in srgb, var(--c-amber) 16%, transparent);
+  background: var(--c-amber-bg);
 }
 .extension-badge.red {
-  color: var(--c-accent);
-  background: color-mix(in srgb, var(--c-accent) 14%, transparent);
+  color: var(--c-red);
+  background: var(--c-red-bg);
 }
 .extension-description {
   margin: 0;
@@ -2520,7 +2563,7 @@ input.setting-switch:disabled {
   color: var(--c-amber);
 }
 .extension-card[data-state="connection-error"] .extension-issue {
-  color: var(--c-accent);
+  color: var(--c-red);
 }
 .extension-card footer {
   display: flex;
@@ -2564,16 +2607,16 @@ input.setting-switch:disabled {
   overflow-wrap: anywhere;
 }
 .extension-import-flash[data-outcome="rejected"] {
-  border-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-line));
-  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-raised));
+  border-color: color-mix(in srgb, var(--c-red) 35%, transparent);
+  background: var(--c-red-bg);
 }
 .extension-import-flash[data-outcome="incompatible"] {
-  border-color: color-mix(in srgb, var(--c-amber) 45%, var(--c-line));
-  background: color-mix(in srgb, var(--c-amber) 14%, var(--c-raised));
+  border-color: var(--c-amber-edge);
+  background: var(--c-amber-bg);
 }
 .extension-import-flash[data-outcome="accepted"] {
-  border-color: color-mix(in srgb, var(--c-green) 45%, var(--c-line));
-  background: color-mix(in srgb, var(--c-green) 14%, var(--c-raised));
+  border-color: var(--c-accent-edge);
+  background: var(--c-green-bg);
 }
 .extension-import-flash .icon-button {
   flex-shrink: 0;
@@ -2712,10 +2755,10 @@ input.setting-switch:disabled {
   gap: 12px;
 }
 .pending-item[data-tone="amber"] {
-  border-color: color-mix(in srgb, var(--c-amber) 45%, var(--c-line));
+  border-color: var(--c-amber-edge);
 }
 .pending-item[data-tone="green"] {
-  border-color: color-mix(in srgb, var(--c-green) 35%, var(--c-line));
+  border-color: var(--c-accent-edge);
 }
 .pending-stop-heading {
   display: flex;
@@ -2801,7 +2844,7 @@ input.setting-switch:disabled {
   font-size: 11px;
   line-height: 1.8;
   color: var(--c-text);
-  background: color-mix(in srgb, var(--c-amber) 12%, transparent);
+  background: var(--c-amber-bg);
 }
 .fact-note strong {
   display: block;
@@ -2848,6 +2891,6 @@ input.setting-switch:disabled {
   font-size: 10px;
   font-weight: 400;
   color: var(--c-muted);
-  background: color-mix(in srgb, var(--c-muted) 14%, transparent);
+  background: var(--c-raised);
   vertical-align: 1px;
 }
