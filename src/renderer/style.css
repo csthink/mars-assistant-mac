@@ -11,6 +11,11 @@ select {
   font: inherit;
   color: inherit;
 }
+/* Placeholders are secondary text in both appearances (the browser default grey is too faint on a dark card). */
+::placeholder {
+  color: var(--c-muted);
+  opacity: 1;
+}
 button {
   cursor: pointer;
   border: 0;

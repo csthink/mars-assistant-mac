@@ -1136,6 +1136,25 @@ test("dark surfaces: selected tabs, filter fields, pending cards, the confirmati
           ])
         ).map((m) => `${appearance} pending ${m}`),
       );
+      // Placeholders take the secondary text colour (the browser default grey is 3.65:1 on the dark card).
+      const placeholder = await f.page.evaluate(() => {
+        const field = document.querySelector(
+          ".record-query-controls input.record-query-search",
+        )!;
+        const scratch = document.createElement("span");
+        scratch.style.color = "var(--c-muted)";
+        document.body.append(scratch);
+        const muted = getComputedStyle(scratch).color;
+        scratch.remove();
+        return {
+          actual: getComputedStyle(field, "::placeholder").color,
+          muted,
+        };
+      });
+      if (placeholder.actual !== placeholder.muted)
+        failures.push(
+          `${appearance} placeholder ${placeholder.actual} instead of ${placeholder.muted}`,
+        );
       for (const selector of [
         ".record-query [role=tab][aria-selected=true]",
         ".workbench-tabs [aria-selected=true]",
