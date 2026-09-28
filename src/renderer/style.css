@@ -487,7 +487,7 @@ p {
 }
 .search-scope-note {
   margin: 0;
-  padding: 6px 18px;
+  padding: 6px 23px;
   color: var(--c-muted);
   font-size: 12px;
   border-bottom: 1px solid var(--c-line);
@@ -1229,6 +1229,16 @@ select {
   margin: 0 auto;
   padding: 12px 0 24px;
 }
+/* Each message is wrapped in its own block; making the wrapper a column lets a user bubble keep to the right
+   and an assistant bubble span the transcript, and puts a user turn's reference under its bubble. */
+.transcript > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.transcript > div > .turn-reference {
+  align-self: flex-end;
+}
 .bubble {
   border-radius: 12px;
   padding: 12px 16px;
@@ -1940,6 +1950,9 @@ dialog::backdrop {
   }
   .search-group-title {
     padding: 12px 15px 6px;
+  }
+  .search-scope-note {
+    padding: 6px 15px;
   }
   .search-group-title > span:last-child {
     display: none;

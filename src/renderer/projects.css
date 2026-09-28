@@ -402,6 +402,7 @@
   background: var(--c-surface);
   color: var(--c-text);
   font-size: 15px;
+  font-weight: 400;
 }
 .project-form-dialog textarea {
   resize: vertical;

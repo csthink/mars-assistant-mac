@@ -1446,3 +1446,159 @@ test("window background: the main window and the panel take the canvas of the cu
     await closeLocal(refused);
   }
 });
+
+/** Left and right edges of the transcript's content box and of its first user and assistant bubbles. */
+async function bubbleEdges(page: Page) {
+  return page.evaluate(() => {
+    const transcript = document.querySelector(".transcript")!;
+    const style = getComputedStyle(transcript);
+    const box = transcript.getBoundingClientRect();
+    const content = {
+      left: box.left + parseFloat(style.paddingLeft),
+      right: box.right - parseFloat(style.paddingRight),
+    };
+    const edges = (selector: string) => {
+      const r = transcript.querySelector(selector)!.getBoundingClientRect();
+      return { left: r.left, right: r.right };
+    };
+    return {
+      content,
+      user: edges(".bubble.user"),
+      assistant: edges(".bubble.assistant"),
+    };
+  });
+}
+
+/** Left edge of the first glyph of an element's text, so padding differences show. */
+async function textLeft(page: Page, selector: string) {
+  return page.evaluate((selector) => {
+    const element = document.querySelector(selector)!;
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !node.textContent!.trim()) node = walker.nextNode();
+    const range = document.createRange();
+    range.setStart(node!, node!.textContent!.search(/\S/));
+    range.setEnd(node!, node!.textContent!.search(/\S/) + 1);
+    return range.getBoundingClientRect().left;
+  }, selector);
+}
+
+test("existing page defects: a user bubble sits at the right in the main window and the panel, the search scope note lines up with the group title, and project form fields use the body weight", async ({}, info) => {
+  const root = seedConversations();
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+    cwd: resolve("."),
+  });
+  const page = await app.firstWindow();
+  try {
+    await ready(page);
+    const failures: string[] = [];
+    await windowSize(app, page, 1180, 800);
+    const conversation = (await (
+      await recent(page)
+    )
+      .locator(".session")
+      .filter({ hasText: "整理读书笔记" })
+      .getAttribute("aria-label"))!;
+    await openConversation(page, conversation);
+    await expect(page.locator(".bubble.assistant").first()).toBeVisible();
+    const opened = app.waitForEvent("window");
+    await app.evaluate(({ Menu }) => {
+      Menu.getApplicationMenu()!
+        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .click();
+    });
+    const panel = await opened;
+    await panel
+      .getByRole("navigation", { name: "面板导航" })
+      .getByRole("button", { name: "聊天", exact: true })
+      .click();
+    await expect(panel.locator(".bubble.assistant").first()).toBeVisible();
+    for (const [surface, window] of [
+      ["main window", page],
+      ["panel", panel],
+    ] as const) {
+      const e = await bubbleEdges(window);
+      if (Math.abs(e.user.right - e.content.right) > 1)
+        failures.push(
+          `${surface} user bubble right ${e.user.right} while the transcript content ends at ${e.content.right}`,
+        );
+      if (e.user.left <= e.content.left + 1)
+        failures.push(
+          `${surface} user bubble starts at the transcript's left edge ${e.user.left}`,
+        );
+      if (
+        Math.abs(e.assistant.left - e.content.left) > 1 ||
+        Math.abs(e.assistant.right - e.content.right) > 1
+      )
+        failures.push(
+          `${surface} assistant bubble ${JSON.stringify(e.assistant)} does not span ${JSON.stringify(e.content)}`,
+        );
+      await window.screenshot({
+        path: info.outputPath(`bubbles-${surface.replace(" ", "-")}.png`),
+      });
+    }
+    for (const [surface, window, open] of [
+      [
+        "main window",
+        page,
+        () => page.getByRole("button", { name: "全局搜索" }).click(),
+      ],
+      [
+        "panel",
+        panel,
+        () =>
+          panel.getByRole("button", { name: "搜索对话", exact: true }).click(),
+      ],
+    ] as const) {
+      await open();
+      await expect(window.locator(".search-dialog")).toBeVisible();
+      await window.locator(".search-input-row input").fill("读书");
+      await expect(window.locator(".search-scope-note")).toBeVisible();
+      const note = await textLeft(window, ".search-scope-note");
+      const title = await textLeft(window, ".search-group-title");
+      if (Math.abs(note - title) > 0.5)
+        failures.push(
+          `${surface} search scope note text starts at ${note}, the group title at ${title}`,
+        );
+      await window.screenshot({
+        path: info.outputPath(`search-${surface.replace(" ", "-")}.png`),
+      });
+      await window.keyboard.press("Escape");
+      await expect(window.locator(".search-dialog")).toBeHidden();
+    }
+    await page
+      .getByRole("navigation", { name: "主要页面" })
+      .getByRole("button", { name: "工作台", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "新建项目", exact: true })
+      .first()
+      .click();
+    const dialog = page.locator(".project-form-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.locator("input").first().fill("读书笔记整理");
+    await dialog.locator("textarea").first().fill("每周整理一次读书笔记");
+    const weights = await page.evaluate(() => {
+      const dialog = document.querySelector(".project-form-dialog")!;
+      const weight = (e: Element) => getComputedStyle(e).fontWeight;
+      return {
+        input: weight(dialog.querySelector("input")!),
+        textarea: weight(dialog.querySelector("textarea")!),
+        label: weight(dialog.querySelector("label")!),
+      };
+    });
+    if (weights.input !== "400" || weights.textarea !== "400")
+      failures.push(
+        `project form fields use weight ${weights.input} and ${weights.textarea} instead of 400`,
+      );
+    if (weights.label !== "600")
+      failures.push(
+        `project form label weight ${weights.label} instead of 600`,
+      );
+    await page.screenshot({ path: info.outputPath("project-form.png") });
+    expect(failures).toEqual([]);
+  } finally {
+    await closeLocal(app);
+  }
+});
