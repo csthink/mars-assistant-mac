@@ -341,6 +341,61 @@ test("appearance: light dark and automatic synchronize across windows and preser
   }
 });
 
+test("appearance: a new data root starts light, and a choice the business service does not confirm keeps the saved appearance with its reason until reconnecting", async ({}, info) => {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const root = mkdtempSync(resolve(".test-data/disposable/appearance-fresh-"));
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+    cwd: resolve("."),
+  });
+  let paused: number | undefined;
+  try {
+    const page = await app.firstWindow();
+    await expect(
+      page
+        .locator(".home-header")
+        .getByRole("button", { name: "新建对话", exact: true }),
+    ).toBeEnabled();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await goTo(page, "设置");
+    const light = page.getByRole("button", { name: "浅色", exact: true });
+    const dark = page.getByRole("button", { name: "深色", exact: true });
+    await expect(light).toHaveAttribute("aria-pressed", "true");
+    const service = await app.evaluate(
+      ({ app }) =>
+        app
+          .getAppMetrics()
+          .find((metric) => metric.name === "csthink-assistant business")!.pid,
+    );
+    await app.evaluate((_electron, id) => process.kill(id, "SIGSTOP"), service);
+    paused = service;
+    await dark.click();
+    await expect(
+      page.locator(".settings-content").getByRole("alert"),
+    ).toContainText("保存确认超时");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(light).toHaveAttribute("aria-pressed", "true");
+    await expect(dark).toHaveAttribute("aria-pressed", "false");
+    await page.screenshot({
+      path: info.outputPath("appearance-unconfirmed.png"),
+    });
+    await app.evaluate((_electron, id) => process.kill(id, "SIGCONT"), service);
+    paused = undefined;
+    await page.getByRole("button", { name: "重新连接", exact: true }).click();
+    await expect(dark).toBeEnabled();
+    await dark.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(dark).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    if (paused !== undefined)
+      await app.evaluate(
+        (_electron, id) => process.kill(id, "SIGCONT"),
+        paused,
+      );
+    await app.close();
+  }
+});
+
 test("organization: header title edits synchronize across surfaces and keep identity, cancellation and restart", async ({}, info) => {
   const { root, ids } = seed();
   let app = await launchLocal({

@@ -2,7 +2,7 @@
   display: flex;
   gap: 6px;
   margin-bottom: 20px;
-  border-bottom: 1px solid var(--home-edge);
+  border-bottom: 1px solid var(--c-line);
   padding-bottom: 12px;
 }
 .workbench-tabs button {
@@ -10,16 +10,16 @@
   border-radius: 10px;
   padding: 9px 20px;
   background: transparent;
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-size: 15px;
 }
 .workbench-tabs button[aria-selected="true"] {
-  color: var(--home-blue);
-  background: var(--home-hover);
+  color: var(--c-accent);
+  background: var(--c-hover);
   font-weight: 600;
 }
 .projects-workspace {
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 .projects-workspace svg,
 .project-form-dialog svg,
@@ -36,7 +36,7 @@
   flex-wrap: wrap;
 }
 .project-total {
-  color: var(--home-muted);
+  color: var(--c-muted);
   white-space: nowrap;
 }
 .project-controls {
@@ -49,9 +49,9 @@
 .project-controls select {
   width: auto;
   max-width: 160px;
-  border: 1px solid var(--home-edge);
-  background: var(--home-glass);
-  color: var(--home-ink);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+  color: var(--c-text);
   padding: 9px 12px;
   border-radius: 10px;
 }
@@ -65,24 +65,24 @@
   left: 0;
   width: 300px;
   padding: 12px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 12px 35px #19345620;
+  background: var(--c-surface);
+  box-shadow: var(--c-shadow);
 }
 .project-search-popover input {
   width: 100%;
 }
 .button.project-primary {
-  background: var(--home-blue);
-  color: var(--project-primary-text, #fff);
-  border-color: var(--home-blue);
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+  border-color: var(--c-accent);
 }
 .project-table-wrap {
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 15px;
   padding: 0 7px;
-  background: var(--home-glass);
+  background: var(--c-surface);
 }
 .project-table {
   width: 100%;
@@ -94,7 +94,7 @@
   text-align: left;
   font-weight: 400;
   font-size: 13px;
-  color: var(--home-muted);
+  color: var(--c-muted);
   padding: 16px 14px 10px;
 }
 .project-table th:first-child {
@@ -107,7 +107,7 @@
 .project-table td {
   height: 84px;
   padding: 0 14px;
-  border-top: 1px solid var(--home-edge);
+  border-top: 1px solid var(--c-line);
   font-size: 14px;
   cursor: pointer;
 }
@@ -119,7 +119,7 @@
 }
 .project-table tbody tr:hover td,
 .project-table tr:focus-within td {
-  background: var(--home-hover);
+  background: var(--c-hover);
 }
 .project-table td:first-child {
   border-radius: 12px 0 0 12px;
@@ -137,7 +137,7 @@
   border: 0;
   background: transparent;
   text-align: left;
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 .project-open > span:last-child {
   min-width: 0;
@@ -149,7 +149,7 @@
 .project-open small,
 .project-same-name {
   display: block;
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -163,15 +163,15 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  background: var(--home-hover);
-  border: 1px solid var(--home-edge);
+  background: var(--c-hover);
+  border: 1px solid var(--c-line);
   border-radius: 14px;
-  color: var(--home-blue);
+  color: var(--c-accent);
 }
 .project-more {
   border: 0;
   background: transparent;
-  color: var(--home-ink);
+  color: var(--c-text);
   font-size: 27px;
   width: 34px;
   height: 34px;
@@ -179,7 +179,7 @@
   line-height: 1;
 }
 .project-more:hover {
-  background: var(--home-edge);
+  background: var(--c-line);
 }
 .project-empty {
   padding: 54px 18px 70px;
@@ -193,7 +193,7 @@
   margin: 18px 0 6px;
 }
 .project-empty p {
-  color: var(--home-muted);
+  color: var(--c-muted);
   margin: 0 0 24px;
 }
 .project-empty-icon {
@@ -201,10 +201,10 @@
   place-items: center;
   width: 70px;
   height: 70px;
-  border: 1px solid var(--home-edge);
-  background: var(--home-glass);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
   border-radius: 22px;
-  color: var(--home-blue);
+  color: var(--c-accent);
 }
 .project-empty-icon svg {
   width: 32px;
@@ -215,11 +215,11 @@
   z-index: 1000;
   width: 190px;
   padding: 6px;
-  border: 1px solid var(--home-edge);
-  background: var(--surface);
-  color: var(--home-ink);
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+  color: var(--c-text);
   border-radius: 12px;
-  box-shadow: 0 14px 40px #19345626;
+  box-shadow: var(--c-shadow);
 }
 .project-menu button {
   display: flex;
@@ -236,8 +236,8 @@
 }
 .project-menu button:hover,
 .project-menu button:focus-visible {
-  background: var(--home-hover);
-  color: var(--home-blue);
+  background: var(--c-hover);
+  color: var(--c-accent);
 }
 .project-detail-heading {
   display: flex;
@@ -257,25 +257,25 @@
   font-size: 25px;
 }
 .project-tag {
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
   white-space: nowrap;
 }
 .project-goal-full {
-  color: var(--home-muted);
+  color: var(--c-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.7;
   margin: 24px 0;
 }
 .project-detail-card {
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 15px;
   padding: 20px 24px;
-  background: var(--home-glass);
+  background: var(--c-surface);
 }
 .project-detail-card h3 {
   font-size: 15px;
@@ -286,7 +286,7 @@
   margin: 0 0 5px;
 }
 .project-folder-details > span {
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-size: 13px;
 }
 .project-remote {
@@ -301,18 +301,18 @@
 .project-remote code {
   font-size: 12px;
   overflow-wrap: anywhere;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .project-form-dialog {
   width: 720px;
   max-width: calc(100vw - 40px);
   max-height: calc(100dvh - 40px);
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 21px;
   padding: 26px 32px 22px;
-  background: var(--surface);
-  color: var(--home-ink);
-  box-shadow: 0 24px 90px #1934562e;
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: var(--c-shadow);
   overflow: hidden;
 }
 .project-form-dialog[open] {
@@ -325,7 +325,7 @@
   flex-shrink: 0;
 }
 .project-form-dialog::backdrop {
-  background: #22334c43;
+  background: var(--c-scrim);
   backdrop-filter: blur(3px);
 }
 .project-form-head {
@@ -340,7 +340,7 @@
   font-weight: 650;
 }
 .project-form-subtitle {
-  color: var(--home-muted);
+  color: var(--c-muted);
   margin: 7px 0 24px;
 }
 .project-form-dialog form {
@@ -358,7 +358,7 @@
 .project-form-dialog label > span,
 .project-field-title > span {
   font-weight: 400;
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-size: 13px;
   margin-left: 10px;
 }
@@ -366,12 +366,12 @@
 .project-form-dialog textarea {
   display: block;
   width: 100%;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
   padding: 12px 14px;
   margin-top: 9px;
-  background: var(--home-glass);
-  color: var(--home-ink);
+  background: var(--c-surface);
+  color: var(--c-text);
   font-size: 15px;
 }
 .project-form-dialog textarea {
@@ -384,7 +384,7 @@
   align-items: flex-start;
   gap: 14px;
   padding: 16px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
   margin-top: 10px;
 }
@@ -394,7 +394,7 @@
 }
 .project-folder-choice p {
   font-size: 13px;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .project-folder-choice > .button {
   flex-shrink: 0;
@@ -402,7 +402,7 @@
 .project-form-hint {
   font-size: 13px;
   line-height: 1.6;
-  color: var(--home-muted);
+  color: var(--c-muted);
   margin: 0;
 }
 .project-form-actions {
@@ -411,14 +411,14 @@
   gap: 12px;
   margin-top: 24px;
   padding-top: 18px;
-  border-top: 1px solid var(--home-edge);
+  border-top: 1px solid var(--c-line);
 }
 .project-error {
-  background: var(--home-glass);
-  border: 1px solid #ba5656;
+  background: var(--c-surface);
+  border: 1px solid var(--c-red);
   border-radius: 10px;
   padding: 10px 14px;
-  color: var(--home-ink);
+  color: var(--c-text);
   margin-bottom: 12px;
   font-size: 14px;
 }
@@ -427,15 +427,15 @@
   align-items: center;
   gap: 18px;
   padding: 12px 16px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
-  background: var(--home-hover);
+  background: var(--c-hover);
   margin-bottom: 16px;
 }
 .project-notice button {
   border: 0;
   background: transparent;
-  color: var(--home-blue);
+  color: var(--c-accent);
   text-decoration: underline;
 }
 .project-pagination {
@@ -444,7 +444,7 @@
   justify-content: flex-end;
   gap: 15px;
   padding: 18px 0;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 @media (max-width: 1000px) {
   .project-controls {
@@ -473,13 +473,9 @@
   }
 }
 
-:root:not([data-theme="light"]) {
-  --project-primary-text: #082747;
-}
-
 .project-form-dialog input:focus-visible,
 .project-form-dialog textarea:focus-visible {
-  outline: 2px solid var(--home-blue);
+  outline: 2px solid var(--c-accent);
   outline-offset: 1px;
 }
 
@@ -515,7 +511,7 @@
   display: grid;
   gap: 7px;
   font-size: 13px;
-  color: var(--home-muted);
+  color: var(--c-muted);
   margin-bottom: 14px;
 }
 .project-work-grid select,
@@ -525,14 +521,14 @@
   min-width: 0;
   max-width: 100%;
   padding: 9px 11px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 9px;
-  background: var(--surface);
-  color: var(--home-ink);
+  background: var(--c-surface);
+  color: var(--c-text);
   font: inherit;
 }
 .project-work-grid :is(select, input, textarea, button):focus-visible {
-  outline: 2px solid var(--home-blue);
+  outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }
 .project-work-grid textarea {
@@ -553,32 +549,32 @@
 }
 .project-runtime-warning {
   padding: 12px 14px;
-  background: var(--home-hover);
-  border: 1px solid var(--home-edge);
+  background: var(--c-hover);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
   font-size: 13px;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
-/* The registered resource handle of the project folder (feature-t31 S-06, OD-412). */
+/* The registered resource handle of the project folder. */
 .project-runtime-facts .runtime-fact {
   font-size: 12px;
   line-height: 1.6;
-  color: var(--home-muted);
-  background: var(--home-hover);
-  border: 1px solid var(--home-edge);
+  color: var(--c-muted);
+  background: var(--c-hover);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
   padding: 10px 14px;
 }
 .project-runtime-facts .runtime-fact code {
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 .project-runtime-facts .runtime-fact-hint {
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .project-source {
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
   overflow-wrap: anywhere;
   line-height: 1.6;
 }
@@ -589,7 +585,7 @@
 }
 .project-role {
   min-width: 0;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
   padding: 14px;
 }
@@ -601,7 +597,7 @@
 .project-role legend span {
   display: block;
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-weight: 400;
 }
 .project-role .button {
@@ -614,12 +610,12 @@
   margin: 16px 0;
 }
 .project-object-tabs [aria-pressed="true"] {
-  color: var(--home-blue);
-  border-color: var(--home-blue);
+  color: var(--c-accent);
+  border-color: var(--c-accent);
 }
 .project-domain-content {
   padding-top: 15px;
-  border-top: 1px solid var(--home-edge);
+  border-top: 1px solid var(--c-line);
 }
 .project-task-list {
   list-style: none;
@@ -631,20 +627,20 @@
   justify-content: space-between;
   gap: 16px;
   padding: 14px 0;
-  border-bottom: 1px solid var(--home-edge);
+  border-bottom: 1px solid var(--c-line);
   font-size: 14px;
   /* A row title keeps its words whole; only the detail (paths, digests) may break anywhere. */
   overflow-wrap: break-word;
 }
 .project-task-list li span {
   min-width: 0;
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-size: 12px;
   overflow-wrap: anywhere;
   text-align: right;
 }
 .project-empty-small {
-  color: var(--home-muted);
+  color: var(--c-muted);
   line-height: 1.8;
   padding: 18px 0;
   font-size: 14px;
@@ -669,13 +665,13 @@
   margin-top: 10px;
 }
 .project-chat-send span {
-  color: var(--home-muted);
+  color: var(--c-muted);
   font-size: 12px;
 }
 .project-text-button {
   border: 0;
   background: transparent;
-  color: var(--home-blue);
+  color: var(--c-accent);
   cursor: pointer;
   padding: 4px;
 }
@@ -690,23 +686,20 @@
 
 .project-work-grid .button:disabled {
   opacity: 1;
-  color: var(--home-muted);
-  background: var(--home-hover);
-  border-color: var(--home-edge);
+  color: var(--c-muted);
+  background: var(--c-hover);
+  border-color: var(--c-line);
   cursor: not-allowed;
 }
-/* KB-314: in the dark appearance the base .button fill (--palette-1a1c24, near black) stood out on the blue
-   workbench cards. The project workspace and the 待处理 and 运行记录 pages take the accepted prototype's
-   secondary workbench button instead (pending.css .pending-dialog .btn, projects.css dark .dialog-footer .btn):
-   no fill, the workbench edge and ink, the hover tint on hover; a closed one keeps the tint and the muted text
-   of the rule above. Primary, danger and selected-tab buttons keep their own colours; the light appearance
-   keeps its fill. */
+/* In the dark appearance the project workspace and the 待处理 and 运行记录 pages draw secondary buttons without
+   a fill: the line colour and the text colour, the hover tint on hover; a closed one keeps the tint and the muted
+   text of the rule above. Primary, danger and selected-tab buttons keep their own colours. */
 :root:not([data-theme="light"])
   :is(.projects-workspace, .record-page)
   .button:not(.primary, .project-primary, .danger, [aria-selected="true"]) {
   background: transparent;
-  border-color: var(--home-edge);
-  color: var(--home-ink);
+  border-color: var(--c-line);
+  color: var(--c-text);
 }
 :root:not([data-theme="light"])
   :is(.projects-workspace, .record-page)
@@ -716,14 +709,14 @@
     .danger,
     [aria-selected="true"]
   ):hover:not(:disabled) {
-  background: var(--home-hover);
+  background: var(--c-hover);
 }
 :root:not([data-theme="light"])
   :is(.projects-workspace, .record-page)
   .button:not(.primary, .project-primary, .danger):disabled {
   opacity: 1;
-  color: var(--home-muted);
-  background: var(--home-hover);
+  color: var(--c-muted);
+  background: var(--c-hover);
 }
 .project-chat-pane > .button {
   margin-bottom: 10px;
@@ -734,12 +727,12 @@
   gap: 6px;
   margin-bottom: 12px;
   padding: 12px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
   overflow-wrap: anywhere;
 }
 .project-chat-summary small {
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .project-chat-summary .button {
   justify-self: start;
@@ -750,13 +743,13 @@
   max-height: calc(100vh - 48px);
   overflow: auto;
   padding: 24px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 16px;
-  color: var(--home-ink);
-  background: var(--surface);
+  color: var(--c-text);
+  background: var(--c-surface);
 }
 .project-action-dialog::backdrop {
-  background: rgb(0 0 0 / 30%);
+  background: var(--c-scrim);
 }
 .project-action-dialog fieldset {
   border: 0;
@@ -777,20 +770,20 @@
 .project-action-field textarea {
   width: 100%;
   box-sizing: border-box;
-  color: var(--home-ink);
-  background: var(--home-glass);
-  border: 1px solid var(--home-edge);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
   border-radius: 8px;
   padding: 9px;
   font: inherit;
 }
-/* Nested payload structure (feature-t31 S-06, OD-423): a group per object, list or map; entries on a quiet tint. */
+/* Nested payload structure: a group per object, list or map; entries on a quiet tint. */
 .project-action-dialog .project-action-group {
   display: grid;
   gap: 12px;
   margin: 0;
   padding: 10px 14px 14px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
   min-width: 0;
 }
@@ -798,14 +791,14 @@
   padding: 0 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 .project-action-entry {
   display: grid;
   gap: 10px;
   padding: 10px 12px 12px;
   border-radius: 8px;
-  background: var(--home-hover);
+  background: var(--c-hover);
   min-width: 0;
 }
 .project-action-entry-heading {
@@ -814,7 +807,7 @@
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .project-action-entry-tools {
   display: flex;
@@ -824,7 +817,7 @@
   font-size: 12px;
 }
 .project-text-button:disabled {
-  color: var(--home-muted);
+  color: var(--c-muted);
   cursor: default;
   opacity: 0.55;
 }
@@ -867,7 +860,7 @@
 .project-action-dialog > label.project-checkbox {
   margin: 14px 0 4px;
 }
-/* KB-320: the form's problem (a required field left empty) keeps the same distance from the confirmation box
+/* The form's problem (a required field left empty) keeps the same distance from the confirmation box
    above it and from the submit hint below it. */
 .project-action-dialog > .project-form-problem {
   margin: 12px 0;
@@ -877,7 +870,7 @@
   margin-top: 12px;
 }
 .project-actions {
-  border-top: 1px solid var(--home-edge);
+  border-top: 1px solid var(--c-line);
   margin-top: 20px;
   padding-top: 16px;
 }
@@ -886,7 +879,7 @@
   flex-wrap: wrap;
   gap: 10px;
 }
-/* KB-315: the object's actions as aligned rows (buttons in one column of equal widths, a closed action's
+/* The object's actions as aligned rows (buttons in one column of equal widths, a closed action's
    reason on the same row beside it) instead of wrapped blocks of different widths. */
 .project-action-list {
   display: grid;
@@ -907,7 +900,7 @@
   grid-column: 2;
   overflow-wrap: anywhere;
 }
-/* KB-308: after a success, until the projection catches up; the same surface as the runtime warning. */
+/* After a success, until the projection catches up; the same surface as the runtime warning. */
 .project-awaiting {
   display: flex;
   flex-wrap: wrap;
@@ -915,8 +908,8 @@
   gap: 8px 12px;
   margin-block: 0 12px;
   padding: 10px 14px;
-  background: var(--home-hover);
-  border: 1px solid var(--home-edge);
+  background: var(--c-hover);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
 }
 .project-awaiting p {
@@ -924,12 +917,12 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
-  color: var(--home-ink);
+  color: var(--c-text);
   overflow-wrap: anywhere;
 }
 .project-awaiting strong {
   margin-right: 8px;
-  color: var(--home-blue);
+  color: var(--c-accent);
 }
 .project-awaiting .project-error {
   flex-basis: 100%;
@@ -944,12 +937,12 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   padding: 12px;
   border-radius: 8px;
 }
 .project-operation {
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   padding: 12px;
   border-radius: 10px;
   margin-top: 12px;
@@ -971,9 +964,9 @@
   display: block;
   width: 100%;
   height: 380px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
-  background: var(--home-glass);
+  background: var(--c-surface);
   touch-action: none;
   cursor: grab;
 }
@@ -981,11 +974,11 @@
   cursor: grabbing;
 }
 .project-graph-canvas marker path {
-  fill: var(--home-muted);
+  fill: var(--c-muted);
 }
 .project-graph-edge path {
   fill: none;
-  stroke: var(--home-muted);
+  stroke: var(--c-muted);
   stroke-width: 1.5px;
 }
 /* Titles, states and edge labels are text, not icon strokes (the global svg rule strokes its contents). */
@@ -993,7 +986,7 @@
   stroke: none;
 }
 .project-graph-edge text {
-  fill: var(--home-muted);
+  fill: var(--c-muted);
   font-size: 10px;
 }
 .project-graph-node {
@@ -1001,27 +994,27 @@
   outline: none;
 }
 .project-graph-node rect {
-  fill: var(--surface);
-  stroke: var(--home-edge);
+  fill: var(--c-surface);
+  stroke: var(--c-line);
   stroke-width: 1.5px;
 }
 .project-graph-node text {
-  fill: var(--home-ink);
+  fill: var(--c-text);
   font-size: 14px;
 }
 .project-graph-node .project-node-state {
-  fill: var(--home-muted);
+  fill: var(--c-muted);
   font-size: 12px;
 }
 .project-graph-node[aria-pressed="true"] rect,
 .project-graph-node:focus-visible rect {
-  stroke: var(--home-blue);
+  stroke: var(--c-accent);
   stroke-width: 3px;
 }
 .project-node-detail {
   margin: 14px 0;
   padding: 12px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 10px;
 }
 .project-node-detail h4 {
@@ -1035,13 +1028,13 @@
 }
 .project-trace li {
   padding: 12px 0 12px 16px;
-  border-left: 2px solid var(--home-edge);
+  border-left: 2px solid var(--c-line);
   overflow-wrap: anywhere;
 }
 .project-trace time,
 .project-trace small {
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .project-trace p {
   white-space: pre-wrap;
@@ -1058,13 +1051,13 @@
   overflow-wrap: anywhere;
   padding: 16px;
   margin: 12px 0;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
   font:
     13px/1.65 ui-monospace,
     monospace;
-  background: var(--home-glass);
-  color: var(--home-ink);
+  background: var(--c-surface);
+  color: var(--c-text);
 }
 .project-evidence-reader details {
   font-size: 12px;
@@ -1103,10 +1096,10 @@
   max-height: calc(100vh - 140px);
   overflow: auto;
   padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--home-edge);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
   border-radius: 16px;
-  box-shadow: 0 12px 44px rgb(0 0 0 / 15%);
+  box-shadow: var(--c-shadow);
 }
 .project-chat-slot[data-mode="collapsed"] {
   position: fixed;
@@ -1126,7 +1119,7 @@
   margin: 0;
   padding: 18px;
   overflow: hidden;
-  background: var(--surface);
+  background: var(--c-surface);
   box-sizing: border-box;
   align-items: stretch;
 }
@@ -1201,7 +1194,7 @@
 }
 .project-chat-settings > summary {
   padding: 8px 0;
-  color: var(--home-muted);
+  color: var(--c-muted);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -1222,13 +1215,13 @@
 }
 .project-pending-item {
   padding: 18px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 14px;
-  background: var(--surface);
+  background: var(--c-surface);
   overflow-wrap: anywhere;
 }
 .project-pending-item[data-status="processed"] {
-  border-left: 3px solid var(--home-blue);
+  border-left: 3px solid var(--c-accent);
 }
 .project-pending-source summary,
 .project-pending-history summary,
@@ -1241,7 +1234,7 @@
   max-height: 360px;
   overflow: auto;
   overflow-wrap: anywhere;
-  background: var(--home-glass);
+  background: var(--c-surface);
   padding: 14px;
   border-radius: 10px;
 }
@@ -1258,7 +1251,7 @@
 }
 .project-domain-runs li {
   padding-block: 10px;
-  border-bottom: 1px solid var(--home-edge);
+  border-bottom: 1px solid var(--c-line);
   overflow-wrap: anywhere;
 }
 
@@ -1272,9 +1265,9 @@
 .record-query-controls label {
   display: grid;
   gap: 6px;
-  color: var(--muted);
+  color: var(--c-muted);
 }
-/* KB-309: one control height, text size and top edge, so every label sits on the same line
+/* One control height, text size and top edge, so every label sits on the same line
    (the global select rule is the menu bar panel's 11px compact size). The checkbox row and the
    reset button take the same 40px band: the box centred on the controls, the button's edges on theirs. */
 .record-query-controls input:not([type="checkbox"]),
@@ -1283,13 +1276,13 @@
   padding: 0 12px;
   font-size: inherit;
   border-radius: 10px;
-  border: 1px solid var(--home-edge);
-  color: var(--text);
-  background: var(--surface);
+  border: 1px solid var(--c-line);
+  color: var(--c-text);
+  background: var(--c-surface);
   max-width: 260px;
 }
-/* KB-318: the search field grows to show its whole placeholder (运行记录's names objects, events and
-   identifiers) where the row has room; in a narrow window it keeps the filter bar on one line (KB-309) and
+/* The search field grows to show its whole placeholder (运行记录's names objects, events and
+   identifiers) where the row has room; in a narrow window it keeps the filter bar on one line and
    the placeholder ends in an ellipsis instead of a cut glyph. */
 .record-query-controls > label:has(> .record-query-search) {
   flex: 1 1 200px;
@@ -1329,7 +1322,7 @@
 .project-task-group {
   flex-basis: 100%;
   margin: 4px 0;
-  color: var(--muted);
+  color: var(--c-muted);
 }
 
 .record-query .tabs {
@@ -1337,25 +1330,25 @@
   gap: 8px;
 }
 .record-query [role="tab"][aria-selected="true"] {
-  color: white;
-  background: var(--home-blue);
-  border-color: var(--home-blue);
+  color: var(--c-on-accent);
+  background: var(--c-accent);
+  border-color: var(--c-accent);
 }
 .project-domain-runs > ol {
   list-style: none;
   padding-left: 0;
 }
 
-/* 仓库治理接入 (feature-t31 S-06, OD-416): no accepted prototype screen; it follows the project detail cards and the
+/* 仓库治理接入: no accepted prototype screen; it follows the project detail cards and the
    访问权限 confirmation dialog. Steps read top to bottom; the current step carries the only primary emphasis. */
 .project-access .project-section-heading {
   margin-bottom: 8px;
 }
 .access-summary {
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
   padding: 3px 9px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -1368,7 +1361,7 @@
   line-height: 1.6;
 }
 .access-facts dt {
-  color: var(--home-muted);
+  color: var(--c-muted);
   white-space: nowrap;
 }
 .access-facts dd {
@@ -1376,26 +1369,26 @@
   gap: 4px;
   margin: 0;
   min-width: 0;
-  color: var(--home-ink);
+  color: var(--c-text);
   overflow-wrap: anywhere;
 }
 .access-facts dd > span {
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .access-facts code {
   word-break: break-all;
 }
 .access-facts select {
   max-width: 100%;
-  color: var(--home-ink);
-  background: var(--home-glass);
-  border: 1px solid var(--home-edge);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
   border-radius: 8px;
   padding: 6px 8px;
   font: inherit;
 }
 .access-issue {
-  color: var(--amber) !important;
+  color: var(--c-amber) !important;
 }
 .access-steps {
   display: grid;
@@ -1409,18 +1402,18 @@
   gap: 8px;
   min-width: 0;
   padding: 12px 14px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .access-step.current {
-  border-color: var(--home-blue);
-  color: var(--home-ink);
+  border-color: var(--c-accent);
+  color: var(--c-text);
 }
 .access-step-state {
   margin-left: auto;
   font-size: 12px;
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .access-step-heading .access-step-state + .button {
   margin-left: 0;
@@ -1449,12 +1442,12 @@
 }
 .access-step-heading strong {
   font-size: 14px;
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 .access-step.current .access-step-heading .button {
-  background: var(--home-blue);
-  border-color: var(--home-blue);
-  color: var(--project-primary-text, #fff);
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-on-accent);
 }
 .access-step .project-form-hint {
   font-size: 13px;
@@ -1488,7 +1481,7 @@
   line-height: 1.6;
 }
 .access-review-list dt {
-  color: var(--home-muted);
+  color: var(--c-muted);
   white-space: nowrap;
 }
 .access-review-list dd {
@@ -1498,11 +1491,11 @@
   min-width: 0;
 }
 .access-review-list dd > span {
-  color: var(--home-muted);
+  color: var(--c-muted);
 }
 .access-review-list code {
   word-break: break-all;
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 .access-review-names {
   margin: 0;
@@ -1513,9 +1506,9 @@
 }
 .access-review-impact {
   padding: 12px 16px;
-  border: 1px solid var(--home-edge);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
-  background: var(--home-hover);
+  background: var(--c-hover);
 }
 .access-review-impact h3 {
   font-size: 14px;
@@ -1532,7 +1525,7 @@
 }
 .access-review-impact strong {
   display: block;
-  color: var(--home-ink);
+  color: var(--c-text);
 }
 /* The decision stays reachable while the review scrolls (long lists, 900 × 680). */
 .access-review-actions {
@@ -1543,6 +1536,6 @@
   gap: 10px;
   margin: 18px -24px -24px;
   padding: 14px 24px 18px;
-  border-top: 1px solid var(--home-edge);
-  background: var(--surface);
+  border-top: 1px solid var(--c-line);
+  background: var(--c-surface);
 }
