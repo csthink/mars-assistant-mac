@@ -1,7 +1,7 @@
 .widget-shell {
-  border: 1px solid var(--palette-292b32);
+  border: 1px solid var(--c-line);
   border-radius: 12px;
-  background: var(--palette-191b22);
+  background: var(--c-surface);
   overflow: hidden;
 }
 .widget-heading {
@@ -23,7 +23,7 @@
 .widget-scope,
 .widget-save-status {
   font-size: 12px;
-  color: var(--palette-9295a3);
+  color: var(--c-muted);
   line-height: 1.6;
 }
 .widget-heading p {
@@ -33,9 +33,9 @@
   font-size: 11px;
   font-weight: 500;
   padding: 2px 7px;
-  border: 1px solid var(--palette-292b32);
+  border: 1px solid var(--c-line);
   border-radius: 4px;
-  color: var(--palette-9295a3);
+  color: var(--c-muted);
 }
 .widget-actions {
   display: flex;
@@ -49,9 +49,9 @@
 .widget-frame {
   margin: 0 16px;
   height: clamp(250px, 48vh, 410px);
-  border: 1px solid var(--palette-292b32);
+  border: 1px solid var(--c-line);
   border-radius: 8px;
-  background: var(--palette-101116);
+  background: var(--c-raised);
 }
 .widget-placeholder {
   display: flex;
@@ -62,7 +62,7 @@
   gap: 14px;
   text-align: center;
   padding: 24px;
-  color: var(--palette-9295a3);
+  color: var(--c-muted);
 }
 .widget-placeholder p {
   max-width: 30em;
@@ -75,7 +75,7 @@
   min-height: 50px;
 }
 .widget-save-status.error {
-  color: var(--palette-ff554d);
+  color: var(--c-red);
 }
 .widget-settings {
   padding: 12px 24px 24px;
@@ -92,7 +92,7 @@
 .widget-settings p {
   font-size: 12px;
   line-height: 1.6;
-  color: var(--palette-9295a3);
+  color: var(--c-muted);
   margin: 12px 0 20px;
 }
 .panel-app .widget-heading {
@@ -117,5 +117,5 @@
 .widget-settings input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: var(--palette-8cd0b6);
+  accent-color: var(--c-green);
 }

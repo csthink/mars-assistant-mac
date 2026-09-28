@@ -718,15 +718,19 @@ test("codex: search, multiple configured native models and API models remain sel
     .first()
     .click();
   const picker = page.getByRole("combobox", { name: "本次连接" });
+  // The picker stays disabled until the new conversation has loaded, so its options are checked once it is
+  // usable. Playwright judges an <option> inside the <label> that wraps its <select> by the label's control,
+  // the select itself, so each option's own disabled property is read instead of toBeDisabled/toBeEnabled.
+  await expect(picker).toBeEnabled();
   await expect(
     picker.locator("option").filter({ hasText: "API visible · api-model" }),
-  ).toBeDisabled();
+  ).toHaveJSProperty("disabled", true);
   await expect(
     page.getByRole("searchbox", { name: "搜索对话模型" }),
   ).toHaveCount(0);
   await expect(
     picker.locator(`option[value="${codex.id}::second-model"]`),
-  ).toBeEnabled();
+  ).toHaveJSProperty("disabled", false);
   await picker.selectOption(`${codex.id}::second-model`);
   await picker.selectOption(`${codex.id}::synthetic-model`);
   await expect(page.getByTestId("turn-state")).toHaveText(

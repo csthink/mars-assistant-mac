@@ -186,7 +186,9 @@ function PendingRow({
     >
       <div className="project-section-heading">
         <strong>{item.title}</strong>
-        <span className="project-tag">
+        <span
+          className={`project-tag ${item.status === "processed" ? "green" : awaiting ? "running" : "amber"}`}
+        >
           {item.status === "processed"
             ? "已处理"
             : awaiting

@@ -204,6 +204,17 @@ test("capabilities: pending authorization sends no text before approval, only ch
     exact: true,
   });
   await expect(toggle).toHaveAttribute("aria-checked", "true");
+  // A switch's checked value is a setting rather than a selection, so it keeps the hover tint of a button.
+  const hoverTint = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.background = "var(--c-hover)";
+    document.body.append(probe);
+    const value = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return value;
+  });
+  await toggle.hover();
+  await expect(toggle).toHaveCSS("background-color", hoverTint);
   await toggle.click();
   const revoke = page.getByRole("dialog", { name: "撤销资料读取授权" });
   await revoke.getByRole("button", { name: "取消", exact: true }).click();

@@ -1,0 +1,91 @@
+/*
+ * Colour and type tokens: the only place a colour value is written. Page styles refer to these
+ * semantic names only. Light is the default (a new installation starts light); dark is set by
+ * data-theme on the root element (src/renderer/appearance.tsx). Values follow the accepted
+ * four-column prototype, with four contrast adjustments so text stays at or above 4.5:1
+ * (tests/desktop/visual-tokens.ts lists them).
+ */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --c-canvas: #f8f7f4; /* page background */
+  --c-surface: #ffffff; /* cards, header area, menus, dialogs, input areas */
+  --c-raised: #f3f2ee; /* tint inside a card: code, tags, output rows */
+  --c-line: #e3e2dc; /* neutral borders */
+  --c-line-soft: #eeede8; /* dividers inside a card */
+  --c-line-strong: #d6d5ce; /* secondary buttons and field borders */
+  --c-hover: #1c1d1a0a;
+  --c-selected: #e4efe8; /* selected rows and blocks */
+  --c-text: #1c1d1b;
+  --c-muted: #686c67; /* secondary text */
+  --c-accent: #1e6b4e; /* selection text, links, focus ring, running outline */
+  --c-accent-strong: #175a41; /* primary button hover */
+  --c-accent-soft: #e4efe8; /* selection block, running icon tint, focus halo, user message */
+  --c-accent-edge: #b8d4c4; /* edge of a selected tab and of a user message */
+  --c-on-accent: #ffffff;
+  --c-primary-bg: #1e6b4e;
+  --c-primary-border: #1e6b4e;
+  --c-secondary-bg: #ffffff;
+  --c-green: #2b7854; /* success, completed */
+  --c-green-bg: #e4f0e9;
+  --c-amber: #8f5d0c; /* conditions, pending decisions, warnings */
+  --c-amber-bg: #f6ecd7;
+  --c-amber-edge: #dcb872;
+  --c-amber-badge: #efc16a; /* pending count badge */
+  --c-on-amber: #2f2104;
+  --c-red: #b83a2a; /* danger, failure */
+  --c-red-bg: #f7e2dd;
+  --c-on-danger: #ffffff;
+  --c-scrim: #1c1d1b33;
+  --c-shadow: 0 18px 60px #1c1d1b1f;
+  --c-shadow-sm: 0 6px 24px #1c1d1b14;
+  --c-shadow-card: 0 1px 2px #1c1d1b0d, 0 2px 10px #1c1d1b08;
+}
+
+/* Dark: the same hues; green and amber are lighter to keep their contrast. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-canvas: #111311;
+  --c-surface: #1b1e1b;
+  --c-raised: #232723;
+  --c-line: #2e322e;
+  --c-line-soft: #262926;
+  --c-line-strong: #3a3f3a;
+  --c-hover: #ffffff0d;
+  --c-selected: #1f3a2d;
+  --c-text: #e7e9e5;
+  --c-muted: #9aa099;
+  --c-accent: #62c095;
+  --c-accent-strong: #31855e;
+  --c-accent-soft: #1f3a2d;
+  --c-accent-edge: #2f5f47;
+  --c-on-accent: #ffffff;
+  --c-primary-bg: #2a7d58;
+  --c-primary-border: #2a7d58;
+  --c-secondary-bg: #1b1e1b;
+  --c-green: #6cc79a;
+  --c-green-bg: #1b3326;
+  --c-amber: #e2b45c;
+  --c-amber-bg: #3a2e17;
+  --c-amber-edge: #7b5d22;
+  --c-amber-badge: #e2b45c;
+  --c-on-amber: #1f1604;
+  --c-red: #f0806f;
+  --c-red-bg: #3e221d;
+  --c-on-danger: #111311;
+  --c-scrim: #000000a6;
+  --c-shadow: 0 18px 60px #0009;
+  --c-shadow-sm: 0 6px 24px #0006;
+  --c-shadow-card: 0 1px 2px #0006;
+}
+
+:root {
+  font:
+    14px/1.6 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+  color: var(--c-text);
+  background: var(--c-canvas);
+}

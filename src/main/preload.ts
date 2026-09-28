@@ -12,6 +12,17 @@ function listen<T>(channel: string, callback: (value: T) => void) {
   return () => ipcRenderer.removeListener(channel, listener);
 }
 const widgetEnabled = process.argv.includes("--widget-acceptance");
+// The saved appearance the main process knew when it created this window (its cache or the current
+// snapshot); the page takes it for the first frame instead of waiting for the snapshot.
+const appearanceArgument = process.argv
+  .find((arg) => arg.startsWith("--appearance="))
+  ?.slice("--appearance=".length);
+const appearance =
+  appearanceArgument === "light" ||
+  appearanceArgument === "dark" ||
+  appearanceArgument === "auto"
+    ? appearanceArgument
+    : undefined;
 const occlude = () => {
   if (widgetEnabled) ipcRenderer.sendSync("widget:occlude");
 };
@@ -67,6 +78,7 @@ const bridge: DesktopBridge = {
   prepareCodex: (model) => ipcRenderer.invoke("codex:prepare", model),
   acceptCodex: (token) => ipcRenderer.invoke("codex:accept", token),
   surface: process.argv.includes("--surface=panel") ? "panel" : "main",
+  appearance,
   copyConversation: (id, kind) =>
     ipcRenderer.invoke("conversation:copy", id, kind),
   search: (request) => ipcRenderer.invoke("business:search", request),

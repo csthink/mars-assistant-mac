@@ -882,6 +882,8 @@ export interface DesktopBridge {
   prepareCodex: (model?: string) => Promise<CodexSetupReply>;
   acceptCodex: (token: string) => Promise<Reply>;
   surface: Surface;
+  /** The saved appearance known when the window was created, before the first snapshot; absent when unknown. */
+  appearance?: Appearance;
   copyConversation: (
     id: string,
     kind: "link" | "markdown",

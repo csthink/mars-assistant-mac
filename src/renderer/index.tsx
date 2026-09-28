@@ -1,3 +1,4 @@
+import "./tokens.css";
 import {
   RecordFilters,
   initialRecordQuery,
@@ -36,7 +37,11 @@ import {
 } from "../shared/protocol";
 import { SearchDialog, SearchIndexSettings } from "./search";
 import type { SearchHit } from "../shared/search";
-import { useAppearance, AppearanceSettings } from "./appearance";
+import {
+  applyInitialAppearance,
+  useAppearance,
+  AppearanceSettings,
+} from "./appearance";
 import { useOrganization } from "./organization";
 import { RenameDialog } from "./conversation-title";
 import { Icon } from "./icons";
@@ -206,7 +211,7 @@ function App() {
     setPage("工作台");
   }
 
-  useAppearance(snapshot?.settings.appearance);
+  useAppearance(snapshot?.settings.appearance ?? window.desktop.appearance);
   const panel = window.desktop.surface === "panel";
   const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => window.desktop.onWidgetSearch(() => setSearchOpen(true)), []);
@@ -233,10 +238,7 @@ function App() {
   const [workbenchTab, setWorkbenchTab] = useState<"projects" | "widgets">(
     panel ? "widgets" : "projects",
   );
-  useEffect(() => {
-    document.title = panel ? "工作台助手" : "csthink-assistant";
-    return window.desktop.onOpenConversation(() => setPage("聊天"));
-  }, [panel]);
+  useEffect(() => window.desktop.onOpenConversation(() => setPage("聊天")), []);
   const [readOnlyView, setReadOnlyView] = useState<string>();
   useEffect(() => {
     if (status.connected) setReadOnlyView(undefined);
@@ -1564,6 +1566,7 @@ function App() {
                 <button
                   key={name}
                   className={page === name ? "active" : ""}
+                  aria-current={page === name ? "page" : undefined}
                   onClick={() => setPage(name)}
                 >
                   {name}
@@ -1629,4 +1632,11 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+// This script runs from the document head, before the body is parsed and before the first paint, so the
+// appearance and the window title are set first and the page mounts once the body exists.
+applyInitialAppearance();
+document.title =
+  window.desktop.surface === "panel" ? "工作台助手" : "csthink-assistant";
+document.addEventListener("DOMContentLoaded", () => {
+  createRoot(document.getElementById("root")!).render(<App />);
+});
