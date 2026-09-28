@@ -88,11 +88,46 @@ async function setAppearance(page: Page, appearance: Appearance) {
 }
 
 /** The default main window and the smallest supported one (content size in points). */
-const windowSizes = [
-  [1180, 800],
-  [900, 680],
-] as const;
+const defaultSize = [1180, 800] as const;
+const smallestSize = [900, 680] as const;
 
+/**
+ * The two content sizes the pages are checked at, computed from the host instead of assumed: the default
+ * size, or the largest content the work area of the window's display can hold when that is smaller (a hosted
+ * CI runner has a smaller screen), and the smallest supported size, which the host must hold. The sizes and
+ * the work area are recorded as a test annotation.
+ */
+async function hostWindowSizes(app: ElectronApplication) {
+  const host = await app.evaluate(({ BrowserWindow, screen }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    const [outerWidth, outerHeight] = win.getSize();
+    const [innerWidth, innerHeight] = win.getContentSize();
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    return {
+      area: [area.width, area.height],
+      fit: [
+        area.width - (outerWidth - innerWidth),
+        area.height - (outerHeight - innerHeight),
+      ],
+    };
+  });
+  const [fitWidth, fitHeight] = host.fit;
+  if (fitWidth < smallestSize[0] || fitHeight < smallestSize[1])
+    throw new Error(
+      `The host work area ${host.area.join(" × ")} holds window content up to ${fitWidth} × ${fitHeight}, smaller than the smallest supported window ${smallestSize.join(" × ")}`,
+    );
+  const sizes = [
+    [Math.min(defaultSize[0], fitWidth), Math.min(defaultSize[1], fitHeight)],
+    [smallestSize[0], smallestSize[1]],
+  ] as const;
+  test.info().annotations.push({
+    type: "window sizes",
+    description: `${sizes.map((s) => s.join("x")).join(" and ")} (work area ${host.area.join("x")})`,
+  });
+  return sizes;
+}
+
+/** Content size of the main window, placed at the work area's origin so the whole height is available. */
 async function windowSize(
   app: ElectronApplication,
   page: Page,
@@ -100,8 +135,12 @@ async function windowSize(
   height: number,
 ) {
   await app.evaluate(
-    ({ BrowserWindow }, [w, h]) =>
-      BrowserWindow.getAllWindows()[0].setContentSize(w, h),
+    ({ BrowserWindow, screen }, [w, h]) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      const area = screen.getDisplayMatching(win.getBounds()).workArea;
+      win.setPosition(area.x, area.y);
+      win.setContentSize(w, h);
+    },
     [width, height],
   );
   await expect
@@ -591,24 +630,25 @@ test("main window: chat, recent chats, avatar menu, search and settings take the
   const page = await app.firstWindow();
   try {
     await ready(page);
+    const sizes = await hostWindowSizes(app);
     const failures: string[] = [];
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(page, appearance);
       await expectTokens(page, appearance);
-      for (const [width, height] of windowSizes) {
+      for (const [index, [width, height]] of sizes.entries()) {
         await windowSize(app, page, width, height);
         for (const view of chatPages) {
           await view.open(page);
           await rest(page, view.keep);
           if (view.hover) await page.locator(view.hover).first().hover();
-          if (width === windowSizes[0][0])
+          if (index === 0)
             failures.push(
               ...(await mismatches(page, view.probes)).map(
                 (m) => `${appearance} ${view.id} ${m}`,
               ),
             );
           await shot(page, info, `${width}x${height}-${appearance}-${view.id}`);
-          if (width === windowSizes[0][0] && view.focus) {
+          if (index === 0 && view.focus) {
             await page.keyboard.press("Tab");
             failures.push(
               ...(await focusRing(page, view.focus)).map(
@@ -616,7 +656,7 @@ test("main window: chat, recent chats, avatar menu, search and settings take the
               ),
             );
           }
-          if (width === windowSizes[0][0] && view.field)
+          if (index === 0 && view.field)
             failures.push(
               ...(await fieldFocus(page, view.field)).map(
                 (m) => `${appearance} ${view.id} ${m}`,
@@ -853,10 +893,11 @@ const projectPages: View[] = [
 test("main window: projects, project detail, widgets, pending and run records take the semantic colour tokens in light and dark at both window sizes", async ({}, info) => {
   const f = await journeyFixture();
   try {
+    const sizes = await hostWindowSizes(f.app);
     const failures: string[] = [];
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(f.page, appearance);
-      for (const [width, height] of windowSizes) {
+      for (const [index, [width, height]] of sizes.entries()) {
         await windowSize(f.app, f.page, width, height);
         await f.page
           .getByRole("navigation", { name: "主要页面" })
@@ -875,7 +916,7 @@ test("main window: projects, project detail, widgets, pending and run records ta
           await view.open(f.page);
           await rest(f.page, view.keep);
           if (view.hover) await f.page.locator(view.hover).first().hover();
-          if (width === windowSizes[0][0])
+          if (index === 0)
             failures.push(
               ...(await mismatches(f.page, view.probes)).map(
                 (m) => `${appearance} ${view.id} ${m}`,
@@ -886,7 +927,7 @@ test("main window: projects, project detail, widgets, pending and run records ta
             info,
             `${width}x${height}-${appearance}-${view.id}`,
           );
-          if (width === windowSizes[0][0] && view.focus) {
+          if (index === 0 && view.focus) {
             await f.page.keyboard.press("Tab");
             failures.push(
               ...(await focusRing(f.page, view.focus)).map(
@@ -894,7 +935,7 @@ test("main window: projects, project detail, widgets, pending and run records ta
               ),
             );
           }
-          if (width === windowSizes[0][0] && view.field)
+          if (index === 0 && view.field)
             failures.push(
               ...(await fieldFocus(f.page, view.field)).map(
                 (m) => `${appearance} ${view.id} ${m}`,
@@ -1587,7 +1628,8 @@ test("existing page defects: a user bubble sits at the right in the main window 
   try {
     await ready(page);
     const failures: string[] = [];
-    await windowSize(app, page, 1180, 800);
+    const [large] = await hostWindowSizes(app);
+    await windowSize(app, page, large[0], large[1]);
     const conversation = (await (
       await recent(page)
     )
