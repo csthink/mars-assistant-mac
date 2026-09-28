@@ -92,60 +92,80 @@ const defaultSize = [1180, 800] as const;
 const smallestSize = [900, 680] as const;
 
 /**
- * The two content sizes the pages are checked at, computed from the host instead of assumed: the default
- * size, or the largest content the work area of the window's display can hold when that is smaller (a hosted
- * CI runner has a smaller screen), and the smallest supported size, which the host must hold. The sizes and
- * the work area are recorded as a test annotation.
+ * Requests a content size for the main window and reads back what the window system gave: the size once the
+ * main process and the page agree on it and it holds between two reads.
  */
-async function hostWindowSizes(app: ElectronApplication) {
-  const host = await app.evaluate(({ BrowserWindow, screen }) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    const [outerWidth, outerHeight] = win.getSize();
-    const [innerWidth, innerHeight] = win.getContentSize();
-    const area = screen.getDisplayMatching(win.getBounds()).workArea;
-    return {
-      area: [area.width, area.height],
-      fit: [
-        area.width - (outerWidth - innerWidth),
-        area.height - (outerHeight - innerHeight),
-      ],
-    };
-  });
-  const [fitWidth, fitHeight] = host.fit;
-  if (fitWidth < smallestSize[0] || fitHeight < smallestSize[1])
-    throw new Error(
-      `The host work area ${host.area.join(" × ")} holds window content up to ${fitWidth} × ${fitHeight}, smaller than the smallest supported window ${smallestSize.join(" × ")}`,
-    );
-  const sizes = [
-    [Math.min(defaultSize[0], fitWidth), Math.min(defaultSize[1], fitHeight)],
-    [smallestSize[0], smallestSize[1]],
-  ] as const;
-  test.info().annotations.push({
-    type: "window sizes",
-    description: `${sizes.map((s) => s.join("x")).join(" and ")} (work area ${host.area.join("x")})`,
-  });
-  return sizes;
+async function requestWindowSize(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<[number, number]> {
+  await app.evaluate(
+    ({ BrowserWindow }, [w, h]) =>
+      BrowserWindow.getAllWindows()[0].setContentSize(w, h),
+    [width, height],
+  );
+  let last = "";
+  let settled: [number, number] = [0, 0];
+  await expect
+    .poll(
+      async () => {
+        const main = await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].getContentSize(),
+        );
+        const inner = await page.evaluate(() => [innerWidth, innerHeight]);
+        const reading = `main ${main.join(" × ")}, page ${inner.join(" × ")}`;
+        const steady =
+          reading === last && main[0] === inner[0] && main[1] === inner[1];
+        last = reading;
+        if (steady) settled = [inner[0], inner[1]];
+        return steady ? "settled" : reading;
+      },
+      { intervals: [100, 200] },
+    )
+    .toBe("settled");
+  return settled;
 }
 
-/** Content size of the main window, placed at the work area's origin so the whole height is available. */
+/** Sets an exact content size: the window system must give exactly the size requested. */
 async function windowSize(
   app: ElectronApplication,
   page: Page,
   width: number,
   height: number,
 ) {
-  await app.evaluate(
-    ({ BrowserWindow, screen }, [w, h]) => {
-      const win = BrowserWindow.getAllWindows()[0];
-      const area = screen.getDisplayMatching(win.getBounds()).workArea;
-      win.setPosition(area.x, area.y);
-      win.setContentSize(w, h);
-    },
-    [width, height],
+  expect(
+    await requestWindowSize(app, page, width, height),
+    `content size requested ${width} × ${height}`,
+  ).toEqual([width, height]);
+}
+
+/**
+ * The two content sizes the pages are checked at. The larger is the default 1180 × 800 as the window system
+ * gives it: a host with a smaller screen may give less, which is used as long as it is at least the smallest
+ * supported size and no more than requested. The smallest supported 900 × 680 must be given exactly. The
+ * sizes used are recorded as a test annotation.
+ */
+async function windowSizes(app: ElectronApplication, page: Page) {
+  const large = await requestWindowSize(
+    app,
+    page,
+    defaultSize[0],
+    defaultSize[1],
   );
-  await expect
-    .poll(() => page.evaluate(() => [innerWidth, innerHeight]))
-    .toEqual([width, height]);
+  expect(
+    large[0] >= smallestSize[0] &&
+      large[1] >= smallestSize[1] &&
+      large[0] <= defaultSize[0] &&
+      large[1] <= defaultSize[1],
+    `requested ${defaultSize.join(" × ")}, the window system gave ${large.join(" × ")}`,
+  ).toBe(true);
+  test.info().annotations.push({
+    type: "window sizes",
+    description: `${large.join("x")} (requested ${defaultSize.join("x")}) and ${smallestSize.join("x")}`,
+  });
+  return [large, [smallestSize[0], smallestSize[1]]] as const;
 }
 
 /**
@@ -630,7 +650,7 @@ test("main window: chat, recent chats, avatar menu, search and settings take the
   const page = await app.firstWindow();
   try {
     await ready(page);
-    const sizes = await hostWindowSizes(app);
+    const sizes = await windowSizes(app, page);
     const failures: string[] = [];
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(page, appearance);
@@ -893,7 +913,7 @@ const projectPages: View[] = [
 test("main window: projects, project detail, widgets, pending and run records take the semantic colour tokens in light and dark at both window sizes", async ({}, info) => {
   const f = await journeyFixture();
   try {
-    const sizes = await hostWindowSizes(f.app);
+    const sizes = await windowSizes(f.app, f.page);
     const failures: string[] = [];
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(f.page, appearance);
@@ -1628,7 +1648,7 @@ test("existing page defects: a user bubble sits at the right in the main window 
   try {
     await ready(page);
     const failures: string[] = [];
-    const [large] = await hostWindowSizes(app);
+    const [large] = await windowSizes(app, page);
     await windowSize(app, page, large[0], large[1]);
     const conversation = (await (
       await recent(page)
