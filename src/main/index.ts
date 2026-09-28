@@ -54,6 +54,7 @@ import {
 import { basename, join, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { readAppearanceCache, writeAppearanceCache } from "./appearance-cache";
 import { createHash, randomUUID } from "node:crypto";
 import {
   defaultContextChars,
@@ -62,6 +63,7 @@ import {
   validId,
   validModel,
   validSecret,
+  type Appearance,
   type CheckKind,
   type CheckReply,
   type Command,
@@ -420,10 +422,26 @@ function paintBackgrounds() {
     if (!window.isDestroyed()) window.setBackgroundColor(currentBackground());
 }
 /**
- * The first snapshot sets the native theme from the saved appearance. Until then a window that is ready
- * waits (at most appearanceWaitMs), so a saved dark appearance does not open on a light frame; a service
- * that fails to start releases it at once with its reason.
+ * The saved appearance as last applied, cached in the shell root. At start it sets the native theme before
+ * the first window exists, so the page's colour scheme, its initial data-theme and the window background
+ * are the saved appearance from the first frame, however late the business service answers. Without a
+ * cache (the first start of a data root, or after the cache was lost) the first snapshot sets the native
+ * theme; until then a window that is ready waits (at most appearanceWaitMs), and a service that fails to
+ * start releases it at once with its reason. The snapshot stays the authority and refreshes the cache.
  */
+const appearanceCachePath = join(shellRoot, "appearance");
+let cachedAppearance = readAppearanceCache(appearanceCachePath);
+const themeSourceOf = (appearance: Appearance) =>
+  appearance === "auto" ? "system" : appearance;
+function cacheAppearance(appearance: Appearance) {
+  if (appearance === cachedAppearance) return;
+  try {
+    writeAppearanceCache(appearanceCachePath, appearance);
+    cachedAppearance = appearance;
+  } catch {
+    // Without the cache the next start waits for the snapshot as before; the choice itself is saved.
+  }
+}
 let appearanceKnown = false;
 const appearanceWaiters: (() => void)[] = [];
 const appearanceWaitMs = 500;
@@ -465,10 +483,10 @@ function adoptSnapshot(next: Snapshot, startup = false) {
     void refreshExecutionProfiles();
   else if (previous && nativeConnections(previous) !== nativeConnections(next))
     void refreshExecutionProfiles(false);
-  nativeTheme.themeSource =
-    next.settings.appearance === "auto" ? "system" : next.settings.appearance;
+  nativeTheme.themeSource = themeSourceOf(next.settings.appearance);
   paintBackgrounds();
   markAppearanceKnown();
+  cacheAppearance(next.settings.appearance);
   const keep = referencedSecrets(next);
   for (const ref of keep) {
     const timer = pendingRefs.get(ref);
@@ -1316,6 +1334,8 @@ function createWindow(surface: Surface) {
     return existing.window;
   }
   const panel = surface === "panel";
+  // The page takes the saved appearance for its first frame from this argument, not from the snapshot.
+  const initialAppearance = snapshot?.settings.appearance ?? cachedAppearance;
   const win = new BrowserWindow({
     width: panel ? 420 : 1180,
     height: panel ? 600 : 800,
@@ -1337,6 +1357,7 @@ function createWindow(surface: Surface) {
       partition: "csthink-shell",
       additionalArguments: [
         `--surface=${surface}`,
+        ...(initialAppearance ? [`--appearance=${initialAppearance}`] : []),
         ...(widgetAcceptance ? ["--widget-acceptance"] : []),
       ],
     },
@@ -2354,6 +2375,10 @@ if (!instance) {
         { label: "窗口", submenu: [{ role: "minimize" }, { role: "close" }] },
       ]),
     );
+    if (cachedAppearance) {
+      nativeTheme.themeSource = themeSourceOf(cachedAppearance);
+      markAppearanceKnown();
+    }
     startService();
     createWindow("main");
   });

@@ -6,6 +6,7 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -1600,6 +1601,104 @@ test("window background: the main window and the panel take the canvas of the cu
   } finally {
     await closeLocal(refused);
   }
+});
+
+/** Whether this Mac's system appearance is dark (the global preference is absent when it is light). */
+function systemIsDark() {
+  const read = spawnSync("defaults", ["read", "-g", "AppleInterfaceStyle"], {
+    encoding: "utf8",
+  });
+  return read.status === 0 && read.stdout.trim() === "Dark";
+}
+
+test("restart appearance: with the business service slow to start, a restart on a saved appearance different from the system shows its first frame in the saved appearance, on the window background and in the page", async ({}, info) => {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const root = mkdtempSync(
+    resolve(".test-data/disposable/restart-appearance-"),
+  );
+  const saved: Appearance = systemIsDark() ? "light" : "dark";
+  const canvas = expectedColors[saved]["--c-canvas"];
+  const launch = (serviceDelay = 0) =>
+    launchLocal({
+      args: [resolve("."), `--data-root=${root}`],
+      cwd: resolve("."),
+      colorScheme: null,
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(
+            (e): e is [string, string] => e[1] !== undefined,
+          ),
+        ),
+        CSTHINK_TEST_RECORD_APPEARANCE: "1",
+        ...(serviceDelay
+          ? { CSTHINK_TEST_SERVICE_DELAY_MS: String(serviceDelay) }
+          : {}),
+      },
+    });
+  let app = await launch();
+  try {
+    const page = await app.firstWindow();
+    await ready(page);
+    await setAppearance(page, saved);
+    await expect.poll(() => backgrounds(app)).toEqual([canvas]);
+  } finally {
+    await closeLocal(app);
+  }
+  // The saved appearance must not wait for the business service: once slower than the main window's
+  // startup wait (500 ms), once within it. The frame is the page as composited when the window is shown;
+  // its colour may differ from the canvas by a colour-management step.
+  const near = (hex: string | undefined, want: string) =>
+    !!hex &&
+    /^#[0-9a-f]{6}$/.test(hex) &&
+    [1, 3, 5].every(
+      (i) =>
+        Math.abs(
+          parseInt(hex.slice(i, i + 2), 16) -
+            parseInt(want.slice(i, i + 2), 16),
+        ) <= 3,
+    );
+  const firsts = [];
+  for (const serviceDelay of [900, 250]) {
+    app = await launch(serviceDelay);
+    try {
+      const page = await app.firstWindow();
+      const read = () =>
+        app.evaluate(
+          () =>
+            (
+              globalThis as unknown as {
+                appearanceRecord: { shown?: string; frame?: string }[];
+              }
+            ).appearanceRecord[0],
+        );
+      await expect.poll(async () => (await read())?.frame).toBeTruthy();
+      const first = await read();
+      firsts.push({
+        serviceDelay,
+        shown: first.shown?.toLowerCase(),
+        frame: first.frame,
+        frameIsCanvas: near(first.frame, canvas),
+      });
+      await ready(page);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", saved);
+      await page.screenshot({
+        path: info.outputPath(`restart-${saved}-delay-${serviceDelay}.png`),
+      });
+    } finally {
+      await closeLocal(app);
+    }
+  }
+  expect(
+    firsts.map(({ serviceDelay, shown, frameIsCanvas }) => ({
+      serviceDelay,
+      shown,
+      frameIsCanvas,
+    })),
+    `first frames after a restart on ${saved} (${canvas}): ${JSON.stringify(firsts)}`,
+  ).toEqual([
+    { serviceDelay: 900, shown: canvas, frameIsCanvas: true },
+    { serviceDelay: 250, shown: canvas, frameIsCanvas: true },
+  ]);
 });
 
 /** Left and right edges of the transcript's content box and of its first user and assistant bubbles. */

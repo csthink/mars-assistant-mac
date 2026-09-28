@@ -9,9 +9,10 @@
     />
     <title>csthink-assistant</title>
     <link rel="stylesheet" href="renderer.css" />
+    <!-- A parser-blocking script in the head is render-blocking: it sets the appearance before the first paint. -->
+    <script src="renderer.js"></script>
   </head>
   <body>
     <div id="root"></div>
-    <script src="renderer.js"></script>
   </body>
 </html>

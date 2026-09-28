@@ -1,8 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { windowBackground } from "../../src/shared/appearance";
+import {
+  readAppearanceCache,
+  writeAppearanceCache,
+} from "../../src/main/appearance-cache";
 import { expectedColors, expectedFont } from "./visual-tokens";
 
 const renderer = "src/renderer";
@@ -144,10 +155,13 @@ test("visual tokens: the root takes the prototype type, the canvas and the light
       .map((d) => `${d.property}: ${d.value}`),
     ["color: var(--c-text)", "background: var(--c-canvas)"],
   );
-  assert.match(
-    readFileSync(join(renderer, "index.html"), "utf8"),
-    /<html lang="zh-CN" data-theme="light">/,
-  );
+  const html = readFileSync(join(renderer, "index.html"), "utf8");
+  assert.match(html, /<html lang="zh-CN" data-theme="light">/);
+  // The page script sets the appearance before the first paint: it is a parser-blocking classic script in
+  // the head (render-blocking), not deferred, asynchronous or in the body.
+  const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>"));
+  assert.match(head, /<script src="renderer\.js"><\/script>/);
+  assert.doesNotMatch(html.slice(html.indexOf("</head>")), /<script/);
   const entry = readFileSync(join(renderer, "index.tsx"), "utf8");
   const firstImport = entry.match(/^import [^;]+;/m)?.[0];
   assert.equal(
@@ -197,4 +211,23 @@ test("visual tokens: the native window background equals the canvas of each appe
     light: expectedColors.light["--c-canvas"],
     dark: expectedColors.dark["--c-canvas"],
   });
+});
+
+test("visual tokens: the appearance cache reads back each saved choice, replaces it whole, and reads anything else as unknown", () => {
+  const dir = mkdtempSync(join(tmpdir(), "appearance-cache-"));
+  try {
+    const path = join(dir, "appearance");
+    assert.equal(readAppearanceCache(path), undefined);
+    for (const choice of ["light", "dark", "auto"] as const) {
+      writeAppearanceCache(path, choice);
+      assert.equal(readAppearanceCache(path), choice);
+      assert.deepEqual(readdirSync(dir), ["appearance"]);
+    }
+    for (const other of ["", "Dark", "system", "dark\ndark", "{}"]) {
+      writeFileSync(path, other);
+      assert.equal(readAppearanceCache(path), undefined, JSON.stringify(other));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -3,12 +3,18 @@ import type { Appearance } from "../shared/protocol";
 const systemDark = () =>
   window.matchMedia("(prefers-color-scheme: dark)").matches;
 /**
- * The page appearance before the saved choice arrives: the main process sets the native theme from the
- * saved choice before the page loads, so the colour scheme the page sees already is that choice (or the
- * system appearance for automatic). The first frame takes it instead of a fixed light page.
+ * The page appearance before the saved choice arrives in a snapshot: the saved appearance the main process
+ * handed to this window when it created it, or, when that is automatic or unknown, the system appearance.
+ * The first frame takes it instead of a fixed light page.
  */
 export function applyInitialAppearance() {
-  document.documentElement.dataset.theme = systemDark() ? "dark" : "light";
+  const saved = window.desktop.appearance;
+  document.documentElement.dataset.theme =
+    saved === "light" || saved === "dark"
+      ? saved
+      : systemDark()
+        ? "dark"
+        : "light";
 }
 /** Until the saved choice is known the page follows the native theme, as in automatic. */
 export function useAppearance(appearance: Appearance = "auto") {

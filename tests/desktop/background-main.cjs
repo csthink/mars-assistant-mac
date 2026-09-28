@@ -59,8 +59,56 @@ app.on("browser-window-created", (_event, window) => {
   window.focus = () => {};
 });
 
-// The window-background test records, per window, the native background when it is first shown and the
-// page's appearance from the moment the page is ready (the first frame follows it).
+// A slow business service: the messages of the first service process reach the main process only after
+// CSTHINK_TEST_SERVICE_DELAY_MS, in their original order, as when a large data root opens slowly.
+const serviceDelay = Number(process.env.CSTHINK_TEST_SERVICE_DELAY_MS ?? 0);
+if (serviceDelay > 0) {
+  const { utilityProcess } = require("electron");
+  const fork = utilityProcess.fork;
+  let delayed = false;
+  utilityProcess.fork = function (...args) {
+    const child = fork.apply(this, args);
+    if (delayed) return child;
+    delayed = true;
+    const held = [];
+    let open = false;
+    setTimeout(() => {
+      open = true;
+      for (const deliver of held.splice(0)) deliver();
+    }, serviceDelay);
+    const on = child.on;
+    child.on = function (event, listener) {
+      if (event !== "message") return on.call(this, event, listener);
+      return on.call(this, event, (message) =>
+        open ? listener(message) : held.push(() => listener(message)),
+      );
+    };
+    return child;
+  };
+}
+
+/** The most frequent colour of a captured page, sampled on a 200-point-wide copy. */
+function dominantColour(image) {
+  const small = image.resize({ width: 200 });
+  const { width, height } = small.getSize();
+  const bitmap = small.toBitmap();
+  const counts = new Map();
+  let best = 0,
+    most = 0;
+  for (let y = 0; y < height; y += 2)
+    for (let x = 0; x < width; x += 2) {
+      const i = (y * width + x) * 4;
+      const key = (bitmap[i + 2] << 16) | (bitmap[i + 1] << 8) | bitmap[i];
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      if (count > most) ((most = count), (best = key));
+    }
+  return most ? `#${best.toString(16).padStart(6, "0")}` : "empty";
+}
+
+// The window-background tests record, per window, the native background when it is first shown, the page
+// as composited at that moment (its most frequent colour), and the page's appearance from the moment the
+// page is ready.
 if (process.env.CSTHINK_TEST_RECORD_APPEARANCE === "1") {
   globalThis.appearanceRecord = [];
   app.on("browser-window-created", (_event, window) => {
@@ -68,7 +116,12 @@ if (process.env.CSTHINK_TEST_RECORD_APPEARANCE === "1") {
     globalThis.appearanceRecord.push(entry);
     const show = window.show;
     window.show = () => {
-      entry.shown ??= window.getBackgroundColor();
+      if (entry.shown === undefined) {
+        entry.shown = window.getBackgroundColor();
+        void window.webContents.capturePage().then((image) => {
+          entry.frame = image.isEmpty() ? "empty" : dominantColour(image);
+        });
+      }
       show();
     };
     window.webContents.once("dom-ready", () => {
