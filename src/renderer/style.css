@@ -25,7 +25,21 @@ button:disabled {
   opacity: 0.42;
   cursor: not-allowed;
 }
-button:hover:not(:disabled) {
+/* The hover tint is feedback for a control that is not in a selected state. A control that declares itself
+   current, selected, pressed or the checked choice of a group keeps the look of that state under the pointer,
+   so every selected state is marked with one of these attributes rather than a class alone. A switch's checked
+   value is a setting rather than a selection and keeps the tint. The exclusion sits in :where() so this rule
+   keeps the weight of a bare element hover and component hover rules still take precedence. */
+button:hover:not(:disabled):not(
+    :where(
+      [aria-current="page"],
+      [aria-current="true"],
+      [aria-selected="true"],
+      [aria-pressed="true"],
+      [role="radio"][aria-checked="true"],
+      [role="menuitemradio"][aria-checked="true"]
+    )
+  ) {
   background: var(--c-hover);
 }
 /* The focus ring is the accent in both appearances. */
@@ -139,6 +153,9 @@ p {
   white-space: nowrap;
   font-size: 12px;
 }
+.session[aria-current="true"] .session-name {
+  font-weight: 600;
+}
 .session small {
   font-size: 10px;
   color: var(--c-muted);
@@ -186,9 +203,6 @@ p {
 }
 .home-header button {
   color: var(--c-text);
-}
-.home-header button:hover:not(:disabled) {
-  background: var(--c-hover);
 }
 .home-header button:disabled {
   color: var(--c-muted);
@@ -907,6 +921,7 @@ p {
 .settings-nav button.active {
   background: var(--c-selected);
   color: var(--c-accent);
+  font-weight: 600;
 }
 .settings-content {
   min-width: 0;
@@ -2171,6 +2186,7 @@ dialog::backdrop {
   background: var(--c-surface);
   color: var(--c-text);
   box-shadow: var(--c-shadow-sm);
+  font-weight: 600;
 }
 @media (max-width: 600px) {
   .setting-row {

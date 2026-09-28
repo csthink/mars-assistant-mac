@@ -1569,6 +1569,7 @@ function App() {
                 <button
                   key={name}
                   className={page === name ? "active" : ""}
+                  aria-current={page === name ? "page" : undefined}
                   onClick={() => setPage(name)}
                 >
                   {name}

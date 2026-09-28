@@ -1913,3 +1913,243 @@ test("form fields: a focused field in dialogs, settings, project settings and wi
   }
   expect(failures).toEqual([]);
 });
+
+/**
+ * The resting and hovered look of a selected control: background and text colour of the control (and of the row
+ * that carries its selection, when given), and the text weight of the part that shows its name.
+ */
+async function selectedLook(
+  page: Page,
+  control: Locator,
+  parts: { row?: Locator; name?: Locator } = {},
+) {
+  const read = async () => ({
+    background: await control.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    ),
+    color: await control.evaluate((el) => getComputedStyle(el).color),
+    row: parts.row
+      ? await parts.row.evaluate((el) => getComputedStyle(el).backgroundColor)
+      : null,
+    weight: await (parts.name ?? control).evaluate(
+      (el) => getComputedStyle(el).fontWeight,
+    ),
+  });
+  await page.mouse.move(0, 0);
+  const rest = await read();
+  await control.hover();
+  const hovered = await read();
+  await page.mouse.move(0, 0);
+  return { rest, hovered };
+}
+
+test("selected states: every current item keeps its selection colours and weight under the pointer and takes the weight of its prototype counterpart, in light and dark", async () => {
+  const failures: string[] = [];
+  const check = async (
+    page: Page,
+    appearance: Appearance,
+    name: string,
+    control: Locator,
+    weight: string,
+    parts: { row?: Locator; name?: Locator } = {},
+  ) => {
+    if (
+      !(await control
+        .waitFor({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false))
+    ) {
+      failures.push(`${appearance} ${name}: no selected control found`);
+      return;
+    }
+    const { rest, hovered } = await selectedLook(page, control, parts);
+    if (rest.weight !== weight)
+      failures.push(
+        `${appearance} ${name}: weight ${rest.weight} instead of ${weight}`,
+      );
+    if (JSON.stringify(hovered) !== JSON.stringify(rest))
+      failures.push(
+        `${appearance} ${name}: under the pointer ${JSON.stringify(hovered)} instead of ${JSON.stringify(rest)}`,
+      );
+  };
+  const root = seedConversations();
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+    cwd: resolve("."),
+  });
+  const page = await app.firstWindow();
+  try {
+    await ready(page);
+    const conversation = (await (
+      await recent(page)
+    )
+      .locator(".session")
+      .filter({ hasText: "整理读书笔记" })
+      .getAttribute("aria-label"))!;
+    await page.keyboard.press("Escape");
+    const opened = app.waitForEvent("window");
+    await app.evaluate(({ Menu }) => {
+      Menu.getApplicationMenu()!
+        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .click();
+    });
+    const panel = await opened;
+    const panelNav = panel.getByRole("navigation", { name: "面板导航" });
+    await expect(panelNav).toBeVisible();
+    for (const appearance of ["light", "dark"] as const) {
+      await setAppearance(page, appearance);
+      await goTo(page, "聊天");
+      await openConversation(page, conversation);
+      // The page switch: the prototype's page navigation (the narrow column) keeps names regular.
+      await check(
+        page,
+        appearance,
+        "page switch",
+        page.locator('.home-nav [aria-current="page"]'),
+        "400",
+      );
+      // Recent chats: the prototype's current chat row is bold.
+      const history = await recent(page);
+      const current = history.locator('.session[aria-current="true"]');
+      await check(page, appearance, "recent current", current, "600", {
+        row: history.locator(".session-line.active"),
+        name: current.locator(".session-name"),
+      });
+      await page.keyboard.press("Escape");
+      // Global search: category chips stay regular; the current result keeps its tint.
+      await page.getByRole("button", { name: "全局搜索" }).click();
+      await page.locator(".search-input-row input").fill("读书");
+      await expect(page.locator(".search-result").first()).toBeVisible();
+      await check(
+        page,
+        appearance,
+        "search category",
+        page.locator('.search-categories [role="tab"][aria-selected="true"]'),
+        "400",
+      );
+      await check(
+        page,
+        appearance,
+        "search result",
+        page.locator('.search-result[aria-selected="true"]'),
+        await page
+          .locator('.search-result[aria-selected="true"]')
+          .evaluate((el) => getComputedStyle(el).fontWeight),
+      );
+      await page.keyboard.press("Escape");
+      // Settings: the category and the chosen appearance are bold, as in the prototype's settings.
+      await goTo(page, "设置");
+      await check(
+        page,
+        appearance,
+        "settings category",
+        page.locator('.settings-nav [aria-current="page"]'),
+        "600",
+      );
+      await check(
+        page,
+        appearance,
+        "appearance choice",
+        page.locator('.appearance-control [aria-pressed="true"]'),
+        "600",
+      );
+      // The avatar menu's current page item: a page navigation item, regular like the narrow column.
+      await page.getByRole("button", { name: /^我，个人空间/ }).click();
+      await check(
+        page,
+        appearance,
+        "avatar menu current",
+        page.locator('.profile-menu-item[aria-current="page"]'),
+        "400",
+      );
+      await page.keyboard.press("Escape");
+      // The menu bar panel: tabs stay regular as in its prototype; its settings category is bold.
+      await expect(panel.locator("html")).toHaveAttribute(
+        "data-theme",
+        appearance,
+      );
+      await check(
+        panel,
+        appearance,
+        "panel tab",
+        panelNav.locator('[aria-current="page"]'),
+        "400",
+      );
+      await panelNav.getByRole("button", { name: "设置", exact: true }).click();
+      await check(
+        panel,
+        appearance,
+        "panel settings category",
+        panel.locator('.settings-nav [aria-current="page"]'),
+        "600",
+      );
+      await panelNav
+        .getByRole("button", { name: "工作台", exact: true })
+        .click();
+    }
+  } finally {
+    await closeLocal(app);
+  }
+  const f = await journeyFixture();
+  try {
+    const page = f.page;
+    for (const appearance of ["light", "dark"] as const) {
+      await setAppearance(page, appearance);
+      await page
+        .getByRole("navigation", { name: "主要页面" })
+        .getByRole("button", { name: "工作台", exact: true })
+        .click();
+      if (await page.locator(".project-table").isVisible())
+        await page
+          .locator(".project-open")
+          .filter({ hasText: "合成任务旅程" })
+          .click();
+      // Project object buttons: bold, as the prototype's project sub-navigation.
+      await check(
+        page,
+        appearance,
+        "object button",
+        page.locator('.project-object-tabs [aria-pressed="true"]'),
+        "600",
+      );
+      await page.getByRole("button", { name: "返回项目列表" }).click();
+      // Workbench tabs: bold, as the prototype's sub-navigation.
+      await check(
+        page,
+        appearance,
+        "workbench tab",
+        page.locator('.workbench-tabs [aria-selected="true"]'),
+        "600",
+      );
+      // The archived toggle when pressed: accent text as the prototype's pressed toolbar button, regular weight.
+      await page.getByRole("button", { name: "已归档", exact: true }).click();
+      const toggle = page.locator('.button[aria-pressed="true"]');
+      await check(page, appearance, "archived toggle", toggle, "400");
+      if (
+        (await toggle.evaluate((el) => getComputedStyle(el).color)) !==
+        (await page.evaluate(() => {
+          const probe = document.createElement("span");
+          probe.style.color = "var(--c-accent)";
+          document.body.append(probe);
+          const color = getComputedStyle(probe).color;
+          probe.remove();
+          return color;
+        }))
+      )
+        failures.push(`${appearance} archived toggle: text is not the accent`);
+      await toggle.click();
+      // Pending tabs: regular, as the prototype's view switch of the pending page.
+      await goTo(page, "待处理");
+      await check(
+        page,
+        appearance,
+        "pending tab",
+        page.locator('.record-query [role="tab"][aria-selected="true"]'),
+        "400",
+      );
+    }
+  } finally {
+    await closeLocal(f.app);
+  }
+  expect(failures).toEqual([]);
+});

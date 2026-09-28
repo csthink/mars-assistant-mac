@@ -35,6 +35,9 @@
   margin-bottom: 18px;
   flex-wrap: wrap;
 }
+.project-toolbar .button[aria-pressed="true"] {
+  color: var(--c-accent);
+}
 .project-total {
   color: var(--c-muted);
   white-space: nowrap;
@@ -637,6 +640,7 @@
   color: var(--c-accent);
   border-color: var(--c-accent-edge);
   background: var(--c-selected);
+  font-weight: 600;
 }
 .project-domain-content {
   padding-top: 15px;
@@ -1344,7 +1348,6 @@
   color: var(--c-accent);
   background: var(--c-selected);
   border-color: var(--c-accent-edge);
-  font-weight: 600;
 }
 .project-domain-runs > ol {
   list-style: none;
