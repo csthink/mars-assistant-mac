@@ -2,6 +2,7 @@ import {
   test,
   expect,
   type ElectronApplication,
+  type Locator,
   type Page,
   type TestInfo,
 } from "@playwright/test";
@@ -105,6 +106,25 @@ async function windowSize(
   await expect
     .poll(() => page.evaluate(() => [innerWidth, innerHeight]))
     .toEqual([width, height]);
+}
+
+/**
+ * Opens a project three-dot menu. The menu closes on any scroll, and a click on a button outside the
+ * viewport scrolls it into view first: that scroll event can arrive after the menu has opened and close
+ * it. Scrolling first and waiting two animation frames lets the event pass before the click.
+ */
+async function openProjectMenu(button: Locator) {
+  await button.scrollIntoViewIfNeeded();
+  await button
+    .page()
+    .evaluate(
+      () =>
+        new Promise((done) =>
+          requestAnimationFrame(() => requestAnimationFrame(done)),
+        ),
+    );
+  await button.click();
+  await expect(button.page().locator(".project-menu")).toBeVisible();
 }
 
 /** Pointer outside the content (and, unless a view keeps it, no focus): the resting colours. */
@@ -667,8 +687,7 @@ const projectPages: View[] = [
   {
     id: "MW-06-menu",
     open: async (page) => {
-      await page.locator(".project-more").first().click();
-      await expect(page.locator(".project-menu")).toBeVisible();
+      await openProjectMenu(page.locator(".project-more").first());
     },
     probes: [
       [".project-menu", "background-color", surface],
@@ -682,7 +701,7 @@ const projectPages: View[] = [
     id: "MW-07",
     open: async (page) => {
       if (!(await page.locator(".project-menu").isVisible()))
-        await page.locator(".project-more").first().click();
+        await openProjectMenu(page.locator(".project-more").first());
       await page
         .locator(".project-menu")
         .getByRole("menuitem", { name: "编辑项目" })
@@ -1284,11 +1303,9 @@ test("dark surfaces: selected tabs, filter fields, pending cards, the confirmati
       await f.page.screenshot({
         path: info.outputPath(`${appearance}-operations.png`),
       });
-      await f.page
-        .getByRole("button", { name: "合成任务旅程 项目操作" })
-        .first()
-        .click();
-      await expect(f.page.locator(".project-menu")).toBeVisible();
+      await openProjectMenu(
+        f.page.getByRole("button", { name: "合成任务旅程 项目操作" }).first(),
+      );
       failures.push(
         ...(
           await mismatches(f.page, [
