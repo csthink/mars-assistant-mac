@@ -571,7 +571,7 @@ p {
   justify-content: space-between;
   gap: 12px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--c-raised);
+  border-bottom: 1px solid var(--c-line);
 }
 .breadcrumb,
 .top-actions {
@@ -878,7 +878,7 @@ p {
 }
 .settings-nav button.active {
   background: var(--c-selected);
-  color: var(--c-text);
+  color: var(--c-accent);
 }
 .settings-content {
   min-width: 0;
@@ -997,7 +997,7 @@ p {
 }
 .panel-nav button.active {
   background: var(--c-selected);
-  color: var(--c-text);
+  color: var(--c-accent);
 }
 .panel-app .page {
   padding: 23px 20px;
@@ -1079,6 +1079,7 @@ select {
   background: var(--c-surface);
   padding: 5px 7px;
   font-size: 11px;
+  color: var(--c-text);
 }
 @media (max-width: 1000px) {
   .page {

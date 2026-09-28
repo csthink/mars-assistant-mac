@@ -828,3 +828,144 @@ test("main window: projects, project detail, widgets, pending and run records ta
     await closeLocal(f.app);
   }
 });
+
+/** Panel pages probed against the same tokens, and against the main window's value for the same role. */
+const panelPages: [name: string, probes: Probe[]][] = [
+  [
+    "工作台",
+    [
+      [".empty-icon", "background-color", surface],
+      [".empty-icon", "border-top-color", line],
+      [".empty h2", "color", text],
+      [".empty p", "color", muted],
+    ],
+  ],
+  [
+    "聊天",
+    [
+      ...composer,
+      [".panel-conversations", "color", muted],
+      ...field(".panel-conversations select"),
+    ],
+  ],
+  [
+    "待处理",
+    [
+      [".pending-item", "background-color", surface],
+      [".pending-item", "border-top-color", line],
+      ...secondaryButton(".pending-item .button"),
+    ],
+  ],
+  [
+    "设置",
+    [
+      [".settings-nav button.active", "color", accent],
+      [".settings-nav button.active", "background-color", selected],
+      [".settings-nav button:not(.active)", "color", muted],
+      [".provider-list", "border-top-color", line],
+      [".provider-mark", "background-color", "var(--c-raised)"],
+      [".provider-info small", "color", muted],
+    ],
+  ],
+];
+const panelShell: Probe[] = [
+  ["html", "background-color", "var(--c-canvas)"],
+  [".topbar", "border-bottom-color", line],
+  [".topbar .icon-button", "color", muted],
+  [".panel-nav", "border-bottom-color", line],
+  [".panel-nav button.active", "color", accent],
+  [".panel-nav button.active", "background-color", selected],
+  [".panel-nav button:not(.active)", "color", muted],
+];
+
+/** Computed colours of the roles both surfaces share, read from each window. */
+async function sharedRoles(page: Page) {
+  return page.evaluate(() => {
+    const read = (selector: string, property: string) => {
+      const element = [...document.querySelectorAll(selector)].find(
+        (e) => e.getClientRects().length > 0,
+      );
+      return element
+        ? getComputedStyle(element).getPropertyValue(property)
+        : null;
+    };
+    return {
+      canvas: getComputedStyle(document.documentElement).backgroundColor,
+      composer: read(".composer", "background-color"),
+      composerEdge: read(".composer", "border-top-color"),
+      send: read(".send", "background-color"),
+      text: getComputedStyle(document.documentElement).color,
+    };
+  });
+}
+
+test("menu bar panel: every page takes the semantic colour tokens in light and dark and matches the main window's colours", async ({}, info) => {
+  const root = seedConversations();
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+    cwd: resolve("."),
+  });
+  const page = await app.firstWindow();
+  try {
+    await ready(page);
+    const opened = app.waitForEvent("window");
+    await app.evaluate(({ Menu }) => {
+      Menu.getApplicationMenu()!
+        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .click();
+    });
+    const panel = await opened;
+    await expect(
+      panel.getByRole("navigation", { name: "面板导航" }),
+    ).toBeVisible();
+    const failures: string[] = [];
+    for (const appearance of ["light", "dark"] as const) {
+      await setAppearance(page, appearance);
+      await expect(panel.locator("html")).toHaveAttribute(
+        "data-theme",
+        appearance,
+      );
+      await expectTokens(panel, appearance);
+      await goTo(page, "聊天");
+      const main = await sharedRoles(page);
+      for (const [name, probes] of panelPages) {
+        await panel
+          .getByRole("navigation", { name: "面板导航" })
+          .getByRole("button", { name, exact: true })
+          .click();
+        await rest(panel);
+        failures.push(
+          ...(await mismatches(panel, [...panelShell, ...probes])).map(
+            (m) => `${appearance} panel ${name} ${m}`,
+          ),
+        );
+        if (name === "聊天") {
+          const own = await sharedRoles(panel);
+          for (const role of [
+            "canvas",
+            "composer",
+            "composerEdge",
+            "send",
+            "text",
+          ] as const)
+            if (own[role] !== main[role])
+              failures.push(
+                `${appearance} panel ${role}: ${own[role]} while the main window has ${main[role]}`,
+              );
+        }
+        await panel.screenshot({
+          path: info.outputPath(`420x600-${appearance}-PN-${name}.png`),
+        });
+        await panel.keyboard.press("Tab");
+        failures.push(
+          ...(await focusRing(panel, ".panel-nav button.active")).map(
+            (m) => `${appearance} panel ${name} ${m}`,
+          ),
+        );
+      }
+    }
+    expect(failures).toEqual([]);
+  } finally {
+    await closeLocal(app);
+  }
+});
