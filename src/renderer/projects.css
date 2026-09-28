@@ -661,6 +661,10 @@
   font-size: 14px;
   /* A row title keeps its words whole; only the detail (paths, digests) may break anywhere. */
   overflow-wrap: break-word;
+  align-items: baseline;
+}
+.project-task-list li:last-child {
+  border-bottom: 0;
 }
 .project-task-list li span {
   min-width: 0;
@@ -950,6 +954,15 @@
   border-radius: 10px;
   margin-top: 12px;
   overflow-wrap: anywhere;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.project-operation > * {
+  margin: 0;
+}
+.project-operation > .button {
+  margin-top: 4px;
 }
 
 .project-view-tools {
@@ -1333,9 +1346,10 @@
   gap: 8px;
 }
 .record-query [role="tab"][aria-selected="true"] {
-  color: var(--c-on-accent);
-  background: var(--c-accent);
-  border-color: var(--c-accent);
+  color: var(--c-accent);
+  background: var(--c-selected);
+  border-color: var(--c-accent-edge);
+  font-weight: 600;
 }
 .project-domain-runs > ol {
   list-style: none;

@@ -82,6 +82,7 @@ import { ClaudeImplementerAdapter } from "./execution-claude";
 import { CodexReviewerAdapter } from "./execution-codex";
 import { defaultPythonCandidates } from "./runtime-admission";
 import { catalogPins } from "../shared/runtime-capabilities";
+import { windowBackground } from "../shared/appearance";
 import {
   runtimeCopyValue,
   validRuntimeControl,
@@ -409,6 +410,38 @@ function referencedSecrets(value: Snapshot | undefined) {
       .filter((ref): ref is string => ref !== null),
   );
 }
+/** The page canvas of the appearance the native theme resolves to: the window colour before and while it draws. */
+const currentBackground = () =>
+  nativeTheme.shouldUseDarkColors
+    ? windowBackground.dark
+    : windowBackground.light;
+function paintBackgrounds() {
+  for (const { window } of windows.values())
+    if (!window.isDestroyed()) window.setBackgroundColor(currentBackground());
+}
+/**
+ * The first snapshot sets the native theme from the saved appearance. Until then a window that is ready
+ * waits (at most appearanceWaitMs), so a saved dark appearance does not open on a light frame; a service
+ * that fails to start releases it at once with its reason.
+ */
+let appearanceKnown = false;
+const appearanceWaiters: (() => void)[] = [];
+const appearanceWaitMs = 500;
+function markAppearanceKnown() {
+  if (appearanceKnown) return;
+  appearanceKnown = true;
+  paintBackgrounds();
+  for (const release of appearanceWaiters.splice(0)) release();
+}
+function whenAppearanceKnown() {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, appearanceWaitMs);
+    appearanceWaiters.push(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
 /** The business snapshot is the only authority on which secrets are still referenced. */
 function adoptSnapshot(next: Snapshot, startup = false) {
   const previous = snapshot;
@@ -434,6 +467,8 @@ function adoptSnapshot(next: Snapshot, startup = false) {
     void refreshExecutionProfiles(false);
   nativeTheme.themeSource =
     next.settings.appearance === "auto" ? "system" : next.settings.appearance;
+  paintBackgrounds();
+  markAppearanceKnown();
   const keep = referencedSecrets(next);
   for (const ref of keep) {
     const timer = pendingRefs.get(ref);
@@ -821,6 +856,7 @@ function abortExecution(executionId: string) {
   }, stopTimeoutMs);
 }
 function disconnect(message: string) {
+  markAppearanceKnown();
   searchService?.close();
   searchService = undefined;
   status = { connected: false, message };
@@ -1291,7 +1327,7 @@ function createWindow(surface: Surface) {
     alwaysOnTop: panel,
     show: false,
     title: panel ? "工作台助手" : "csthink-assistant",
-    backgroundColor: "#101116",
+    backgroundColor: currentBackground(),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       sandbox: true,
@@ -1365,7 +1401,13 @@ function createWindow(surface: Surface) {
     );
   }
   win.once("ready-to-show", () => {
-    showWindow(win, surface);
+    if (appearanceKnown) {
+      showWindow(win, surface);
+      return;
+    }
+    void whenAppearanceKnown().then(() => {
+      if (!win.isDestroyed()) showWindow(win, surface);
+    });
   });
   void win.loadFile(join(__dirname, "index.html"));
   return win;
@@ -1579,6 +1621,7 @@ if (!instance) {
     }
   });
   void app.whenReady().then(() => {
+    nativeTheme.on("updated", paintBackgrounds);
     // macOS requires a packaged Info.plist URL declaration. Development Electron is not registered.
     if (app.isPackaged && !app.setAsDefaultProtocolClient("csthink-assistant"))
       void dialog.showMessageBox({

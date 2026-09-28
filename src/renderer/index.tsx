@@ -37,7 +37,11 @@ import {
 } from "../shared/protocol";
 import { SearchDialog, SearchIndexSettings } from "./search";
 import type { SearchHit } from "../shared/search";
-import { useAppearance, AppearanceSettings } from "./appearance";
+import {
+  applyInitialAppearance,
+  useAppearance,
+  AppearanceSettings,
+} from "./appearance";
 import { useOrganization } from "./organization";
 import { RenameDialog } from "./conversation-title";
 import { Icon } from "./icons";
@@ -1630,4 +1634,5 @@ function App() {
     </div>
   );
 }
+applyInitialAppearance();
 createRoot(document.getElementById("root")!).render(<App />);

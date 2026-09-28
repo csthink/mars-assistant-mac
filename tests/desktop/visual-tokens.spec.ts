@@ -5,7 +5,7 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { closeLocal, launchLocal } from "./local-client";
@@ -608,7 +608,6 @@ const projectPages: View[] = [
     },
     probes: [
       ...shellProbes,
-      [".project-task-list li", "border-bottom-color", line],
       [".project-task-list li span", "color", muted],
       [".project-text-button", "color", accent],
       [".project-detail-heading h2", "color", text],
@@ -967,5 +966,464 @@ test("menu bar panel: every page takes the semantic colour tokens in light and d
     expect(failures).toEqual([]);
   } finally {
     await closeLocal(app);
+  }
+});
+
+/** One human decision from the pending page: continue, read every basis, confirm, submit and close. */
+async function acceptTask(page: Page) {
+  await page
+    .getByRole("button", { name: "处理：接纳任务", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "核对项目操作",
+    exact: true,
+  });
+  await dialog
+    .getByRole("combobox", { name: "处理方式", exact: true })
+    .selectOption("继续");
+  for (const button of await dialog
+    .getByRole("button", { name: /^打开依据 / })
+    .all())
+    await button.click();
+  await dialog
+    .getByRole("checkbox", { name: "我已核对本次操作与全部依据", exact: true })
+    .check();
+  await dialog.getByRole("button", { name: "确认提交", exact: true }).click();
+  await expect(dialog.getByText("操作已成功", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+}
+
+/** WCAG 2 contrast of an element's text against the first opaque background behind it. */
+async function contrastOf(page: Page, selector: string) {
+  return page.evaluate((selector) => {
+    const element = [...document.querySelectorAll<HTMLElement>(selector)].find(
+      (e) => e.getClientRects().length > 0,
+    );
+    if (!element) return { selector, ratio: 0, detail: "no visible element" };
+    const parse = (value: string) => {
+      const m = /rgba?\(([^)]+)\)/.exec(value);
+      if (!m) return null;
+      const [r, g, b, a = "1"] = m[1].split(",").map((v) => v.trim());
+      return { r: +r, g: +g, b: +b, a: +a };
+    };
+    let node: HTMLElement | null = element;
+    let background = null as ReturnType<typeof parse>;
+    while (node && !(background && background.a === 1)) {
+      const value = parse(getComputedStyle(node).backgroundColor);
+      if (value && value.a === 1) background = value;
+      node = node.parentElement;
+    }
+    background ??= parse(
+      getComputedStyle(document.documentElement).backgroundColor,
+    );
+    const color = parse(getComputedStyle(element).color)!;
+    const luminance = (c: { r: number; g: number; b: number }) => {
+      const f = (v: number) => {
+        const s = v / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+    };
+    const [l1, l2] = [luminance(color), luminance(background!)];
+    return {
+      selector,
+      ratio: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05),
+      detail: `${getComputedStyle(element).color} on ${JSON.stringify(background)}`,
+    };
+  }, selector);
+}
+
+/** Geometry of the defects on the project detail: operation spacing, list row baselines and rules below the list. */
+async function projectGeometry(page: Page) {
+  return page.evaluate(() => {
+    const baseline = (element: Element) => {
+      const marker = document.createElement("span");
+      marker.style.cssText =
+        "display:inline-block;width:0;height:0;vertical-align:baseline";
+      element.prepend(marker);
+      const y = marker.getBoundingClientRect().bottom;
+      marker.remove();
+      return y;
+    };
+    const rows = [...document.querySelectorAll(".project-task-list li")].map(
+      (li) => {
+        const title = li.querySelector(":scope > button, :scope > strong")!;
+        const detail = li.querySelector(":scope > span")!;
+        return Math.abs(baseline(title) - baseline(detail));
+      },
+    );
+    const list = document.querySelector(".project-task-list");
+    const rules: number[] = [];
+    if (list) {
+      const last = list.lastElementChild!.getBoundingClientRect();
+      const below = [...document.querySelectorAll("*")].filter((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.left < last.right && r.right > last.left;
+      });
+      for (const e of below) {
+        const style = getComputedStyle(e),
+          r = e.getBoundingClientRect();
+        for (const [side, y] of [
+          ["Top", r.top],
+          ["Bottom", r.bottom],
+        ] as const) {
+          const width = parseFloat(
+            style.getPropertyValue(`border-${side.toLowerCase()}-width`),
+          );
+          const color = style.getPropertyValue(
+            `border-${side.toLowerCase()}-color`,
+          );
+          if (
+            width > 0 &&
+            !/rgba\(.*, 0\)$/.test(color) &&
+            y >= last.bottom - 1.5 &&
+            y <= last.bottom + 60
+          )
+            rules.push(Math.round(y));
+        }
+      }
+    }
+    const operations = [...document.querySelectorAll(".project-operation")].map(
+      (op) => {
+        const button = [...op.children].find(
+          (c) => c.textContent === "查询该操作",
+        );
+        if (!button) return null;
+        const previous = button.previousElementSibling!;
+        return (
+          button.getBoundingClientRect().top -
+          previous.getBoundingClientRect().bottom
+        );
+      },
+    );
+    return {
+      rows,
+      rules: [...new Set(rules)],
+      operations: operations.filter((g) => g !== null) as number[],
+    };
+  });
+}
+
+test("dark surfaces: selected tabs, filter fields, pending cards, the confirmation box, menus, the project chat input, project cards, operation records and list rows take the tokens in dark and light", async ({}, info) => {
+  const f = await journeyFixture();
+  try {
+    const failures: string[] = [];
+    // An operation record needs one decision: accept the task from the pending page.
+    await goTo(f.page, "待处理");
+    await acceptTask(f.page);
+    for (const appearance of ["dark", "light"] as const) {
+      await setAppearance(f.page, appearance);
+      // Pending and run records: the page tabs, the filter bar and the pending card.
+      await goTo(f.page, "待处理");
+      await rest(f.page);
+      failures.push(
+        ...(
+          await mismatches(f.page, [
+            [
+              ".record-query [role=tab][aria-selected=true]",
+              "background-color",
+              selected,
+            ],
+            [".record-query [role=tab][aria-selected=true]", "color", accent],
+            [
+              ".record-query [role=tab][aria-selected=true]",
+              "border-top-color",
+              "var(--c-accent-edge)",
+            ],
+            ...field(".record-query-controls input:not([type=checkbox])"),
+            ...field(".record-query-controls select"),
+            ["html", "background-color", "var(--c-canvas)"],
+          ])
+        ).map((m) => `${appearance} pending ${m}`),
+      );
+      for (const selector of [
+        ".record-query [role=tab][aria-selected=true]",
+        ".workbench-tabs [aria-selected=true]",
+      ]) {
+        if (selector.startsWith(".workbench")) {
+          await f.page
+            .getByRole("navigation", { name: "主要页面" })
+            .getByRole("button", { name: "工作台", exact: true })
+            .click();
+          await rest(f.page);
+        }
+        const c = await contrastOf(f.page, selector);
+        if (c.ratio < 4.5)
+          failures.push(
+            `${appearance} ${selector} contrast ${c.ratio.toFixed(2)} (${c.detail})`,
+          );
+      }
+      await f.page.screenshot({
+        path: info.outputPath(`${appearance}-tabs.png`),
+      });
+      await goTo(f.page, "待处理");
+      await f.page.getByRole("tab", { name: "已处理", exact: true }).click();
+      await rest(f.page);
+      failures.push(
+        ...(
+          await mismatches(f.page, [
+            [".project-pending-item", "background-color", surface],
+            [".project-pending-item", "border-top-color", line],
+          ])
+        ).map((m) => `${appearance} pending card ${m}`),
+      );
+      await f.page.screenshot({
+        path: info.outputPath(`${appearance}-pending.png`),
+      });
+      // Project detail: cards, the object list, operation records, the three-dot menu and the chat input.
+      await f.page
+        .getByRole("navigation", { name: "主要页面" })
+        .getByRole("button", { name: "工作台", exact: true })
+        .click();
+      if (await f.page.locator(".project-table").isVisible())
+        await f.page
+          .locator(".project-open")
+          .filter({ hasText: "合成任务旅程" })
+          .click();
+      await f.page
+        .getByRole("navigation", { name: "Runtime 内容" })
+        .getByRole("button", { name: "当前阶段：任务开发", exact: true })
+        .click();
+      await expect(f.page.locator(".project-task-list li")).toBeVisible();
+      await rest(f.page);
+      const pressed = await contrastOf(
+        f.page,
+        ".project-object-tabs [aria-pressed=true]",
+      );
+      if (pressed.ratio < 4.5)
+        failures.push(
+          `${appearance} object tab contrast ${pressed.ratio.toFixed(2)} (${pressed.detail})`,
+        );
+      failures.push(
+        ...(
+          await mismatches(f.page, [
+            [".project-detail-card", "background-color", surface],
+            [".project-detail-card", "border-top-color", line],
+            ...field(".project-work-grid select"),
+          ])
+        ).map((m) => `${appearance} project ${m}`),
+      );
+      const geometry = await projectGeometry(f.page);
+      if (geometry.rows.some((d) => d > 1))
+        failures.push(
+          `${appearance} list row baselines differ by ${geometry.rows.join(", ")} px`,
+        );
+      if (geometry.rules.length !== 1)
+        failures.push(
+          `${appearance} ${geometry.rules.length} rules below the last list row at ${geometry.rules.join(", ")}`,
+        );
+      await f.page.locator(".project-task-list").scrollIntoViewIfNeeded();
+      await f.page.screenshot({
+        path: info.outputPath(`${appearance}-project-list.png`),
+      });
+      if (
+        !(await f.page
+          .getByRole("textbox", { name: "项目对话输入" })
+          .isVisible())
+      )
+        await f.page
+          .getByRole("button", { name: "新建项目对话", exact: true })
+          .click();
+      await expect(
+        f.page.getByRole("textbox", { name: "项目对话输入" }),
+      ).toBeVisible();
+      await rest(f.page);
+      failures.push(
+        ...(await mismatches(f.page, field(".project-work-grid textarea"))).map(
+          (m) => `${appearance} project chat ${m}`,
+        ),
+      );
+      // Operation records belong to the object the decision acted on.
+      await f.page
+        .getByRole("navigation", { name: "Runtime 内容" })
+        .getByRole("button", { name: "合成编码任务", exact: true })
+        .click();
+      await expect(f.page.locator(".project-operation").first()).toBeVisible();
+      await rest(f.page);
+      failures.push(
+        ...(
+          await mismatches(f.page, [
+            [".project-operation", "border-top-color", line],
+          ])
+        ).map((m) => `${appearance} operation ${m}`),
+      );
+      const operations = (await projectGeometry(f.page)).operations;
+      if (!operations.length)
+        failures.push(`${appearance} no operation record with 查询该操作`);
+      if (operations.some((g) => g < 12))
+        failures.push(
+          `${appearance} 查询该操作 ${operations.join(", ")} px below the element above it`,
+        );
+      if (new Set(operations.map((g) => Math.round(g))).size > 1)
+        failures.push(
+          `${appearance} 查询该操作 spacing differs: ${operations.join(", ")}`,
+        );
+      await f.page
+        .locator(".project-operation")
+        .first()
+        .scrollIntoViewIfNeeded();
+      await f.page.screenshot({
+        path: info.outputPath(`${appearance}-operations.png`),
+      });
+      await f.page
+        .getByRole("button", { name: "合成任务旅程 项目操作" })
+        .first()
+        .click();
+      await expect(f.page.locator(".project-menu")).toBeVisible();
+      failures.push(
+        ...(
+          await mismatches(f.page, [
+            [".project-menu", "background-color", surface],
+            [".project-menu", "border-top-color", line],
+          ])
+        ).map((m) => `${appearance} menu ${m}`),
+      );
+      await f.page.screenshot({
+        path: info.outputPath(`${appearance}-menu.png`),
+      });
+      await f.page.keyboard.press("Escape");
+      // The confirmation box of a project action.
+      await f.page
+        .getByRole("button", { name: /^处理：/ })
+        .first()
+        .click();
+      const dialog = f.page.getByRole("dialog", {
+        name: "核对项目操作",
+        exact: true,
+      });
+      await expect(dialog).toBeVisible();
+      await rest(f.page, true);
+      failures.push(
+        ...(
+          await mismatches(f.page, [
+            [".project-action-dialog", "background-color", surface],
+            [".project-action-dialog", "border-top-color", line],
+            ...field(".project-action-dialog select"),
+          ])
+        ).map((m) => `${appearance} confirmation ${m}`),
+      );
+      await f.page.screenshot({
+        path: info.outputPath(`${appearance}-confirmation.png`),
+      });
+      await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    }
+    expect(failures).toEqual([]);
+  } finally {
+    await closeLocal(f.app);
+  }
+});
+
+/** Native window backgrounds, read in the main process, as lower-case hex. */
+async function backgrounds(app: ElectronApplication) {
+  return app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().map((w) =>
+      w.getBackgroundColor().toLowerCase(),
+    ),
+  );
+}
+
+test("window background: the main window and the panel take the canvas of the current appearance, follow a change without a restart, and a restart opens on the saved appearance", async ({}, info) => {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const root = mkdtempSync(resolve(".test-data/disposable/window-background-"));
+  const launch = () =>
+    launchLocal({
+      args: [resolve("."), `--data-root=${root}`],
+      cwd: resolve("."),
+      colorScheme: null,
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(
+            (e): e is [string, string] => e[1] !== undefined,
+          ),
+        ),
+        CSTHINK_TEST_RECORD_APPEARANCE: "1",
+      },
+    });
+  const canvas = {
+    light: expectedColors.light["--c-canvas"],
+    dark: expectedColors.dark["--c-canvas"],
+  };
+  let app = await launch();
+  try {
+    let page = await app.firstWindow();
+    await ready(page);
+    expect(await backgrounds(app)).toEqual([canvas.light]);
+    await setAppearance(page, "dark");
+    await expect.poll(() => backgrounds(app)).toEqual([canvas.dark]);
+    const opened = app.waitForEvent("window");
+    await app.evaluate(({ Menu }) => {
+      Menu.getApplicationMenu()!
+        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .click();
+    });
+    const panel = await opened;
+    await expect(panel.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect
+      .poll(() => backgrounds(app))
+      .toEqual([canvas.dark, canvas.dark]);
+    // Automatic follows the system; the system is simulated by the native theme source.
+    await goTo(page, "设置");
+    await page.getByRole("button", { name: "自动", exact: true }).click();
+    for (const system of ["light", "dark"] as const) {
+      await app.evaluate(({ nativeTheme }, system) => {
+        nativeTheme.themeSource = system;
+      }, system);
+      await expect
+        .poll(() => backgrounds(app))
+        .toEqual([canvas[system], canvas[system]]);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", system);
+      await expect(panel.locator("html")).toHaveAttribute("data-theme", system);
+    }
+    await setAppearance(page, "dark");
+    await closeLocal(app);
+    // A saved dark appearance: the window is shown on the dark canvas and the page is dark when it is ready.
+    app = await launch();
+    page = await app.firstWindow();
+    await ready(page);
+    const record = await app.evaluate(
+      () =>
+        (
+          globalThis as unknown as {
+            appearanceRecord: {
+              shown?: string;
+              ready?: string;
+              themes: string[];
+            }[];
+          }
+        ).appearanceRecord,
+    );
+    expect(record[0].shown?.toLowerCase()).toBe(canvas.dark);
+    expect(record[0].ready).toBe("dark");
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __appearanceLog: string[] }).__appearanceLog,
+      ),
+    ).not.toContain("light");
+    await page.screenshot({ path: info.outputPath("restart-dark.png") });
+  } finally {
+    await closeLocal(app);
+  }
+  // A data root the service refuses: the window is still shown with the reason.
+  const foreign = mkdtempSync(
+    resolve(".test-data/disposable/window-background-foreign-"),
+  );
+  writeFileSync(resolve(foreign, "not-a-data-root.txt"), "foreign");
+  const refused = await launchLocal({
+    args: [resolve("."), `--data-root=${foreign}`],
+    cwd: resolve("."),
+  });
+  try {
+    const page = await refused.firstWindow();
+    await expect(page.locator(".service-error")).toBeVisible();
+    await expect
+      .poll(() =>
+        refused.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().map((w) => w.isVisible()),
+        ),
+      )
+      .toEqual([true]);
+  } finally {
+    await closeLocal(refused);
   }
 });

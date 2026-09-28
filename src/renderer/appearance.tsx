@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import type { Appearance } from "../shared/protocol";
-export function useAppearance(appearance: Appearance = "light") {
+const systemDark = () =>
+  window.matchMedia("(prefers-color-scheme: dark)").matches;
+/**
+ * The page appearance before the saved choice arrives: the main process sets the native theme from the
+ * saved choice before the page loads, so the colour scheme the page sees already is that choice (or the
+ * system appearance for automatic). The first frame takes it instead of a fixed light page.
+ */
+export function applyInitialAppearance() {
+  document.documentElement.dataset.theme = systemDark() ? "dark" : "light";
+}
+/** Until the saved choice is known the page follows the native theme, as in automatic. */
+export function useAppearance(appearance: Appearance = "auto") {
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
