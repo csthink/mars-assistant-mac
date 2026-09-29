@@ -57,11 +57,13 @@ export async function closeSettings(page: Page) {
 export async function sidebar(page: Page) {
   await closeSettings(page);
   const list = page.locator("#main-sidebar");
-  if (!(await list.isVisible()))
-    await page
-      .getByRole("navigation", { name: "全局导航" })
-      .getByRole("button", { name: "展开侧栏" })
-      .click();
+  const expand = page
+    .getByRole("navigation", { name: "全局导航" })
+    .getByRole("button", { name: "展开侧栏" });
+  // Before the first render neither is on the page; an instant check then would take a sidebar that is
+  // about to appear expanded for a folded one and wait for an expand button that never comes.
+  await expect(list.or(expand).first()).toBeVisible();
+  if (!(await list.isVisible())) await expand.click();
   await expect(list).toBeVisible();
   return list;
 }
