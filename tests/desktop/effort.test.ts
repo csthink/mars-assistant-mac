@@ -449,8 +449,8 @@ test("effort: schema 20 data upgrades to 21 behind a verified backup and keeps c
       ).user_version,
       schemaVersion,
     );
-    // The current schema version; feature-t30 raised it to 23 with the physical execution tables and to 24 with the per-model cost cap.
-    assert.equal(schemaVersion, 25);
+    // The current schema version; later versions add project organization (25) and interface preferences (26).
+    assert.equal(schemaVersion, 26);
     const backups = readdirSync(parent).filter((name) =>
       name.startsWith("data-schema-20-backup-"),
     );

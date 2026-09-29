@@ -726,7 +726,7 @@ test("project work: schema 24 migration preserves project identities and drafts;
     try {
       assert.equal(
         migrated.db.prepare("PRAGMA user_version").get()?.user_version,
-        25,
+        26,
       );
       assert.deepEqual(
         migrated.snapshot().projects.map(({ runtime: _r, chats: _c, ...p }) => {

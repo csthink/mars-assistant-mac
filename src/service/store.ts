@@ -58,6 +58,7 @@ import {
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
+  readInterfacePreferences,
   validCommand,
   validHostCommand,
   type Command,
@@ -119,7 +120,15 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 25;
+export const schemaVersion = 26;
+/** Stored preference text as preferences; text that is not an object reads as the defaults. */
+function storedInterfacePreferences(text: string) {
+  try {
+    return readInterfacePreferences(JSON.parse(text));
+  } catch {
+    return readInterfacePreferences(undefined);
+  }
+}
 // Each entry upgrades from its index version to the next; a fresh database runs them all.
 // Version 2 adds connections (secrets live in the host vault); version 3 adds settings and model list state.
 /** Exported for tests that build a database at an older version. */
@@ -173,6 +182,17 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     // Version 24: local project organization; domain state stays in Runtime projections.
     23: projectSchema,
     24: projectWorkSchema,
+    // Version 26: local interface preferences of the main window (sidebar folded, right column width).
+    // A database already carrying the column (partly downgraded test data) keeps it as is.
+    25: (db) => {
+      const columns = db.prepare("PRAGMA table_info(settings)").all() as {
+        name: string;
+      }[];
+      if (!columns.some((column) => column.name === "interface_preferences"))
+        db.exec(
+          "ALTER TABLE settings ADD COLUMN interface_preferences TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(interface_preferences));",
+        );
+    },
     17: `ALTER TABLE connection_models ADD COLUMN codex_json TEXT;
       UPDATE connection_models SET codex_json=(SELECT codex_json FROM connections WHERE connections.id=connection_models.connection_id)
       WHERE connection_id IN (SELECT id FROM connections WHERE provider='codex')
@@ -491,13 +511,14 @@ export class Store {
   private settings(): Snapshot["settings"] {
     const row = this.db
       .prepare(
-        "SELECT default_connection_id AS defaultConnectionId, default_model_id AS defaultModelId, telemetry_enabled AS telemetryEnabled, appearance FROM settings WHERE id=1",
+        "SELECT default_connection_id AS defaultConnectionId, default_model_id AS defaultModelId, telemetry_enabled AS telemetryEnabled, appearance, interface_preferences AS interfacePreferences FROM settings WHERE id=1",
       )
       .get() as {
       defaultConnectionId: string | null;
       defaultModelId: string | null;
       telemetryEnabled: number;
       appearance: Snapshot["settings"]["appearance"];
+      interfacePreferences: string;
     };
     return {
       codex: codexSettings(this.db),
@@ -506,6 +527,7 @@ export class Store {
       defaultModelId: row.defaultModelId,
       telemetryEnabled: row.telemetryEnabled === 1,
       appearance: row.appearance,
+      interface: storedInterfacePreferences(row.interfacePreferences),
     };
   }
   execute(
@@ -833,6 +855,15 @@ export class Store {
       this.db
         .prepare("UPDATE settings SET appearance=? WHERE id=1")
         .run(command.appearance);
+      return;
+    }
+    if (command.type === "setInterfacePreference") {
+      // Only the named key changes; the other keys, valid or not, stay as stored.
+      this.db
+        .prepare(
+          "UPDATE settings SET interface_preferences=json_set(CASE WHEN json_type(interface_preferences)='object' THEN interface_preferences ELSE '{}' END, ?, json(?)) WHERE id=1",
+        )
+        .run(`$.${command.key}`, JSON.stringify(command.value));
       return;
     }
     if (command.type === "setTelemetry") {

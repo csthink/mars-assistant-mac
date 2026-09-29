@@ -54,7 +54,12 @@ import {
 import { basename, join, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { mkdirSync, readFileSync, existsSync } from "node:fs";
-import { readAppearanceCache, writeAppearanceCache } from "./appearance-cache";
+import {
+  readAppearanceCache,
+  readInterfaceCache,
+  writeAppearanceCache,
+  writeInterfaceCache,
+} from "./appearance-cache";
 import { createHash, randomUUID } from "node:crypto";
 import {
   defaultContextChars,
@@ -64,6 +69,7 @@ import {
   validModel,
   validSecret,
   type Appearance,
+  type InterfacePreferences,
   type CheckKind,
   type CheckReply,
   type Command,
@@ -442,6 +448,26 @@ function cacheAppearance(appearance: Appearance) {
     // Without the cache the next start waits for the snapshot as before; the choice itself is saved.
   }
 }
+/**
+ * The saved interface preferences as last applied, cached next to the appearance so that a new window lays
+ * out its columns (folded sidebar, right column width) from the first frame; the snapshot stays the authority.
+ */
+const interfaceCachePath = join(shellRoot, "interface");
+let cachedInterface = readInterfaceCache(interfaceCachePath);
+function cacheInterface(preferences: InterfacePreferences) {
+  if (
+    cachedInterface &&
+    cachedInterface.sidebarCollapsed === preferences.sidebarCollapsed &&
+    cachedInterface.rightPanelWidth === preferences.rightPanelWidth
+  )
+    return;
+  try {
+    writeInterfaceCache(interfaceCachePath, preferences);
+    cachedInterface = { ...preferences };
+  } catch {
+    // Without the cache the next window lays out with the defaults until the snapshot arrives.
+  }
+}
 let appearanceKnown = false;
 const appearanceWaiters: (() => void)[] = [];
 const appearanceWaitMs = 500;
@@ -487,6 +513,7 @@ function adoptSnapshot(next: Snapshot, startup = false) {
   paintBackgrounds();
   markAppearanceKnown();
   cacheAppearance(next.settings.appearance);
+  cacheInterface(next.settings.interface);
   const keep = referencedSecrets(next);
   for (const ref of keep) {
     const timer = pendingRefs.get(ref);
@@ -1336,6 +1363,8 @@ function createWindow(surface: Surface) {
   const panel = surface === "panel";
   // The page takes the saved appearance for its first frame from this argument, not from the snapshot.
   const initialAppearance = snapshot?.settings.appearance ?? cachedAppearance;
+  // The main window lays out its columns for the first frame from this argument in the same way.
+  const initialInterface = snapshot?.settings.interface ?? cachedInterface;
   const win = new BrowserWindow({
     width: panel ? 420 : 1180,
     height: panel ? 600 : 800,
@@ -1358,6 +1387,9 @@ function createWindow(surface: Surface) {
       additionalArguments: [
         `--surface=${surface}`,
         ...(initialAppearance ? [`--appearance=${initialAppearance}`] : []),
+        ...(initialInterface && !panel
+          ? [`--interface=${JSON.stringify(initialInterface)}`]
+          : []),
         ...(widgetAcceptance ? ["--widget-acceptance"] : []),
       ],
     },
