@@ -970,6 +970,13 @@
   touch-action: none;
   cursor: grab;
 }
+/* KB-319: in a narrow centre (the 900 point window with the sidebar beside it) the canvas is taller, so
+   适应内容 can lay the flow out in fewer, longer columns and keep the node titles readable. */
+@container (max-width: 760px) {
+  .project-graph .project-graph-canvas {
+    height: 520px;
+  }
+}
 .project-graph-canvas:active {
   cursor: grabbing;
 }
@@ -1280,10 +1287,14 @@
   background: var(--c-surface);
   max-width: 260px;
 }
+/* In a wide centre the two rows of the markup are one flex row. */
+.record-query-row {
+  display: contents;
+}
 /* The search field grows to show its whole placeholder (运行记录's names objects, events and
-   identifiers) where the row has room; in a narrow window it keeps the filter bar on one line and
-   the placeholder ends in an ellipsis instead of a cut glyph. */
-.record-query-controls > label:has(> .record-query-search) {
+   identifiers) where the row has room, and the placeholder ends in an ellipsis instead of a cut glyph
+   where it does not. */
+.record-query-controls label:has(> .record-query-search) {
   flex: 1 1 200px;
   max-width: 272px;
 }
@@ -1292,12 +1303,29 @@
   max-width: none;
   text-overflow: ellipsis;
 }
-/* In a narrow centre (the 900 point window with the sidebar beside it) the search field takes its own row,
-   so its placeholder still shows in full, and the filters follow on the next row. */
-@container (max-width: 760px) {
-  .record-query-controls > label:has(> .record-query-search) {
-    flex-basis: 100%;
+/* KB-309: one row needs about 924 px of bar (the search field at its full 272 px, four filters and the
+   reset button), so a centre narrower than 980 px (the 900 point window, and the default window with the
+   sidebar beside it) takes two rows: the search field and its scope, then the other filters and the reset.
+   Each row keeps one label line, control height and top edge. */
+@container (max-width: 979px) {
+  .record-query-controls {
+    display: grid;
+  }
+  .record-query-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+  }
+  .record-query-controls label:has(> .record-query-search) {
+    flex: 1 1 272px;
     max-width: none;
+  }
+}
+/* In the menu bar panel the search field takes a row of its own. */
+@container (max-width: 520px) {
+  .record-query-controls label:has(> .record-query-search) {
+    flex-basis: 100%;
   }
 }
 .record-query-controls .record-query-check {
@@ -1309,7 +1337,7 @@
 .record-query-check input {
   margin: 0;
 }
-.record-query-controls > .button {
+.record-query-controls .button {
   height: 40px;
 }
 .event-date-group {

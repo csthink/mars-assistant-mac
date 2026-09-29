@@ -1,14 +1,9 @@
-import {
-  test,
-  expect,
-  type ElectronApplication,
-  type Page,
-} from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { closeLocal, launchLocal } from "./local-client";
-import { goTo, railEntry, ready, recent } from "./shell";
+import { goTo, railEntry, ready, recent, requestSize } from "./shell";
 import { Store } from "../../src/service/store";
 
 function seed() {
@@ -43,34 +38,6 @@ function seed() {
     );
   store.close();
   return { root, ids };
-}
-
-async function size(
-  app: ElectronApplication,
-  page: Page,
-  w: number,
-  h: number,
-) {
-  await app.evaluate(
-    ({ BrowserWindow }, [w, h]) =>
-      BrowserWindow.getAllWindows()[0].setContentSize(w, h),
-    [w, h],
-  );
-  await expect
-    .poll(async () => {
-      const main = await app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0].getContentSize(),
-      );
-      const inner = await page.evaluate(() => [innerWidth, innerHeight]);
-      return main[0] === inner[0] && main[1] === inner[1] ? main : null;
-    })
-    .not.toBeNull();
-  const got = await page.evaluate(() => [innerWidth, innerHeight]);
-  test.info().annotations.push({
-    type: "window size",
-    description: `requested ${w}x${h}, got ${got.join("x")}`,
-  });
-  return got;
 }
 
 /**
@@ -177,7 +144,7 @@ test("focus rings: every control reached with Tab shows its whole ring inside th
         [900, 680],
         [1440, 900],
       ] as const) {
-        const [width] = await size(app, page, w, h);
+        const [width] = await requestSize(app, page, w, h);
         const tag = `${appearance} ${width}`;
         await (
           await recent(page)
@@ -250,7 +217,7 @@ test("keyboard: Escape closes only the innermost layer and returns focus to its 
   const page = await app.firstWindow();
   try {
     await ready(page);
-    await size(app, page, 900, 680);
+    await requestSize(app, page, 900, 680);
     await (
       await recent(page)
     )

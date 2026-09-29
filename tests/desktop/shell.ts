@@ -1,4 +1,10 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 /**
  * Where the main window's navigation takes a test: the conversation in the centre, the objects reached from
@@ -142,4 +148,60 @@ export async function sessionCount(page: Page) {
 export async function openConversation(page: Page, label: string) {
   const list = await recent(page);
   await list.getByRole("button", { name: label, exact: true }).click();
+}
+
+/**
+ * Requests a content size and reads back what the window system gave: the size once the main process and the
+ * page agree on it and it holds between two reads. The host screen decides; tests never assume it fits.
+ */
+export async function requestSize(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<[number, number]> {
+  await app.evaluate(
+    ({ BrowserWindow }, [w, h]) =>
+      BrowserWindow.getAllWindows()[0].setContentSize(w, h),
+    [width, height],
+  );
+  let last = "";
+  let settled: [number, number] = [0, 0];
+  await expect
+    .poll(
+      async () => {
+        const main = await app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].getContentSize(),
+        );
+        const inner = await page.evaluate(() => [innerWidth, innerHeight]);
+        const reading = `${main.join("x")} ${inner.join("x")}`;
+        const steady =
+          reading === last && main[0] === inner[0] && main[1] === inner[1];
+        last = reading;
+        settled = [main[0], main[1]];
+        return steady;
+      },
+      { intervals: [100, 100, 200, 300] },
+    )
+    .toBe(true);
+  test.info().annotations.push({
+    type: "window size",
+    description: `requested ${width}x${height}, got ${settled.join("x")}`,
+  });
+  return settled;
+}
+
+/** The two supported window classes, read back: the minimum exactly, the standard width by what the host gave. */
+export async function windowClasses(app: ElectronApplication, page: Page) {
+  const minimum = await requestSize(app, page, 900, 680);
+  expect(minimum, "the minimum window 900 × 680").toEqual([900, 680]);
+  const standard = await requestSize(app, page, 1440, 900);
+  expect(
+    standard[0],
+    `the standard window: the host gave ${standard.join(" × ")}; four columns need 1104`,
+  ).toBeGreaterThanOrEqual(1104);
+  expect(standard[0]).toBeLessThanOrEqual(1440);
+  expect(standard[1]).toBeGreaterThanOrEqual(680);
+  expect(standard[1]).toBeLessThanOrEqual(900);
+  return { minimum, standard };
 }

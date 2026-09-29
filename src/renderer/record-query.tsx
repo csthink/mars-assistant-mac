@@ -80,105 +80,113 @@ export function RecordFilters({
         </div>
       )}
       <div className="record-query-controls">
-        <label>
-          搜索
-          <input
-            className="record-query-search"
-            aria-label={pending ? "搜索事项" : "搜索运行记录"}
-            value={q.search}
-            placeholder={
-              pending
-                ? "搜索事项、项目或对象…"
-                : "搜索运行记录（对象、事件或编号）…"
-            }
-            onChange={(e) => set({ search: e.target.value })}
-          />
-        </label>
-        <label>
-          范围
-          <select
-            aria-label={pending ? "事项范围" : "记录范围"}
-            value={q.scope}
-            onChange={(e) => set({ scope: e.target.value })}
-          >
-            <option value="all">全部范围</option>
-            {snapshot.projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} · {p.id.slice(0, 8)}
-              </option>
-            ))}
-            <option value="unassigned">未归属项目</option>
-            <option value="application">应用全局</option>
-          </select>
-        </label>
-        <label>
-          类型
-          <select
-            aria-label={pending ? "处理类型" : "事件类型"}
-            value={q.type}
-            onChange={(e) => set({ type: e.target.value })}
-          >
-            <option value="all">全部类型</option>
-            {[...new Map(types)].map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          排序
-          <select
-            aria-label={pending ? "事项排序" : "记录排序"}
-            value={pending && q.tab === "processed" ? "processed" : q.order}
-            disabled={pending && q.tab === "processed"}
-            onChange={(e) => set({ order: e.target.value })}
-          >
-            {pending && q.tab === "processed" && (
-              <option value="processed">最近处理优先</option>
-            )}
-            <option value="oldest">
-              {pending ? "等待最久优先" : "最早优先"}
-            </option>
-            <option value="newest">
-              {pending ? "最近到达优先" : "最新优先"}
-            </option>
-            {pending && <option value="blocking">阻塞优先</option>}
-          </select>
-        </label>
-        {pending ? (
-          <label className="record-query-check">
-            <input
-              type="checkbox"
-              checked={q.blocking}
-              onChange={(e) => set({ blocking: e.target.checked })}
-            />
-            仅看阻塞
-          </label>
-        ) : (
+        {/* Two rows in a narrow centre: the search and its scope, then the other filters and the reset. */}
+        <div className="record-query-row">
           <label>
-            时间
+            搜索
+            <input
+              className="record-query-search"
+              aria-label={pending ? "搜索事项" : "搜索运行记录"}
+              value={q.search}
+              placeholder={
+                pending
+                  ? "搜索事项、项目或对象…"
+                  : "搜索运行记录（对象、事件或编号）…"
+              }
+              onChange={(e) => set({ search: e.target.value })}
+            />
+          </label>
+          <label>
+            范围
             <select
-              aria-label="记录时间"
-              value={q.days}
-              onChange={(e) => set({ days: e.target.value })}
+              aria-label={pending ? "事项范围" : "记录范围"}
+              value={q.scope}
+              onChange={(e) => set({ scope: e.target.value })}
             >
-              <option value="7">最近 7 天</option>
-              <option value="30">最近 30 天</option>
-              <option value="all">全部保留记录</option>
+              <option value="all">全部范围</option>
+              {snapshot.projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {p.id.slice(0, 8)}
+                </option>
+              ))}
+              <option value="unassigned">未归属项目</option>
+              <option value="application">应用全局</option>
             </select>
           </label>
-        )}
-        {(q.search || q.scope !== "all" || q.type !== "all" || q.blocking) && (
-          <button
-            className="button"
-            onClick={() =>
-              set({ search: "", scope: "all", type: "all", blocking: false })
-            }
-          >
-            返回全部范围
-          </button>
-        )}
+        </div>
+        <div className="record-query-row">
+          <label>
+            类型
+            <select
+              aria-label={pending ? "处理类型" : "事件类型"}
+              value={q.type}
+              onChange={(e) => set({ type: e.target.value })}
+            >
+              <option value="all">全部类型</option>
+              {[...new Map(types)].map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            排序
+            <select
+              aria-label={pending ? "事项排序" : "记录排序"}
+              value={pending && q.tab === "processed" ? "processed" : q.order}
+              disabled={pending && q.tab === "processed"}
+              onChange={(e) => set({ order: e.target.value })}
+            >
+              {pending && q.tab === "processed" && (
+                <option value="processed">最近处理优先</option>
+              )}
+              <option value="oldest">
+                {pending ? "等待最久优先" : "最早优先"}
+              </option>
+              <option value="newest">
+                {pending ? "最近到达优先" : "最新优先"}
+              </option>
+              {pending && <option value="blocking">阻塞优先</option>}
+            </select>
+          </label>
+          {pending ? (
+            <label className="record-query-check">
+              <input
+                type="checkbox"
+                checked={q.blocking}
+                onChange={(e) => set({ blocking: e.target.checked })}
+              />
+              仅看阻塞
+            </label>
+          ) : (
+            <label>
+              时间
+              <select
+                aria-label="记录时间"
+                value={q.days}
+                onChange={(e) => set({ days: e.target.value })}
+              >
+                <option value="7">最近 7 天</option>
+                <option value="30">最近 30 天</option>
+                <option value="all">全部保留记录</option>
+              </select>
+            </label>
+          )}
+          {(q.search ||
+            q.scope !== "all" ||
+            q.type !== "all" ||
+            q.blocking) && (
+            <button
+              className="button"
+              onClick={() =>
+                set({ search: "", scope: "all", type: "all", blocking: false })
+              }
+            >
+              返回全部范围
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
