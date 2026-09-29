@@ -158,10 +158,10 @@ Host 服务（`src/main/runtime-host.ts`）只保留每个连接的同步状态�
 | 层 | 运行方式 | 覆盖 |
 | --- | --- | --- |
 | 服务层 | Node.js test runner 加 tsx，逐文件串行 | 业务服务、存储与迁移、vault、传输、本地 Agent 协议、Runtime 准入与帧、执行端口等模块 |
-| 集成 | Playwright 启动真实 Electron | preload、主进程与业务服务的命令路径；Host 接入列表领域（TypeScript，`electron-node` 启动器）与 Coding 图领域（Python，`python3` 启动器）两个 fake Runtime 的场景，并生成 Contract 覆盖报告 |
-| 桌面 | Playwright 启动真实 Electron | 界面行为；测试窗口透明、不取得焦点 |
-| 原生 | Playwright，需显式入口 | 前台窗口焦点与跨应用失焦 |
-| 真实调用 | Playwright，需显式授权 | 真实提供方与本地 Agent |
+| 集成 | Playwright 启动真实 Electron，串行 | preload、主进程与业务服务的命令路径；Host 接入列表领域（TypeScript，`electron-node` 启动器）与 Coding 图领域（Python，`python3` 启动器）两个 fake Runtime 的场景，并生成 Contract 覆盖报告 |
+| 桌面 | Playwright 启动真实 Electron，4 个 worker 并行，同一文件在一个 worker 内顺序执行 | 界面行为；测试窗口透明、不取得焦点，菜单栏图标由测试替身代替 |
+| 原生 | Playwright，需显式入口，串行 | 前台窗口焦点、跨应用失焦与真实菜单栏图标 |
+| 真实调用 | Playwright，需显式授权，串行 | 真实提供方与本地 Agent |
 
 前三层离线运行。服务层进入 CI；集成与桌面两层需要已登录的图形会话，在本机运行，不进入 CI；原生与真实调用两层也不进入 CI。
 
