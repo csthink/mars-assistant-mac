@@ -93,6 +93,8 @@ export interface Conversation {
   titleSource: TitleSource;
   /** Creation time; null for conversations created before it was recorded (never inferred from activity). */
   createdAt: string | null;
+  /** Position in creation order (larger is newer); set for every row, including old ones. */
+  creationOrder: number;
   /**
    * Not yet used: no messages, no draft text, no draft attachments, no project, no own name, not pinned and not
    * archived. It is the new-conversation page and not listed; starting a new conversation reuses it.

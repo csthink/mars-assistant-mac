@@ -473,7 +473,7 @@ export class Store {
       conversations: (
         this.db
           .prepare(
-            `SELECT c.id, c.title, CASE WHEN c.manual_title IS NOT NULL THEN 'manual' WHEN c.auto_title IS NOT NULL THEN 'first-message' ELSE 'default' END AS titleSource, c.created_at AS createdAt, (CASE WHEN ${unusedCondition} THEN 1 ELSE 0 END) AS unused, c.title_revision AS titleRevision, c.organization_revision AS organizationRevision, c.pinned_at AS pinnedAt, c.unread, c.archived_at AS archivedAt, c.deleted_at AS deletedAt, c.retain_until AS retainUntil, c.draft, c.revision, c.updated_at AS updatedAt,
+            `SELECT c.id, c.title, CASE WHEN c.manual_title IS NOT NULL THEN 'manual' WHEN c.auto_title IS NOT NULL THEN 'first-message' ELSE 'default' END AS titleSource, c.created_at AS createdAt, c.creation_order AS creationOrder, (CASE WHEN ${unusedCondition} THEN 1 ELSE 0 END) AS unused, c.title_revision AS titleRevision, c.organization_revision AS organizationRevision, c.pinned_at AS pinnedAt, c.unread, c.archived_at AS archivedAt, c.deleted_at AS deletedAt, c.retain_until AS retainUntil, c.draft, c.revision, c.updated_at AS updatedAt,
              COALESCE((SELECT substr(replace(content, char(10), ' '), 1, 80) FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS preview,
              (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) AS messageCount,
              c.connection_id AS connectionId, c.model_id AS modelId, c.effort,

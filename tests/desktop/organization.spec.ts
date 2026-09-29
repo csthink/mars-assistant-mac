@@ -69,13 +69,22 @@ test("organization: single-line ordering, pin, unread and archive persist with e
     await expect(list.locator(".unread-dot")).toHaveCount(0);
     await page.keyboard.press("Meta+Shift+a");
     await expect(list.locator(".session")).toHaveCount(1);
+    // The archived list is a centre page; archiving took the conversation out of the pinned section.
     await page.getByRole("button", { name: "已归档 1", exact: true }).click();
-    const archive = page.getByRole("dialog", { name: "已归档对话" });
-    await expect(archive).toContainText(ids[0].slice(0, 8));
-    await archive.getByRole("button", { name: "取消归档并打开" }).click();
-    await expect(archive).toHaveCount(0);
+    const archive = page.getByRole("list", { name: "已归档对话" });
+    await expect(
+      archive.locator(`[data-conversation="${ids[0]}"]`),
+    ).toHaveCount(1);
+    await expect(page.locator('[aria-label="已置顶对话"]')).toHaveCount(0);
+    await archive.getByRole("button", { name: "取消归档" }).click();
+    await expect(
+      page.getByRole("heading", { name: "没有已归档的对话" }),
+    ).toBeVisible();
     await recent(page);
     await expect(list.locator(".session")).toHaveCount(2);
+    // Leaving the archive never pins again.
+    await expect(page.locator('[aria-label="已置顶对话"]')).toHaveCount(0);
+    await openConversation(page, `对话 ${ids[0].slice(0, 8)}`);
     await page.screenshot({ path: info.outputPath("organized-sidebar.png") });
   } finally {
     await app.close();
@@ -424,16 +433,19 @@ test("organization: header title edits synchronize across surfaces and keep iden
     const draft = page.getByRole("textbox", { name: "输入草稿" });
     await draft.fill("改名时保留这段草稿");
     await expect(page.getByTestId("save-state")).toHaveText("草稿已保存");
+    // The main window renames the centre title in place; Enter saves.
+    const field = page
+      .locator(".center-header")
+      .getByRole("textbox", { name: /^重命名对话/ });
     await heading.click();
-    const dialog = page.getByRole("dialog", { name: "重命名对话" });
-    await expect(dialog.getByLabel("对话标题", { exact: true })).toHaveValue(
-      "松果计划",
+    await expect(page.getByRole("dialog", { name: "重命名对话" })).toHaveCount(
+      0,
     );
-    await dialog
-      .getByLabel("对话标题", { exact: true })
-      .fill("主窗口编辑的名称");
-    await dialog.getByRole("button", { name: "保存标题", exact: true }).click();
+    await expect(field).toHaveValue("松果计划");
+    await field.fill("主窗口编辑的名称");
+    await field.press("Enter");
     await expect(heading).toHaveText("主窗口编辑的名称");
+    await expect(heading).toBeFocused();
     await recent(page);
     await expect(
       page
@@ -486,7 +498,14 @@ test("organization: header title edits synchronize across surfaces and keep iden
       expect(box).not.toBeNull();
       expect(menu).not.toBeNull();
       expect(box!.x + box!.width).toBeLessThanOrEqual(menu!.x);
-      expect(menu!.x - box!.x - box!.width).toBeLessThanOrEqual(8);
+      // In the main window the title source sits between the title and the menu button.
+      const before =
+        p === page
+          ? (await p.locator(".center-header .title-source").boundingBox())!
+          : box!;
+      if (p === page) expect(box!.x + box!.width).toBeLessThanOrEqual(before.x);
+      expect(before.x + before.width).toBeLessThanOrEqual(menu!.x);
+      expect(menu!.x - before.x - before.width).toBeLessThanOrEqual(8);
       // The main window's title sits in the centre title row; the panel keeps its compact toolbar with
       // the create button beside the title.
       const header = p.locator(p === page ? ".center-header" : ".topbar");
@@ -526,8 +545,9 @@ test("organization: header title edits synchronize across surfaces and keep iden
       ).toBe(true);
     }
     await heading.click();
-    await dialog.getByLabel("对话标题", { exact: true }).fill("取消的名称");
-    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await field.fill("取消的名称");
+    await field.press("Escape");
+    await expect(field).toHaveCount(0);
     await expect(heading).toHaveText(longTitle);
     await expect(panelHeading).toHaveText(longTitle);
     await openConversation(page, `对话 ${ids[0].slice(0, 8)}`);
@@ -561,14 +581,16 @@ test("organization: header title edits synchronize across surfaces and keep iden
       .locator("#main-sidebar")
       .getByRole("button", { name: "新建聊天", exact: true })
       .click();
-    // feature-t28: an empty conversation shows the welcome instead of a title row (prototype P1);
-    // its name is still 新对话 in the recent list and can be renamed from the row menu.
+    // An empty conversation shows the welcome instead of a title row (prototype P1); while it is unused it
+    // stands for the new-conversation page and has no row in the sidebar.
     await expect(
       reopened.getByRole("button", { name: "修改对话名称", exact: true }),
     ).toHaveCount(0);
     await expect(
-      (await recent(reopened)).locator(".session-name").first(),
-    ).toHaveText("新对话");
+      (await recent(reopened))
+        .locator(".session-name")
+        .filter({ hasText: "新对话" }),
+    ).toHaveCount(0);
     await closeRecent(reopened);
     await expect(
       reopened.getByRole("textbox", { name: "输入草稿" }),
@@ -710,19 +732,19 @@ test("organization: dialogs restore pointer focus without rings and preserve key
       else await page.getByRole("button", { name: close, exact: true }).click();
       await indicator(search, false);
     }
-    for (const close of ["Escape", "取消", "保存标题"]) {
+    // The centre title renames in place: Escape cancels, an empty name keeps the saved one, Enter saves;
+    // each time focus returns to the title without a ring, since it was reached by the pointer.
+    const field = page
+      .locator(".center-header")
+      .getByRole("textbox", { name: /^重命名对话/ });
+    for (const close of ["Escape", "empty", "Enter"]) {
       await heading.click();
-      const dialog = page.getByRole("dialog", { name: "重命名对话" });
-      await expect(
-        dialog.getByLabel("对话标题", { exact: true }),
-      ).toBeFocused();
-      await dialog
-        .getByLabel("对话标题", { exact: true })
-        .fill("焦点恢复后的名称");
-      if (close === "Escape") await page.keyboard.press("Escape");
-      else
-        await dialog.getByRole("button", { name: close, exact: true }).click();
+      await expect(field).toBeFocused();
+      await field.fill(close === "empty" ? "   " : "焦点恢复后的名称");
+      await page.keyboard.press(close === "Escape" ? "Escape" : "Enter");
+      await expect(field).toHaveCount(0);
       await indicator(heading, false);
+      if (close !== "Enter") await expect(heading).toHaveText("松果计划");
     }
     await expect(heading).toHaveText("焦点恢复后的名称");
     await page.screenshot({
@@ -738,7 +760,8 @@ test("organization: dialogs restore pointer focus without rings and preserve key
       await page.keyboard.press("Tab");
       await indicator(target, true);
       await page.keyboard.press("Enter");
-      await page.locator("dialog[open]").waitFor();
+      if (target === heading) await expect(field).toBeFocused();
+      else await page.locator("dialog[open]").waitFor();
       await page.keyboard.press("Escape");
       await indicator(target, true);
     }

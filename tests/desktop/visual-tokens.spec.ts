@@ -457,47 +457,23 @@ const chatPages: View[] = [
   {
     id: "MW-20",
     open: async (page) => {
+      // The centre title renames in place: the field takes the surface and the accent focus of a form field.
       await page.getByRole("button", { name: "修改对话名称" }).click();
-      await expect(page.locator(".rename-dialog")).toBeVisible();
+      await expect(page.locator(".center-header .rename-input")).toBeVisible();
     },
     probes: [
-      [".rename-dialog", "background-color", surface],
-      [".rename-dialog", "border-top-color", line],
-      [".rename-dialog", "box-shadow", "var(--c-shadow)"],
-      [".rename-dialog", "color", text],
-      // The title field opens focused; its border is checked by the field-focus check.
-      [".rename-dialog input", "background-color", surface],
-      [".rename-dialog input", "color", text],
-      ...primaryButton(".rename-dialog .button.primary"),
-      ...secondaryButton(".rename-dialog .button:not(.primary)"),
+      [".center-header .rename-input", "background-color", surface],
+      [".center-header .rename-input", "color", text],
+      [".center-header .title-source", "color", muted],
     ],
-    field: ".rename-dialog input",
+    field: ".center-header .rename-input",
     keep: true,
-  },
-  {
-    id: "MW-20-hover",
-    open: async () => {},
-    probes: [
-      [
-        ".rename-dialog .button.primary",
-        "background-color",
-        "var(--c-accent-strong)",
-      ],
-      [
-        ".rename-dialog .button.primary",
-        "border-top-color",
-        "var(--c-accent-strong)",
-      ],
-      [".rename-dialog .button.primary", "color", "var(--c-on-accent)"],
-    ],
-    keep: true,
-    hover: ".rename-dialog .button.primary",
   },
   {
     id: "MW-20-closed",
     open: async (page) => {
       await page.keyboard.press("Escape");
-      await expect(page.locator(".rename-dialog")).toBeHidden();
+      await expect(page.locator(".center-header .rename-input")).toBeHidden();
     },
     probes: [],
   },

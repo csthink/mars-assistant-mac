@@ -120,9 +120,31 @@ export async function goTo(page: Page, name: ShellPage) {
   ).click();
 }
 
-/** The recent list in the sidebar (expanding the sidebar when it is folded). */
+/**
+ * The conversation rows of the sidebar (expanding the sidebar when it is folded): the pinned section, then the
+ * recent list. A pinned conversation has its row in the pinned section and no second one in the recent list.
+ */
 export async function recent(page: Page): Promise<Locator> {
-  return (await sidebar(page)).getByLabel("最近对话");
+  return (await sidebar(page)).locator(
+    '[aria-label="已置顶对话"], [aria-label="最近对话"]',
+  );
+}
+
+/**
+ * Whether the conversation selected on this surface is unused (no messages, draft, attachments or name): it
+ * stands for the new-conversation page and has no row in the sidebar.
+ */
+async function selectedUnused(page: Page) {
+  return page.evaluate(async () => {
+    try {
+      const reply = await window.desktop.command({ type: "snapshot" });
+      if (!reply.ok) return false;
+      const id = reply.snapshot.selected[window.desktop.surface];
+      return !!reply.snapshot.conversations.find((c) => c.id === id)?.unused;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /** The recent list lives in the sidebar and never needs closing; waits until no menu or dialog covers it. */
@@ -130,20 +152,27 @@ export async function closeRecent(page: Page) {
   await expect(page.locator("dialog[open], .conversation-menu")).toHaveCount(0);
 }
 
-/** Asserts the number of rows in the recent list. */
+/**
+ * Asserts the number of conversations a person has on this surface: the rows of the sidebar plus the unused
+ * conversation behind the new-conversation page when that one is selected.
+ */
 export async function expectSessionCount(page: Page, count: number) {
-  await expect((await recent(page)).locator(".session")).toHaveCount(count);
+  await expect.poll(() => sessionCount(page)).toBe(count);
 }
 
-/** Number of rows in the recent list, leaving the draft focus as it was found. */
+/**
+ * Number of conversations a person has on this surface: the rows of the sidebar, plus one for the selected
+ * unused conversation (the new-conversation page, which has no row); the draft focus stays as it was found.
+ */
 export async function sessionCount(page: Page) {
   const draftFocused = await page.evaluate(
     () => document.activeElement?.getAttribute("aria-label") === "输入草稿",
   );
   const count = await (await recent(page)).locator(".session").count();
+  const unused = await selectedUnused(page);
   if (draftFocused)
     await page.getByRole("textbox", { name: "输入草稿" }).focus();
-  return count;
+  return count + (unused ? 1 : 0);
 }
 
 /** Opens a conversation from the recent list by its accessible name (`对话 xxxxxxxx`). */

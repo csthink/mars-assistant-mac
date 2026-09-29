@@ -123,19 +123,35 @@ test("rail and sidebar: every entry opens its object in the centre, the old tabs
       page.getByRole("tablist", { name: "工作台内容" }),
       page.locator("section#profile-menu"),
       page.locator("section#home-history"),
-      page.getByRole("button", { name: "最近聊天", exact: true }),
+      // The former recent-chats popover button; the recent section's fold toggle has the same name.
+      page
+        .getByRole("button", { name: "最近聊天", exact: true })
+        .and(page.locator(":not(.section-toggle)")),
       page.getByRole("button", { name: "全局搜索", exact: true }),
     ])
       await expect(gone).toHaveCount(0);
-    // New conversation: the sidebar's 新建聊天 creates one and the centre shows the landing page.
+    // New conversation: the sidebar's 新建聊天 starts one and the centre shows the landing page. The unused
+    // conversation stands for that page: it has no row, and 新建聊天 and 主页 reuse it instead of adding more.
+    const snapshotOf = () =>
+      page.evaluate(async () => {
+        const r = await window.desktop.command({ type: "snapshot" });
+        if (!r.ok) throw new Error(r.message);
+        return {
+          selected: r.snapshot.selected.main,
+          unused: r.snapshot.conversations.filter((c) => c.unused).length,
+          total: r.snapshot.conversations.length,
+        };
+      });
     const before = await (await recent(page)).locator(".session").count();
+    const start = await snapshotOf();
     await page
       .locator("#main-sidebar")
       .getByRole("button", { name: "新建聊天", exact: true })
       .click();
-    await expect((await recent(page)).locator(".session")).toHaveCount(
-      before + 1,
-    );
+    await expect.poll(async () => (await snapshotOf()).unused).toBe(1);
+    const blank = await snapshotOf();
+    expect(blank.total).toBe(start.total + 1);
+    await expect((await recent(page)).locator(".session")).toHaveCount(before);
     await expect(page.locator(".welcome")).toBeVisible();
     await expect(railEntry(page, "主页")).toHaveAttribute(
       "aria-current",
@@ -143,10 +159,12 @@ test("rail and sidebar: every entry opens its object in the centre, the old tabs
     );
     // 主页 on the landing page stays there (no second blank conversation).
     await railEntry(page, "主页").click();
-    await expect((await recent(page)).locator(".session")).toHaveCount(
-      before + 1,
-    );
-    // A conversation with messages opens from its row; 主页 then starts a new conversation.
+    await page
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
+      .click();
+    expect(await snapshotOf()).toEqual(blank);
+    // A conversation with messages opens from its row; 主页 then returns to the unused conversation.
     await (
       await recent(page)
     )
@@ -159,9 +177,8 @@ test("rail and sidebar: every entry opens its object in the centre, the old tabs
     );
     await railEntry(page, "主页").click();
     await expect(page.locator(".welcome")).toBeVisible();
-    await expect((await recent(page)).locator(".session")).toHaveCount(
-      before + 2,
-    );
+    await expect.poll(snapshotOf).toEqual(blank);
+    await expect((await recent(page)).locator(".session")).toHaveCount(before);
     // Former 工作台 项目 and 控件, the avatar popover's 待处理, 记录 and 设置.
     for (const [open, heading] of [
       [() => goTo(page, "项目"), "项目"],
@@ -301,13 +318,13 @@ test("widths: at 900 × 680 and the standard width the columns follow the width 
         takeover: false,
       };
       expectColumns(await columns(page), at(closed), `${width} closed`);
-      // Open the right column: its tabs are 文件 and 事件, each saying it is not provided yet.
+      // Open the right column: its tabs are 文件 and 事件; this conversation has not submitted any file.
       await rightToggle(page).click();
       const panel = page.getByRole("complementary", { name: "右栏" });
       await expect(panel).toBeVisible();
       await expect(panel.getByRole("tab")).toHaveCount(2);
-      await expect(panel.getByRole("tabpanel")).toHaveText(
-        "对话的文件尚未提供。",
+      await expect(panel.getByRole("tabpanel")).toContainText(
+        "这段对话还没有提交的资料。",
       );
       await expect(panel.getByRole("tab", { name: "文件" })).toBeFocused();
       const open = { ...closed, rightOpen: true };
@@ -500,6 +517,9 @@ test("native widget view: the widget's native view hides while the settings dial
       .locator("#main-sidebar")
       .getByRole("button", { name: "新建聊天", exact: true })
       .click();
+    // A draft makes the new conversation used, so it has a row (and a row menu) in the sidebar.
+    await page.getByRole("textbox", { name: "输入草稿" }).fill("控件检查");
+    await expect(page.getByTestId("save-state")).toHaveText("草稿已保存");
     await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     await expect.poll(views).toBe(1);

@@ -106,7 +106,14 @@ export function useBusiness() {
   async function changeSelection(
     command: Extract<
       Command,
-      { type: "create" | "select" | "chooseConnection" | "chooseEffort" }
+      {
+        type:
+          | "create"
+          | "newConversation"
+          | "select"
+          | "chooseConnection"
+          | "chooseEffort";
+      }
     >,
   ) {
     if (selectionBusy.current) return null;
@@ -132,8 +139,9 @@ export function useBusiness() {
     }
   }
   async function create() {
+    // A new conversation reuses the unused one when there is one; the reply tells which one is selected.
     const saved = await changeSelection({
-      type: "create",
+      type: "newConversation",
       id: crypto.randomUUID(),
     });
     return saved?.selected[bridge.surface] ?? null;

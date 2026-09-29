@@ -1,4 +1,5 @@
 import "./tokens.css";
+import { refocusWhenReady } from "./modal-focus";
 import {
   RecordFilters,
   initialRecordQuery,
@@ -42,8 +43,14 @@ import {
   useAppearance,
   AppearanceSettings,
 } from "./appearance";
-import { useOrganization } from "./organization";
-import { RenameDialog } from "./conversation-title";
+import {
+  useOrganization,
+  type RenameOrigin,
+  type Renaming,
+} from "./organization";
+import { InlineRename, RenameDialog } from "./conversation-title";
+import { ArchivedPage } from "./archived-page";
+import { ConversationEvents, ConversationFiles } from "./conversation-panel";
 import { Icon } from "./icons";
 import type { Page } from "./shell";
 import {
@@ -60,6 +67,7 @@ import { columnLayout, expandsAsOverlay } from "./column-layout";
 import { SettingsDialog, SettingsNav, settingTitles } from "./settings-dialog";
 import {
   defaultInterfacePreferences,
+  titleSourceLabels,
   type Command,
   type InterfacePreferences,
 } from "../shared/protocol";
@@ -240,8 +248,13 @@ function App() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
+  // The menu bar panel renames in a dialog; the main window renames in place (the sidebar row or the centre
+  // title) and then returns focus to where renaming started.
   const [renameId, setRenameId] = useState<string>();
   const renameTarget = snapshot?.conversations.find((c) => c.id === renameId);
+  const [renaming, setRenaming] = useState<
+    Renaming & { returnTo: () => HTMLElement | null; keyboard: boolean }
+  >();
   // The menu bar panel keeps its four pages; the main window shows one object in the centre, settings as a
   // dialog and the right column beside it.
   const [page, setPage] = useState<Page>(panel ? "工作台" : "聊天");
@@ -740,6 +753,93 @@ function App() {
       void newConversation();
     else go("chat");
   }
+  /**
+   * Starts renaming. In the panel it opens the rename dialog. In the main window a sidebar menu edits the row in
+   * place (or the centre title when the row is not on screen), the centre title and ⌥⌘R edit the centre title;
+   * afterwards focus returns to the entry, with a ring when the entry was reached by keyboard.
+   */
+  function startRename(
+    target: string,
+    origin: RenameOrigin,
+    keyboard: boolean,
+    from?: HTMLElement,
+  ) {
+    if (panel) {
+      setRenameId(target);
+      return;
+    }
+    const menuButton = () =>
+      document.querySelector<HTMLElement>(
+        `#main-sidebar [aria-label="对话菜单 ${target.slice(0, 8)}"]`,
+      );
+    const rowVisible =
+      (origin === "pinned" || origin === "recent") && !!menuButton();
+    const previous =
+      from ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
+    const returnTo = rowVisible
+      ? menuButton
+      : origin === "center"
+        ? () =>
+            document.querySelector<HTMLElement>(
+              ".center .conversation-menu-trigger",
+            )
+        : origin === "shortcut"
+          ? () =>
+              previous?.isConnected
+                ? previous
+                : document.querySelector<HTMLElement>(
+                    ".center [data-center-title]",
+                  )
+          : () =>
+              document.querySelector<HTMLElement>(
+                ".center [data-center-title]",
+              );
+    if (!rowVisible && (target !== id || view !== "chat")) {
+      // Only the current conversation has a centre title; open it first.
+      if (target !== id) return;
+      go("chat");
+    }
+    setRenaming({
+      id: target,
+      where: rowVisible ? "sidebar" : "center",
+      returnTo:
+        origin === "center" && from
+          ? () =>
+              document.querySelector<HTMLElement>(".center [data-center-title]")
+          : returnTo,
+      keyboard,
+    });
+  }
+  function finishRename() {
+    const done = renaming;
+    setRenaming(undefined);
+    if (done) refocusWhenReady(done.returnTo, done.keyboard);
+  }
+  async function openConversation(target: string) {
+    if (!status.connected) {
+      setReadOnlyView(target);
+      setSearchTarget(undefined);
+      go("chat");
+      return true;
+    }
+    // The current, already read conversation only needs showing; selecting it again (which also marks
+    // it read) would be a needless command.
+    if (target === id && !readOnlyView && current && !current.unread) {
+      setSearchTarget(undefined);
+      go("chat");
+      return true;
+    }
+    const ok = await model.select(target);
+    if (ok) {
+      setReadOnlyView(undefined);
+      setSearchTarget(undefined);
+      go("chat");
+    }
+    return ok;
+  }
   const organization = useOrganization({
     page: panel ? page : view,
     highlightCurrent: panel || view === "chat",
@@ -747,31 +847,14 @@ function App() {
     connected: status.connected && !model.switching,
     currentId: id,
     dirty: (target) => !!model.drafts.get(target)?.dirty,
-    select: async (target) => {
-      if (!status.connected) {
-        setReadOnlyView(target);
-        setSearchTarget(undefined);
-        go("chat");
-        return true;
-      }
-      // The current, already read conversation only needs showing; selecting it again (which also marks
-      // it read) would be a needless command.
-      if (target === id && !readOnlyView && current && !current.unread) {
-        setSearchTarget(undefined);
-        go("chat");
-        return true;
-      }
-      const ok = await model.select(target);
-      if (ok) {
-        setReadOnlyView(undefined);
-        setSearchTarget(undefined);
-        go("chat");
-      }
-      return ok;
-    },
-    rename: setRenameId,
+    select: openConversation,
+    rename: startRename,
     notice: setNotice,
     filter: recentFilter,
+    pinnedSort: preferences.pinnedSort,
+    renaming: renaming?.where === "sidebar" ? renaming : undefined,
+    onRenameDone: finishRename,
+    onArchived: panel ? undefined : () => go("archived"),
   });
   const conversationList = organization.list;
   const chatProject = snapshot?.projects.find((p) =>
@@ -1144,6 +1227,21 @@ function App() {
   function chatContent() {
     return (
       <div className="chat-layout">
+        {!panel && current?.archivedAt && (
+          <div className="archived-banner" role="status">
+            <Icon name="archive" />
+            <span>这段对话已归档。发送新消息后会自动取消归档。</span>
+            <button
+              className="button"
+              disabled={!status.connected || model.switching}
+              onClick={() => {
+                void organization.act(current, "unarchive");
+              }}
+            >
+              取消归档
+            </button>
+          </div>
+        )}
         <div className="messages">
           {conversationMessages.length > 0 ? (
             <Transcript
@@ -1596,6 +1694,18 @@ function App() {
     );
   }
   function mainContent() {
+    if (view === "archived")
+      return (
+        <ArchivedPage
+          snapshot={snapshot}
+          connected={status.connected && !model.switching}
+          counts={organization.counts}
+          onOpen={(target) => {
+            void openConversation(target);
+          }}
+          onUnarchive={(c) => organization.act(c, "unarchive")}
+        />
+      );
     if (view === "widgets") return widgetsContent("控件");
     if (view === "projects") return projectsContent();
     if (view === "pending") return pendingContent();
@@ -1757,6 +1867,17 @@ function App() {
       </div>
     );
   const showSidebar = layout.sidebar === "expanded" || overlay;
+  // The right column reads the selected conversation's messages, turns and attachments from the snapshot;
+  // a conversation viewed read only while disconnected is not in it.
+  const panelSource = {
+    snapshot,
+    conversationId: home ? undefined : id,
+    readable:
+      status.connected &&
+      !readOnlyView &&
+      !!id &&
+      snapshot?.selected.main === id,
+  };
   return (
     <div
       className="app four-column"
@@ -1771,13 +1892,6 @@ function App() {
         <SearchDialog
           onClose={() => setSearchOpen(false)}
           onOpen={openSearchHit}
-        />
-      )}
-      {renameTarget && (
-        <RenameDialog
-          key={renameTarget.id}
-          conversation={renameTarget}
-          onClose={() => setRenameId(undefined)}
         />
       )}
       {settingsOpen && (
@@ -1823,8 +1937,32 @@ function App() {
             sessionStorage.removeItem("project-selected");
             go("projects");
           }}
+          pinned={organization.pinned}
+          pinnedSort={preferences.pinnedSort}
+          onPinnedSort={(sort) => {
+            void savePreference("pinnedSort", sort);
+          }}
+          folded={{
+            pinned: preferences.pinnedFolded,
+            projects: preferences.projectsFolded,
+          }}
+          onFoldSection={(section) => {
+            if (section === "pinned")
+              void savePreference("pinnedFolded", !preferences.pinnedFolded);
+            else
+              void savePreference(
+                "projectsFolded",
+                !preferences.projectsFolded,
+              );
+          }}
           recent={
-            <RecentChats onFilter={setRecentFilter}>
+            <RecentChats
+              onFilter={setRecentFilter}
+              folded={preferences.recentFolded}
+              onFold={(folded) => {
+                void savePreference("recentFolded", folded);
+              }}
+            >
               {conversationList}
             </RecentChats>
           }
@@ -1840,23 +1978,57 @@ function App() {
           >
             {current && conversationMessages.length > 0 ? (
               <>
-                <button
-                  className="conversation-title"
-                  aria-label="修改对话名称"
-                  title={current.title}
-                  data-center-title
-                  disabled={!status.connected || model.switching}
-                  onClick={() => setRenameId(current.id)}
-                >
-                  {current.title}
-                </button>
+                {renaming?.where === "center" && renaming.id === current.id ? (
+                  <InlineRename
+                    conversation={current}
+                    className="center-rename"
+                    onClose={finishRename}
+                  />
+                ) : (
+                  <button
+                    className="conversation-title"
+                    aria-label="修改对话名称"
+                    title={current.title}
+                    data-center-title
+                    disabled={!status.connected || model.switching}
+                    onClick={(event) =>
+                      startRename(
+                        current.id,
+                        "center",
+                        event.detail === 0,
+                        event.currentTarget,
+                      )
+                    }
+                  >
+                    {current.title}
+                  </button>
+                )}
+                <small className="title-source" aria-label="标题来源">
+                  {titleSourceLabels[current.titleSource]}
+                </small>
+                {(organization.counts.get(current.title) ?? 0) > 1 && (
+                  <small className="same-name">
+                    同名 {organization.counts.get(current.title)}
+                  </small>
+                )}
+                {current.archivedAt && (
+                  <small className="archived-tag">已归档</small>
+                )}
                 <button
                   className="icon-button conversation-menu-trigger"
                   aria-label="当前对话菜单"
+                  aria-haspopup="menu"
                   disabled={!status.connected}
                   onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
-                    organization.openMenu(current, rect.left, rect.bottom);
+                    organization.openMenu(
+                      current,
+                      rect.left,
+                      rect.bottom,
+                      "center",
+                      event.currentTarget,
+                      event.detail === 0,
+                    );
                   }}
                 >
                   ⋯
@@ -1869,6 +2041,16 @@ function App() {
             )}
           </CenterHeader>
         )}
+        {view === "archived" && (
+          <CenterHeader panelToggle={false}>
+            <h1 className="center-heading" tabIndex={-1} data-center-title>
+              已归档
+            </h1>
+            <small className="center-count">
+              {organization.archived.length} 段对话
+            </small>
+          </CenterHeader>
+        )}
         <div className="viewport">{mainContent()}</div>
       </main>
       {effectiveRight && (
@@ -1879,13 +2061,18 @@ function App() {
               id: "files",
               name: "文件",
               icon: "file",
-              body: <p className="right-empty">对话的文件尚未提供。</p>,
+              body: (
+                <ConversationFiles
+                  source={panelSource}
+                  onOpen={openAttachment}
+                />
+              ),
             },
             {
               id: "events",
               name: "事件",
               icon: "activity",
-              body: <p className="right-empty">对话的事件尚未提供。</p>,
+              body: <ConversationEvents source={panelSource} />,
             },
           ]}
           layout={layout}

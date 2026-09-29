@@ -1,3 +1,4 @@
+import { refocus } from "./modal-focus";
 import {
   useEffect,
   useRef,
@@ -9,12 +10,14 @@ import {
 } from "react";
 import { Icon } from "./icons";
 import { COLUMN, type ColumnLayout } from "./column-layout";
+import type { PinnedSort } from "../shared/protocol";
 
 /**
  * The main window's navigation shell: the rail (always present), the sidebar (folded, expanded or floated over
  * the centre), the centre title row and the right column frame. The menu bar panel keeps its own navigation.
  */
-export type MainView = "chat" | "widgets" | "projects" | "pending" | "records";
+export type MainView =
+  "chat" | "archived" | "widgets" | "projects" | "pending" | "records";
 
 export interface PendingBadge {
   /** Unresolved items as the pending page counts them; kept from the last snapshot while disconnected. */
@@ -164,6 +167,199 @@ export function Rail({
   );
 }
 
+/**
+ * A sidebar section header: the title and its chevron are one button that folds the section down to this row
+ * (the fold is a saved local preference); tools such as the sort menu sit at the end of the row.
+ */
+export function SectionHead({
+  id,
+  title,
+  folded,
+  onToggle,
+  tools,
+}: {
+  id: string;
+  title: string;
+  folded: boolean;
+  onToggle: () => void;
+  tools?: ReactNode;
+}) {
+  return (
+    <div className="section-head">
+      <h2 id={`${id}-title`} className="section-heading">
+        <button
+          className="section-toggle"
+          aria-expanded={!folded}
+          aria-controls={`${id}-body`}
+          title={`${folded ? "展开" : "折叠"}「${title}」`}
+          onClick={onToggle}
+        >
+          <span className="section-title">{title}</span>
+          <span className="section-chevron">
+            <Icon name="chevronDown" />
+          </span>
+        </button>
+      </h2>
+      {tools && <span className="section-tools">{tools}</span>}
+    </div>
+  );
+}
+
+/**
+ * A small menu opened from a section header's more button: a title and radio items, the current one checked on
+ * the left. Arrow keys, Home and End move, Enter chooses, Escape closes and returns focus to the button, Tab,
+ * a press outside, scrolling or resizing close it.
+ */
+export function SectionMenu({
+  label,
+  heading,
+  options,
+  extra,
+}: {
+  label: string;
+  heading?: string;
+  options?: {
+    id: string;
+    name: string;
+    checked: boolean;
+    choose: () => void;
+  }[];
+  extra?: { name: string; run: () => void }[];
+}) {
+  const [open, setOpen] = useState<{ keyboard: boolean }>();
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState({ left: 0, top: 0 });
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() =>
+      (
+        menu.current?.querySelector<HTMLElement>('[aria-checked="true"]') ??
+        menu.current?.querySelector<HTMLElement>('[role^="menuitem"]')
+      )?.focus(),
+    );
+    const close = (event: Event) => {
+      if (
+        event.type === "scroll" &&
+        menu.current?.contains(event.target as Node)
+      )
+        return;
+      setOpen(undefined);
+    };
+    window.addEventListener("resize", close);
+    document.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      document.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+  function toggle(keyboard: boolean) {
+    if (open) return setOpen(undefined);
+    const box = button.current!.getBoundingClientRect();
+    setPlace({
+      left: Math.max(8, Math.min(box.left, innerWidth - 228)),
+      top: Math.min(box.bottom + 4, innerHeight - 180),
+    });
+    setOpen({ keyboard });
+  }
+  function done(keyboard: boolean) {
+    setOpen(undefined);
+    requestAnimationFrame(() => refocus(button.current, keyboard));
+  }
+  return (
+    <>
+      <button
+        ref={button}
+        className="icon-button section-more"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={!!open}
+        onClick={(e) => toggle(e.detail === 0)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <>
+          <div
+            className="menu-dismiss"
+            onPointerDown={() => setOpen(undefined)}
+          />
+          <div
+            ref={menu}
+            className="conversation-menu section-menu"
+            role="menu"
+            aria-label={label}
+            style={place}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                done(true);
+              } else if (e.key === "Tab") setOpen(undefined);
+              else if (
+                ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)
+              ) {
+                e.preventDefault();
+                const items = Array.from(
+                  e.currentTarget.querySelectorAll<HTMLElement>(
+                    '[role^="menuitem"]:not(:disabled)',
+                  ),
+                );
+                let i = items.indexOf(document.activeElement as HTMLElement);
+                i =
+                  e.key === "Home"
+                    ? 0
+                    : e.key === "End"
+                      ? items.length - 1
+                      : (i + (e.key === "ArrowDown" ? 1 : -1) + items.length) %
+                        items.length;
+                items[i]?.focus();
+              }
+            }}
+          >
+            {heading && (
+              <div className="menu-heading" aria-hidden="true">
+                {heading}
+              </div>
+            )}
+            {options?.map((option) => (
+              <button
+                key={option.id}
+                role="menuitemradio"
+                aria-checked={option.checked}
+                onClick={(e) => {
+                  option.choose();
+                  done(e.detail === 0 || open.keyboard);
+                }}
+              >
+                <span className="menu-check" aria-hidden="true">
+                  {option.checked && <Icon name="check" />}
+                </span>
+                <span className="menu-label">{option.name}</span>
+              </button>
+            ))}
+            {options && extra && <hr />}
+            {extra?.map((item) => (
+              <button
+                key={item.name}
+                role="menuitem"
+                onClick={() => {
+                  setOpen(undefined);
+                  item.run();
+                }}
+              >
+                <span className="menu-check" aria-hidden="true" />
+                <span className="menu-label">{item.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 export function Sidebar({
   overlay,
   sidebarRef,
@@ -176,6 +372,11 @@ export function Sidebar({
   onNew,
   onSearch,
   onProjects,
+  pinned,
+  pinnedSort,
+  onPinnedSort,
+  folded,
+  onFoldSection,
   recent,
 }: {
   overlay: boolean;
@@ -189,8 +390,19 @@ export function Sidebar({
   onNew: () => void;
   onSearch: () => void;
   onProjects: () => void;
+  /** Rows of the pinned section; null when nothing is pinned, and then the section is not shown. */
+  pinned: ReactNode;
+  pinnedSort: PinnedSort;
+  onPinnedSort: (sort: PinnedSort) => void;
+  folded: { pinned: boolean; projects: boolean };
+  onFoldSection: (section: "pinned" | "projects") => void;
   recent: ReactNode;
 }) {
+  const sorts: [PinnedSort, string][] = [
+    ["pinned", "最近置顶"],
+    ["updated", "最近更新"],
+    ["manual", "手动排序"],
+  ];
   return (
     <aside
       ref={sidebarRef}
@@ -227,20 +439,59 @@ export function Sidebar({
         </button>
       </div>
       <div className="side-scroll">
-        <section className="nav-section" aria-labelledby="side-projects-title">
-          <div className="section-head">
-            <h2 id="side-projects-title" className="section-title">
-              项目
-            </h2>
-          </div>
-          <button
-            className="nav-item"
-            aria-current={view === "projects" ? "page" : undefined}
-            onClick={onProjects}
+        {pinned && (
+          <section
+            className="nav-section pinned-section"
+            aria-labelledby="side-pinned-title"
           >
-            <Icon name="folder" />
-            <span className="nav-label">全部项目 · {projectCount}</span>
-          </button>
+            <SectionHead
+              id="side-pinned"
+              title="已置顶"
+              folded={folded.pinned}
+              onToggle={() => onFoldSection("pinned")}
+              tools={
+                <SectionMenu
+                  label="已置顶的排序方式"
+                  heading="排序"
+                  options={sorts.map(([id, name]) => ({
+                    id,
+                    name,
+                    checked: pinnedSort === id,
+                    choose: () => onPinnedSort(id),
+                  }))}
+                />
+              }
+            />
+            <div id="side-pinned-body" hidden={folded.pinned}>
+              {pinned}
+            </div>
+          </section>
+        )}
+        <section className="nav-section" aria-labelledby="side-projects-title">
+          <SectionHead
+            id="side-projects"
+            title="项目"
+            folded={folded.projects}
+            onToggle={() => onFoldSection("projects")}
+            tools={
+              <SectionMenu
+                label="项目区操作"
+                extra={[
+                  { name: `全部项目 · ${projectCount}`, run: onProjects },
+                ]}
+              />
+            }
+          />
+          <div id="side-projects-body" hidden={folded.projects}>
+            <button
+              className="nav-item"
+              aria-current={view === "projects" ? "page" : undefined}
+              onClick={onProjects}
+            >
+              <Icon name="folder" />
+              <span className="nav-label">全部项目 · {projectCount}</span>
+            </button>
+          </div>
         </section>
         {recent}
       </div>
@@ -251,9 +502,13 @@ export function Sidebar({
 /** The recent list in the sidebar with its own title-only filter (never a global search). */
 export function RecentChats({
   onFilter,
+  folded,
+  onFold,
   children,
 }: {
   onFilter: (value: string) => void;
+  folded: boolean;
+  onFold: (folded: boolean) => void;
   children: ReactNode;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -262,10 +517,16 @@ export function RecentChats({
   const composing = useRef(false);
   const opened = useRef(false);
   useEffect(() => {
-    if (searching && opened.current) input.current?.focus();
+    if (searching && !folded && opened.current) input.current?.focus();
     opened.current = true;
-  }, [searching]);
+  }, [searching, folded]);
   const toggle = () => {
+    // A folded section opens first, so the filter field is visible.
+    if (folded) {
+      onFold(false);
+      if (!searching) setSearching(true);
+      return;
+    }
     if (searching) {
       setDraft("");
       onFilter("");
@@ -278,44 +539,51 @@ export function RecentChats({
       aria-label="最近聊天"
       id="recent-chats"
     >
-      <div className="section-head">
-        <h2 className="section-title">最近聊天</h2>
-        <button
-          className="icon-button"
-          aria-label="搜索最近聊天"
-          aria-expanded={searching}
-          aria-controls="history-query-row"
-          onClick={toggle}
+      <SectionHead
+        id="side-recent"
+        title="最近聊天"
+        folded={folded}
+        onToggle={() => onFold(!folded)}
+        tools={
+          <button
+            className="icon-button"
+            aria-label="搜索最近聊天"
+            aria-expanded={searching && !folded}
+            aria-controls="history-query-row"
+            onClick={toggle}
+          >
+            <Icon name="search" />
+          </button>
+        }
+      />
+      <div id="side-recent-body" hidden={folded}>
+        <label
+          id="history-query-row"
+          className="history-search"
+          hidden={!searching}
         >
           <Icon name="search" />
-        </button>
+          <input
+            ref={input}
+            aria-label="搜索最近聊天"
+            placeholder="搜索最近聊天"
+            value={draft}
+            autoComplete="off"
+            onChange={(event) => {
+              setDraft(event.target.value);
+              if (!composing.current) onFilter(event.target.value);
+            }}
+            onCompositionStart={() => {
+              composing.current = true;
+            }}
+            onCompositionEnd={(event) => {
+              composing.current = false;
+              onFilter(event.currentTarget.value);
+            }}
+          />
+        </label>
+        <div className="history-results">{children}</div>
       </div>
-      <label
-        id="history-query-row"
-        className="history-search"
-        hidden={!searching}
-      >
-        <Icon name="search" />
-        <input
-          ref={input}
-          aria-label="搜索最近聊天"
-          placeholder="搜索最近聊天"
-          value={draft}
-          autoComplete="off"
-          onChange={(event) => {
-            setDraft(event.target.value);
-            if (!composing.current) onFilter(event.target.value);
-          }}
-          onCompositionStart={() => {
-            composing.current = true;
-          }}
-          onCompositionEnd={(event) => {
-            composing.current = false;
-            onFilter(event.currentTarget.value);
-          }}
-        />
-      </label>
-      <div className="history-results">{children}</div>
     </section>
   );
 }
@@ -323,29 +591,34 @@ export function RecentChats({
 /** The centre title row for a conversation or the new-conversation page, with the right column switch. */
 export function CenterHeader({
   children,
-  rightOpen,
+  rightOpen = false,
   toggle,
   onToggle,
+  panelToggle = true,
 }: {
   children: ReactNode;
-  rightOpen: boolean;
-  toggle: RefObject<HTMLButtonElement | null>;
-  onToggle: () => void;
+  rightOpen?: boolean;
+  toggle?: RefObject<HTMLButtonElement | null>;
+  onToggle?: () => void;
+  /** Objects without right column content show no switch. */
+  panelToggle?: boolean;
 }) {
   return (
     <header className="center-header">
       <div className="center-title">{children}</div>
-      <button
-        ref={toggle}
-        className="icon-button panel-toggle"
-        aria-label={rightOpen ? "收起右栏" : "打开右栏"}
-        title={rightOpen ? "收起右栏" : "打开右栏"}
-        aria-expanded={rightOpen}
-        aria-controls="right-panel"
-        onClick={onToggle}
-      >
-        <Icon name="panelRight" />
-      </button>
+      {panelToggle && (
+        <button
+          ref={toggle}
+          className="icon-button panel-toggle"
+          aria-label={rightOpen ? "收起右栏" : "打开右栏"}
+          title={rightOpen ? "收起右栏" : "打开右栏"}
+          aria-expanded={rightOpen}
+          aria-controls="right-panel"
+          onClick={onToggle}
+        >
+          <Icon name="panelRight" />
+        </button>
+      )}
     </header>
   );
 }

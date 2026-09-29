@@ -200,6 +200,10 @@ test("models: fetched and manual models coexist; probes and budgets stay per mod
     // Hold only synthetic IPC commands at the main-process boundary. The product
     // must disable selection and sending while a conversation/model choice settles.
     await expect(input).toBeEditable();
+    // A draft makes this conversation used, so the next new conversation is a new identity rather than
+    // the reused unused one.
+    await input.fill("先前的想法");
+    await expect(page.getByTestId("save-state")).toHaveText("草稿已保存");
     const previous = (await snapshot()).selected.main;
     await app.evaluate(({ ipcMain }) => {
       type Handler = (
@@ -213,7 +217,11 @@ test("models: fetched and manual models coexist; probes and budgets stay per mod
       if (!original) throw new Error("Missing business IPC handler");
       ipcMain.removeHandler("business:command");
       ipcMain.handle("business:command", async (event, command) => {
-        if (["create", "chooseConnection"].includes(command.type)) {
+        if (
+          ["create", "newConversation", "chooseConnection"].includes(
+            command.type,
+          )
+        ) {
           await new Promise<void>((resolve) => {
             (
               globalThis as typeof globalThis & {
