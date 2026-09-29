@@ -24,6 +24,8 @@ export interface Project extends ProjectWork {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  pinnedAt: string | null;
+  manualPosition: number;
 }
 export interface ProjectUndo {
   token: string;
@@ -39,6 +41,8 @@ export type ProjectCommand =
       revision: number;
     }
   | { type: "projectArchive"; id: string; archived: boolean; revision: number }
+  | { type: "projectPin"; id: string; pinned: boolean; revision: number }
+  | { type: "moveProject"; id: string; before: string | null; revision: number }
   | { type: "projectUndo"; id: string; token: string };
 export type ProjectHostCommand =
   | { type: "projectWork"; request: Exclude<ProjectRequest, { type: "read" }> }
@@ -52,7 +56,13 @@ export type ProjectHostCommand =
 export type ProjectCreateInput = { token: string; name: string; goal: string };
 export type ProjectFolderReply =
   | { ok: true; token: string; folder: ProjectFolder }
-  | { ok: false; cancelled?: boolean; message: string };
+  | {
+      ok: false;
+      cancelled?: boolean;
+      code?: string;
+      message: string;
+      selectedPath?: string;
+    };
 const obj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 const keys = (v: Record<string, unknown>, s: string) =>
@@ -130,6 +140,13 @@ export function validProjectCommand(v: unknown): v is ProjectCommand {
       keys(v, "goal,id,name,revision,type") &&
       validProjectName(v.name) &&
       validProjectGoal(v.goal)
+    );
+  if (v.type === "projectPin")
+    return keys(v, "id,pinned,revision,type") && typeof v.pinned === "boolean";
+  if (v.type === "moveProject")
+    return (
+      keys(v, "before,id,revision,type") &&
+      (v.before === null || (id(v.before) && v.before !== v.id))
     );
   return (
     v.type === "projectArchive" &&

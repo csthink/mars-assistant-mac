@@ -1,6 +1,11 @@
 import { projectWorkSchema, captureProjectTurn } from "./project-work";
 import { widgetSchema, applyWidgetHost } from "./widgets";
-import { projectSchema, projectSnapshot, applyProject } from "./projects";
+import {
+  projectSchema,
+  projectSnapshot,
+  applyProject,
+  migrateProjectOrganization,
+} from "./projects";
 import {
   validProjectCommand,
   validProjectHostCommand,
@@ -127,7 +132,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 27;
+export const schemaVersion = 28;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -202,6 +207,7 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     },
     // Version 27: conversation creation times from now on and the manual order of the pinned section.
     26: migrateConversationOrder,
+    27: migrateProjectOrganization,
     17: `ALTER TABLE connection_models ADD COLUMN codex_json TEXT;
       UPDATE connection_models SET codex_json=(SELECT codex_json FROM connections WHERE connections.id=connection_models.connection_id)
       WHERE connection_id IN (SELECT id FROM connections WHERE provider='codex')

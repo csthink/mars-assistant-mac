@@ -139,7 +139,7 @@ export function organizeConversation(
       break;
     case "unpin":
       update("pinned_at=NULL");
-      dropPinnedOrder(db, id);
+      dropPinnedOrder(db, "conversation", id);
       break;
     case "unread":
       update("unread=1");
@@ -150,7 +150,7 @@ export function organizeConversation(
     // Archiving or deleting leaves the pinned section; leaving the archive or the trash never pins again.
     case "archive":
       update("archived_at=?,pinned_at=NULL", now);
-      dropPinnedOrder(db, id);
+      dropPinnedOrder(db, "conversation", id);
       break;
     case "unarchive":
       update("archived_at=NULL,pinned_at=NULL");
@@ -158,7 +158,7 @@ export function organizeConversation(
     case "delete": {
       const until = new Date(Date.parse(now) + 30 * 86400000).toISOString();
       update("deleted_at=?,retain_until=?,pinned_at=NULL", now, until);
-      dropPinnedOrder(db, id);
+      dropPinnedOrder(db, "conversation", id);
       db.prepare(
         "UPDATE selections SET conversation_id=NULL WHERE conversation_id=?",
       ).run(id);

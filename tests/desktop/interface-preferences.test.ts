@@ -20,6 +20,7 @@ function open() {
 /** The keys added for the sidebar sections, at their defaults. */
 const sections = {
   pinnedSort: "pinned",
+  projectSort: "updated",
   pinnedFolded: false,
   projectsFolded: false,
   recentFolded: false,
@@ -232,7 +233,7 @@ test("interface preferences: the shell cache reads back what it wrote, replaces 
   });
   assert.equal(
     readFileSync(path, "utf8"),
-    '{"sidebarCollapsed":false,"rightPanelWidth":null,"pinnedSort":"pinned","pinnedFolded":false,"projectsFolded":false,"recentFolded":false}',
+    '{"sidebarCollapsed":false,"rightPanelWidth":null,"pinnedSort":"pinned","projectSort":"updated","pinnedFolded":false,"projectsFolded":false,"recentFolded":false}',
   );
   for (const damaged of [
     "{",
@@ -257,6 +258,7 @@ test("interface preferences: the pinned sort and the folded sections are saved k
       { sidebarCollapsed: false, rightPanelWidth: null, ...sections },
     );
     assert.ok(store.execute(set("pinnedSort", "manual"), "main").ok);
+    assert.ok(store.execute(set("projectSort", "name"), "main").ok);
     assert.ok(store.execute(set("pinnedFolded", true), "main").ok);
     assert.ok(store.execute(set("recentFolded", true), "panel").ok);
     assert.ok(store.execute(set("projectsFolded", true), "main").ok);
@@ -264,6 +266,7 @@ test("interface preferences: the pinned sort and the folded sections are saved k
       sidebarCollapsed: false,
       rightPanelWidth: null,
       pinnedSort: "manual",
+      projectSort: "name",
       pinnedFolded: true,
       projectsFolded: true,
       recentFolded: true,
@@ -272,6 +275,7 @@ test("interface preferences: the pinned sort and the folded sections are saved k
     for (const command of [
       set("pinnedSort", "name"),
       set("pinnedSort", null),
+      set("projectSort", "pinned"),
       set("pinnedFolded", "true"),
       set("projectsFolded", 0),
       set("recentFolded", null),
@@ -288,6 +292,7 @@ test("interface preferences: the pinned sort and the folded sections are saved k
       sidebarCollapsed: false,
       rightPanelWidth: null,
       pinnedSort: "pinned",
+      projectSort: "updated",
       pinnedFolded: false,
       projectsFolded: false,
       recentFolded: true,

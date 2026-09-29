@@ -115,14 +115,14 @@ function legacyRoot() {
   return { dir, ids };
 }
 
-test("conversation order: schema 26 data migrates to 27 keeping every conversation, pin, unread and archive state, and old rows get no invented creation time", () => {
+test("conversation order: schema 26 data migrates through 28 keeping every conversation, pin, unread and archive state, and old rows get no invented creation time", () => {
   const { dir, ids } = legacyRoot();
   const before = dump(join(dir, "state.sqlite"));
   assert.equal(before.version, 26);
   const store = new Store(dir);
   try {
-    assert.equal(schemaVersion, 27);
-    assert.equal(version(store.db), 27);
+    assert.equal(schemaVersion, 28);
+    assert.equal(version(store.db), 28);
     const snapshot = store.snapshot();
     const expected = (before.rows.conversations as string[])
       .map((row) => JSON.parse(row) as Record<string, unknown>)
@@ -159,7 +159,7 @@ test("conversation order: schema 26 data migrates to 27 keeping every conversati
   // Opening again does not migrate again and keeps the data.
   const again = new Store(dir);
   try {
-    assert.equal(version(again.db), 27);
+    assert.equal(version(again.db), 28);
     assert.equal(find(again.snapshot(), ids[1]).unread, true);
   } finally {
     again.close();
@@ -196,7 +196,7 @@ test("conversation order: a migration that fails part way rolls back, keeps ever
   assert.deepEqual(copy.rows, before.rows);
   const store = new Store(dir);
   try {
-    assert.equal(version(store.db), 27);
+    assert.equal(version(store.db), 28);
   } finally {
     store.close();
   }
@@ -210,7 +210,7 @@ test("conversation order: a partly migrated database with the column, the trigge
   db.close();
   const store = new Store(dir);
   try {
-    assert.equal(version(store.db), 27);
+    assert.equal(version(store.db), 28);
     const id = randomUUID();
     assert.ok(store.execute({ type: "create", id }, "main").ok);
     assert.notEqual(find(store.snapshot(), id).createdAt, null);
@@ -348,7 +348,7 @@ test("conversation order: moving a pinned conversation changes only the display 
       {
         type: "movePinned",
         kind: "project",
-        id: ids[0],
+        id: "not-an-id",
         before: null,
         revision: 0,
       },

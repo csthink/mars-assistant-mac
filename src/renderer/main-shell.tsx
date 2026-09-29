@@ -10,7 +10,7 @@ import {
 } from "react";
 import { Icon } from "./icons";
 import { COLUMN, type ColumnLayout } from "./column-layout";
-import type { PinnedSort } from "../shared/protocol";
+import type { PinnedSort, ProjectSort } from "../shared/protocol";
 
 /**
  * The main window's navigation shell: the rail (always present), the sidebar (folded, expanded or floated over
@@ -368,6 +368,9 @@ export function Sidebar({
   busy,
   view,
   projectCount,
+  projects,
+  projectSort,
+  onProjectSort,
   onFold,
   onNew,
   onSearch,
@@ -386,6 +389,9 @@ export function Sidebar({
   busy: boolean;
   view: MainView;
   projectCount: number;
+  projects: ReactNode;
+  projectSort: ProjectSort;
+  onProjectSort: (sort: ProjectSort) => void;
   onFold: () => void;
   onNew: () => void;
   onSearch: () => void;
@@ -476,6 +482,19 @@ export function Sidebar({
             tools={
               <SectionMenu
                 label="项目区操作"
+                heading="排序"
+                options={(
+                  [
+                    ["updated", "最近更新"],
+                    ["name", "名称"],
+                    ["manual", "手动排序"],
+                  ] as [ProjectSort, string][]
+                ).map(([id, name]) => ({
+                  id,
+                  name,
+                  checked: projectSort === id,
+                  choose: () => onProjectSort(id),
+                }))}
                 extra={[
                   { name: `全部项目 · ${projectCount}`, run: onProjects },
                 ]}
@@ -483,6 +502,7 @@ export function Sidebar({
             }
           />
           <div id="side-projects-body" hidden={folded.projects}>
+            {projects}
             <button
               className="nav-item"
               aria-current={view === "projects" ? "page" : undefined}

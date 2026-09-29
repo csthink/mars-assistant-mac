@@ -227,6 +227,9 @@ if (process.env.CSTHINK_TEST_RECORD_APPEARANCE === "1") {
 app.on("csthink:runtime-host", (host) => {
   globalThis.runtimeHost = host;
 });
+app.on("csthink:project-folders", (folders) => {
+  globalThis.projectFolders = folders;
+});
 // The embedded execution port (feature-t30): tests register fixture adapters; production has no listener.
 app.on("csthink:execution-port", (port) => {
   globalThis.executionPort = port;

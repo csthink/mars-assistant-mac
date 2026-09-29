@@ -113,7 +113,7 @@ async function snapshot(page: Page): Promise<Snapshot> {
 }
 const sidebar = (page: Page) => page.locator("#main-sidebar");
 const pinnedList = (page: Page) =>
-  sidebar(page).locator('[aria-label="已置顶对话"]');
+  sidebar(page).locator('[aria-label="已置顶对象"]');
 const recentList = (page: Page) =>
   sidebar(page).locator('[aria-label="最近对话"]');
 const rowLabel = (id: string) => `对话 ${id.slice(0, 8)}`;

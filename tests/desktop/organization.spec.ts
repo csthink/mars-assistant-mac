@@ -75,7 +75,7 @@ test("organization: single-line ordering, pin, unread and archive persist with e
     await expect(
       archive.locator(`[data-conversation="${ids[0]}"]`),
     ).toHaveCount(1);
-    await expect(page.locator('[aria-label="已置顶对话"]')).toHaveCount(0);
+    await expect(page.locator('[aria-label="已置顶对象"]')).toHaveCount(0);
     await archive.getByRole("button", { name: "取消归档" }).click();
     await expect(
       page.getByRole("heading", { name: "没有已归档的对话" }),
@@ -83,7 +83,7 @@ test("organization: single-line ordering, pin, unread and archive persist with e
     await recent(page);
     await expect(list.locator(".session")).toHaveCount(2);
     // Leaving the archive never pins again.
-    await expect(page.locator('[aria-label="已置顶对话"]')).toHaveCount(0);
+    await expect(page.locator('[aria-label="已置顶对象"]')).toHaveCount(0);
     await openConversation(page, `对话 ${ids[0].slice(0, 8)}`);
     await page.screenshot({ path: info.outputPath("organized-sidebar.png") });
   } finally {

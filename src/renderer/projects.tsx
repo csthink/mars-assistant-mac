@@ -29,7 +29,7 @@ function Folder({ folder }: { folder: ProjectFolder }) {
     </div>
   );
 }
-function ProjectForm({
+export function ProjectForm({
   project,
   close,
   created,
@@ -45,25 +45,76 @@ function ProjectForm({
     token: string;
     folder: ProjectFolder;
   } | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const request = useRef(0);
   useEffect(() => openModal(dialog.current!), []);
+  useEffect(() => {
+    if (error && !project) {
+      const form = dialog.current?.querySelector("form");
+      form?.scrollTo({ top: form.scrollHeight });
+    }
+  }, [error, project]);
+  function cancel() {
+    request.current++;
+    void window.desktop.cancelProjectFolder();
+    close();
+  }
+  function acceptFolderReply(
+    r: Awaited<ReturnType<typeof window.desktop.pickProjectFolder>>,
+  ) {
+    if (r.ok) {
+      setSelection(r);
+      setSelectedPath(r.folder.path);
+      setError("");
+    } else if (!r.cancelled) {
+      setSelection(null);
+      setSelectedPath(r.selectedPath ?? null);
+      setError(r.message);
+    }
+  }
   async function pick() {
-    setBusy(true);
+    const current = ++request.current;
+    setChecking(true);
+    setError("");
+    setSelection(null);
+    setSelectedPath(null);
+    try {
+      await window.desktop.cancelProjectFolder();
+      const r = await window.desktop.pickProjectFolder();
+      if (current === request.current) acceptFolderReply(r);
+    } catch {
+      if (current === request.current)
+        setError("文件夹选择未完成，请重新选择。");
+    } finally {
+      if (current === request.current) setChecking(false);
+    }
+  }
+  async function retry() {
+    const current = ++request.current;
+    setChecking(true);
     setError("");
     try {
-      const r = await window.desktop.pickProjectFolder();
-      if (r.ok) setSelection(r);
-      else if (!r.cancelled) setError(r.message);
+      const r = await window.desktop.retryProjectFolder();
+      if (current === request.current) acceptFolderReply(r);
     } catch {
-      setError("文件夹选择未完成，请重试。");
+      if (current === request.current)
+        setError("文件夹检查未完成，请重试检查或重新选择。");
     } finally {
-      setBusy(false);
+      if (current === request.current) setChecking(false);
     }
   }
   async function save() {
-    if (busy || !validProjectName(name) || (!project && !selection)) return;
-    setBusy(true);
+    if (
+      checking ||
+      saving ||
+      !validProjectName(name) ||
+      (!project && !selection)
+    )
+      return;
+    setSaving(true);
     setError("");
     try {
       const reply = project
@@ -83,12 +134,13 @@ function ProjectForm({
         setError(reply.message);
         return;
       }
+      request.current++;
       close();
       if (!project && reply.projectId) created(reply.projectId);
     } catch {
       setError("项目未保存，请保留输入后重试。");
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
   const folder = project?.folder ?? selection?.folder;
@@ -99,7 +151,7 @@ function ProjectForm({
       aria-labelledby="project-form-title"
       onCancel={(e) => {
         e.preventDefault();
-        if (!busy) close();
+        if (!saving) cancel();
       }}
     >
       <div className="project-form-head">
@@ -108,8 +160,8 @@ function ProjectForm({
           type="button"
           aria-label="关闭"
           className="icon-button"
-          disabled={busy}
-          onClick={close}
+          disabled={saving}
+          onClick={cancel}
         >
           <Icon name="close" />
         </button>
@@ -134,7 +186,7 @@ function ProjectForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="例如：个人作品集"
-            disabled={busy}
+            disabled={checking || saving}
           />
         </label>
         <label>
@@ -146,7 +198,7 @@ function ProjectForm({
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             placeholder="希望在这个项目中持续推进什么？"
-            disabled={busy}
+            disabled={checking || saving}
           />
         </label>
         <section aria-label="本地文件夹">
@@ -161,6 +213,13 @@ function ProjectForm({
             <div>
               {folder ? (
                 <Folder folder={folder} />
+              ) : selectedPath ? (
+                <>
+                  <b>
+                    {checking ? "正在检查文件夹" : "已选择文件夹，等待重试检查"}
+                  </b>
+                  <p className="project-folder-path">{selectedPath}</p>
+                </>
               ) : (
                 <>
                   <b>选择一个本地文件夹</b>
@@ -172,31 +231,46 @@ function ProjectForm({
               <button
                 type="button"
                 className="button"
-                disabled={busy}
+                disabled={saving}
                 onClick={() => void pick()}
               >
-                {selection ? "更换文件夹" : "选择文件夹"}
+                {checking || selection || selectedPath
+                  ? "重新选择"
+                  : "选择文件夹"}
               </button>
             )}
           </div>
         </section>
-        {!project && (
-          <p className="project-form-hint">
-            选择文件夹后读取 Git 信息。创建项目不会修改文件夹或开始执行。
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="project-error">
-            {error}
-          </p>
-        )}
       </form>
+      {(error || (!project && selectedPath && !selection && !checking)) && (
+        <div className="project-form-status">
+          {error && (
+            <p role="alert" className="project-error">
+              {error}
+            </p>
+          )}
+          {!project && selectedPath && !selection && !checking && (
+            <button
+              type="button"
+              className="button project-folder-retry"
+              onClick={() => void retry()}
+            >
+              重试检查
+            </button>
+          )}
+        </div>
+      )}
+      {!project && (
+        <p className="project-form-hint project-form-footer-hint">
+          选择文件夹后读取 Git 信息。创建项目不会修改文件夹或开始执行。
+        </p>
+      )}
       <div className="project-form-actions">
         <button
           className="button"
           type="button"
-          disabled={busy}
-          onClick={close}
+          disabled={saving}
+          onClick={cancel}
         >
           取消
         </button>
@@ -204,26 +278,41 @@ function ProjectForm({
           form="project-form"
           className="button project-primary"
           type="submit"
-          disabled={busy || !validProjectName(name) || (!project && !selection)}
+          disabled={
+            checking ||
+            saving ||
+            !validProjectName(name) ||
+            (!project && !selection)
+          }
         >
-          {busy ? "请稍候…" : project ? "保存修改" : "创建项目"}
+          {saving
+            ? "正在保存…"
+            : checking
+              ? "正在检查…"
+              : project
+                ? "保存修改"
+                : "创建项目"}
         </button>
       </div>
     </dialog>
   );
 }
-function ProjectMenu({
+export function ProjectMenu({
   project,
   anchor,
   close,
   edit,
+  pin,
   archive,
+  move,
 }: {
   project: Project;
   anchor: HTMLElement;
   close: (restore?: boolean) => void;
   edit: () => void;
+  pin: () => void;
   archive: () => void;
+  move?: { up: () => void; down: () => void; first: boolean; last: boolean };
 }) {
   const ref = useRef<HTMLDivElement>(null),
     rect = anchor.getBoundingClientRect();
@@ -231,7 +320,10 @@ function ProjectMenu({
     12,
     Math.min(rect.right - 190, window.innerWidth - 202),
   );
-  const top = Math.max(12, Math.min(rect.bottom + 6, window.innerHeight - 108));
+  const top = Math.max(
+    12,
+    Math.min(rect.bottom + 6, window.innerHeight - (move ? 260 : 170)),
+  );
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
     const pointer = (event: PointerEvent) => {
@@ -286,14 +378,32 @@ function ProjectMenu({
         }
       }}
     >
+      {!project.archivedAt && (
+        <button role="menuitem" onClick={pin}>
+          <Icon name="pin" />
+          {project.pinnedAt ? "取消置顶" : "置顶"}
+        </button>
+      )}
       <button role="menuitem" onClick={edit}>
         <Icon name="edit" />
         编辑项目
       </button>
+      <hr />
       <button role="menuitem" onClick={archive}>
         <Icon name="archive" />
         {project.archivedAt ? "取消归档项目" : "归档项目"}
       </button>
+      {move && (
+        <>
+          <hr />
+          <button role="menuitem" disabled={move.first} onClick={move.up}>
+            上移
+          </button>
+          <button role="menuitem" disabled={move.last} onClick={move.down}>
+            下移
+          </button>
+        </>
+      )}
     </div>,
     document.body,
   );
@@ -347,7 +457,7 @@ export function Projects({
   }, [notice]);
   const closeMenu = useCallback(
     (restore = true) => {
-      if (restore) menu?.anchor.focus();
+      if (restore && menu?.anchor.isConnected) menu.anchor.focus();
       setMenu(null);
     },
     [menu],
@@ -371,6 +481,24 @@ export function Projects({
         });
     } catch {
       setError("归档状态未确认，请重新读取项目后再操作。");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function pin(p: Project) {
+    closeMenu();
+    setBusy(true);
+    setError("");
+    try {
+      const r = await window.desktop.command({
+        type: "projectPin",
+        id: p.id,
+        pinned: !p.pinnedAt,
+        revision: p.revision,
+      });
+      if (!r.ok) setError(r.message);
+    } catch {
+      setError("置顶状态未确认，请重新读取项目后再操作。");
     } finally {
       setBusy(false);
     }
@@ -693,6 +821,7 @@ export function Projects({
             setForm({ project: menu.project });
             setMenu(null);
           }}
+          pin={() => void pin(menu.project)}
           archive={() => void archive(menu.project)}
         />
       )}

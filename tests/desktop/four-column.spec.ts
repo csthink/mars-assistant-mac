@@ -107,6 +107,7 @@ const rightToggle = (page: Page) =>
 /** The sidebar section preferences at their defaults. */
 const sections = {
   pinnedSort: "pinned",
+  projectSort: "updated",
   pinnedFolded: false,
   projectsFolded: false,
   recentFolded: false,

@@ -13,6 +13,7 @@ import {
 } from "./project-pending";
 import { WidgetWorkspace } from "./widgets";
 import { Projects } from "./projects";
+import { useProjectSidebar } from "./project-sidebar";
 import {
   PermissionSettings,
   TrustBoundaryNotice,
@@ -306,8 +307,20 @@ function App() {
         key,
         value,
       } as Command);
-      if (!reply.ok) setNotice(`${failed}${reply.message}`);
+      if (!reply.ok) {
+        if (key === "projectSort")
+          setPreferenceOverride((override) => ({
+            ...override,
+            projectSort: savedPreferences.projectSort,
+          }));
+        setNotice(`${failed}${reply.message}`);
+      }
     } catch {
+      if (key === "projectSort")
+        setPreferenceOverride((override) => ({
+          ...override,
+          projectSort: savedPreferences.projectSort,
+        }));
       setNotice(failed);
     }
   }
@@ -840,6 +853,38 @@ function App() {
     }
     return ok;
   }
+  const projectSidebar = useProjectSidebar({
+    snapshot,
+    connected: status.connected && !model.switching,
+    sort: preferences.projectSort,
+    pinnedSort: preferences.pinnedSort,
+    open: (projectId) => {
+      sessionStorage.setItem("project-selected", projectId);
+      go("projects");
+    },
+    newChat: async (projectId) => {
+      const conversationId = crypto.randomUUID();
+      try {
+        const reply = await window.desktop.projectWork({
+          type: "chat",
+          projectId,
+          conversationId,
+        });
+        if (!reply.ok) {
+          setNotice(reply.message);
+          return;
+        }
+        sessionStorage.setItem("project-selected", projectId);
+        sessionStorage.setItem(`project-chat:${projectId}`, conversationId);
+        await model.reload();
+        await model.select(conversationId);
+        go("projects");
+      } catch {
+        setNotice("项目对话未创建，请重试。");
+      }
+    },
+    notify: setNotice,
+  });
   const organization = useOrganization({
     page: panel ? page : view,
     highlightCurrent: panel || view === "chat",
@@ -852,6 +897,7 @@ function App() {
     notice: setNotice,
     filter: recentFilter,
     pinnedSort: preferences.pinnedSort,
+    renderPinnedProject: projectSidebar.renderPinnedProject,
     renaming: renaming?.where === "sidebar" ? renaming : undefined,
     onRenameDone: finishRename,
     onArchived: panel ? undefined : () => go("archived"),
@@ -1888,6 +1934,7 @@ function App() {
       }
     >
       {organization.overlays}
+      {projectSidebar.overlays}
       {searchOpen && (
         <SearchDialog
           onClose={() => setSearchOpen(false)}
@@ -1928,6 +1975,11 @@ function App() {
           projectCount={
             (snapshot?.projects ?? []).filter((p) => !p.archivedAt).length
           }
+          projects={projectSidebar.rows}
+          projectSort={preferences.projectSort}
+          onProjectSort={(sort) => {
+            void savePreference("projectSort", sort);
+          }}
           onFold={foldSidebar}
           onNew={() => {
             void newConversation();

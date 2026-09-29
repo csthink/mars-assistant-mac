@@ -81,6 +81,8 @@ const bridge: DesktopBridge = {
   projectWork: (request) => ipcRenderer.invoke("project:work", request),
   projectAccess: (request) => ipcRenderer.invoke("project:access", request),
   pickProjectFolder: () => ipcRenderer.invoke("project:pick-folder"),
+  retryProjectFolder: () => ipcRenderer.invoke("project:retry-folder"),
+  cancelProjectFolder: () => ipcRenderer.invoke("project:cancel-folder"),
   createProject: (input) => ipcRenderer.invoke("project:create", input),
   widgetEnabled,
   widgetControl: (command) => ipcRenderer.invoke("widget:control", command),

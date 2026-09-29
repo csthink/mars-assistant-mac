@@ -126,7 +126,7 @@ export async function goTo(page: Page, name: ShellPage) {
  */
 export async function recent(page: Page): Promise<Locator> {
   return (await sidebar(page)).locator(
-    '[aria-label="已置顶对话"], [aria-label="最近对话"]',
+    '[aria-label="已置顶对象"], [aria-label="最近对话"]',
   );
 }
 
