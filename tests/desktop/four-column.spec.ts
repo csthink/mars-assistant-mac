@@ -104,6 +104,14 @@ function expectColumns(
 const rightToggle = (page: Page) =>
   page.locator(".center-header").getByRole("button", { name: /右栏$/ });
 
+/** The sidebar section preferences at their defaults. */
+const sections = {
+  pinnedSort: "pinned",
+  pinnedFolded: false,
+  projectsFolded: false,
+  recentFolded: false,
+} as const;
+
 test("rail and sidebar: every entry opens its object in the centre, the old tabs and popovers are gone, and each former entry is reachable in its new place", async () => {
   const { root, ids } = seed();
   const { app, page } = await launch(root);
@@ -554,7 +562,7 @@ test("preferences: the folded sidebar and the right column width survive a resta
           return r.ok ? r.snapshot.settings.interface : null;
         }),
       )
-      .toEqual({ sidebarCollapsed: true, rightPanelWidth: 448 });
+      .toEqual({ sidebarCollapsed: true, rightPanelWidth: 448, ...sections });
   } finally {
     await closeLocal(app);
   }
@@ -580,7 +588,11 @@ test("preferences: the folded sidebar and the right column width survive a resta
       );
       expect(first, `service delay ${delay}`).toEqual({
         sidebar: false,
-        interface: { sidebarCollapsed: true, rightPanelWidth: 448 },
+        interface: {
+          sidebarCollapsed: true,
+          rightPanelWidth: 448,
+          ...sections,
+        },
       });
       await expect(
         page.getByRole("navigation", { name: "全局导航" }).getByRole("button", {
@@ -636,7 +648,10 @@ test("preferences: a preference the business service does not save stays for thi
           ? [r.snapshot.settings.interface, r.snapshot.settings.appearance]
           : null;
       }),
-    ).toEqual([{ sidebarCollapsed: false, rightPanelWidth: null }, appearance]);
+    ).toEqual([
+      { sidebarCollapsed: false, rightPanelWidth: null, ...sections },
+      appearance,
+    ]);
   } finally {
     await closeLocal(app);
   }

@@ -457,8 +457,9 @@ let cachedInterface = readInterfaceCache(interfaceCachePath);
 function cacheInterface(preferences: InterfacePreferences) {
   if (
     cachedInterface &&
-    cachedInterface.sidebarCollapsed === preferences.sidebarCollapsed &&
-    cachedInterface.rightPanelWidth === preferences.rightPanelWidth
+    (Object.keys(preferences) as (keyof InterfacePreferences)[]).every(
+      (key) => cachedInterface![key] === preferences[key],
+    )
   )
     return;
   try {

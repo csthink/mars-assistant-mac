@@ -80,9 +80,24 @@ import {
   type ProjectFolderReply,
 } from "./projects";
 export type Surface = "main" | "panel";
+/** Where the shown title comes from: the person's own name, the first user message, or the default name. */
+export type TitleSource = "manual" | "first-message" | "default";
+export const titleSourceLabels: Record<TitleSource, string> = {
+  manual: "用户命名",
+  "first-message": "取自首条消息",
+  default: "默认名称",
+};
 export interface Conversation {
   id: string;
   title: string;
+  titleSource: TitleSource;
+  /** Creation time; null for conversations created before it was recorded (never inferred from activity). */
+  createdAt: string | null;
+  /**
+   * Not yet used: no messages, no draft text, no draft attachments, no project, no own name, not pinned and not
+   * archived. It is the new-conversation page and not listed; starting a new conversation reuses it.
+   */
+  unused: boolean;
   titleRevision: number;
   organizationRevision: number;
   pinnedAt: string | null;
@@ -107,6 +122,11 @@ export interface Conversation {
   grantedConnections: string[];
   /** Providers the user has confirmed may receive this conversation's history. */
   grantedProviders: Provider[];
+}
+/** An object in the pinned section; projects join in a later version. */
+export interface PinnedRef {
+  kind: "conversation";
+  id: string;
 }
 export const conversationActions = [
   "pin",
@@ -314,15 +334,37 @@ export type Appearance = "light" | "dark" | "auto";
 export interface InterfacePreferences {
   sidebarCollapsed: boolean;
   rightPanelWidth: number | null;
+  /** How the pinned section orders its rows: pin time (newest first), last update, or the manual order. */
+  pinnedSort: PinnedSort;
+  /** Folded section headers of the sidebar: only the header row stays. */
+  pinnedFolded: boolean;
+  projectsFolded: boolean;
+  recentFolded: boolean;
 }
+export const pinnedSorts = ["pinned", "updated", "manual"] as const;
+export type PinnedSort = (typeof pinnedSorts)[number];
 export const defaultInterfacePreferences: InterfacePreferences = {
   sidebarCollapsed: false,
   rightPanelWidth: null,
+  pinnedSort: "pinned",
+  pinnedFolded: false,
+  projectsFolded: false,
+  recentFolded: false,
 };
+const interfacePreferenceKeys = Object.keys(
+  defaultInterfacePreferences,
+) as (keyof InterfacePreferences)[];
 export const rightPanelWidthRange = { min: 320, max: 2000 } as const;
 /** One preference key with a value of the right type and range. */
 export function validInterfacePreference(key: unknown, value: unknown) {
-  if (key === "sidebarCollapsed") return typeof value === "boolean";
+  if (
+    key === "sidebarCollapsed" ||
+    key === "pinnedFolded" ||
+    key === "projectsFolded" ||
+    key === "recentFolded"
+  )
+    return typeof value === "boolean";
+  if (key === "pinnedSort") return pinnedSorts.includes(value as PinnedSort);
   if (key === "rightPanelWidth")
     return (
       value === null ||
@@ -347,7 +389,7 @@ export function readInterfacePreferences(value: unknown): InterfacePreferences {
       (result as Record<string, unknown>)[key] = stored[key];
   return result;
 }
-/** Exactly the two keys with valid values: the form the shell caches and hands to a new window. */
+/** Exactly the known keys with valid values: the form the shell caches and hands to a new window. */
 export function validInterfacePreferences(
   value: unknown,
 ): value is InterfacePreferences {
@@ -355,9 +397,10 @@ export function validInterfacePreferences(
   const record = value as Record<string, unknown>;
   return (
     Object.keys(record).sort().join(",") ===
-      "rightPanelWidth,sidebarCollapsed" &&
-    validInterfacePreference("sidebarCollapsed", record.sidebarCollapsed) &&
-    validInterfacePreference("rightPanelWidth", record.rightPanelWidth)
+      [...interfacePreferenceKeys].sort().join(",") &&
+    interfacePreferenceKeys.every((key) =>
+      validInterfacePreference(key, record[key]),
+    )
   );
 }
 export interface Settings {
@@ -640,6 +683,8 @@ export interface Snapshot {
   rootId: string;
   dataRoot: string;
   conversations: Conversation[];
+  /** Manual order of the pinned section, first to last; pinned objects missing here come first. */
+  pinnedOrder: PinnedRef[];
   connections: Connection[];
   settings: Settings;
   selected: Record<Surface, string | null>;
@@ -702,6 +747,26 @@ export type Command =
       key: "rightPanelWidth";
       value: number | null;
     }
+  | {
+      type: "setInterfacePreference";
+      key: "pinnedFolded" | "projectsFolded" | "recentFolded";
+      value: boolean;
+    }
+  | {
+      type: "setInterfacePreference";
+      key: "pinnedSort";
+      value: PinnedSort;
+    }
+  | {
+      /** Moves a pinned object before another one (null: to the end) in the manual order. */
+      type: "movePinned";
+      kind: "conversation";
+      id: string;
+      before: PinnedRef | null;
+      /** The moved conversation's organization revision. */
+      revision: number;
+    }
+  | { type: "newConversation"; id: string }
   | {
       type: "organizeConversation";
       id: string;
@@ -1099,10 +1164,29 @@ export function validCommand(value: unknown): value is Command {
     );
   if (
     c.type === "create" ||
+    c.type === "newConversation" ||
     c.type === "select" ||
     c.type === "deleteConnection"
   )
     return keys === "id,type" && validId(c.id);
+  if (c.type === "movePinned") {
+    const before = c.before as Record<string, unknown> | null;
+    return (
+      keys === "before,id,kind,revision,type" &&
+      c.kind === "conversation" &&
+      validId(c.id) &&
+      (before === null ||
+        (!!before &&
+          typeof before === "object" &&
+          !Array.isArray(before) &&
+          Object.keys(before).sort().join(",") === "id,kind" &&
+          before.kind === "conversation" &&
+          validId(before.id) &&
+          before.id !== c.id)) &&
+      Number.isSafeInteger(c.revision) &&
+      Number(c.revision) >= 0
+    );
+  }
   if (c.type === "setConnectionEnabled")
     return (
       keys === "clearDefault,enabled,id,revision,type" &&

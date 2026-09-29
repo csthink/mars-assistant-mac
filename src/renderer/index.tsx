@@ -280,7 +280,7 @@ function App() {
         ? override
         : next;
     });
-  }, [savedPreferences.sidebarCollapsed, savedPreferences.rightPanelWidth]);
+  }, [JSON.stringify(savedPreferences)]);
   async function savePreference<K extends keyof InterfacePreferences>(
     key: K,
     value: InterfacePreferences[K],
