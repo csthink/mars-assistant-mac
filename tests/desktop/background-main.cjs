@@ -1,5 +1,6 @@
 /* Test-only Electron entry. Install OS isolation before loading production code. */
-const { app, clipboard, dialog } = require("electron");
+const electron = require("electron");
+const { app, clipboard, dialog } = electron;
 const { resolve } = require("node:path");
 
 const root = resolve(__dirname, "../..");
@@ -46,6 +47,86 @@ for (const method of [
     throw new Error(`Unexpected native dialog in background test: ${method}`);
   };
 }
+
+// The menu bar icon is an in-process stand-in: a background client never puts a status item in the system
+// menu bar, where a person could click it or quit the test client from its menu, and parallel workers
+// would show one icon each. `electron.Tray` cannot be redefined, so the production bundle alone gets an
+// Electron module whose Tray is the stand-in. Tests click it with the app events below; the real Tray is
+// covered by the native tests, whose entry loads the production bundle directly.
+const { EventEmitter } = require("node:events");
+const mainBundle = resolve(root, "dist/main.cjs");
+const tray = {
+  created: 0,
+  realTrayUsed: false,
+  toolTip: null,
+  menus: [],
+  instance: null,
+};
+globalThis.testTray = tray;
+const RealTray = electron.Tray;
+RealTray.prototype.setToolTip = function () {
+  // Tripwire: the production code sets the tooltip right after creating its icon.
+  tray.realTrayUsed = true;
+};
+class TestTray extends EventEmitter {
+  constructor(image) {
+    super();
+    tray.created += 1;
+    tray.imageEmpty = image.isEmpty();
+    tray.instance = this;
+    this.destroyed = false;
+  }
+  setToolTip(text) {
+    tray.toolTip = text;
+  }
+  // A fixed rectangle at the right end of the primary display's menu bar, the same in every worker.
+  getBounds() {
+    const { bounds, workArea } = electron.screen.getPrimaryDisplay();
+    const height = Math.max(workArea.y - bounds.y, 24);
+    return { x: bounds.x + bounds.width - 240, y: bounds.y, width: 24, height };
+  }
+  popUpContextMenu(menu) {
+    tray.menus.push(menu.items.map((item) => item.label));
+    tray.menu = menu;
+  }
+  setImage() {}
+  setPressedImage() {}
+  setTitle() {}
+  destroy() {
+    this.destroyed = true;
+  }
+  isDestroyed() {
+    return this.destroyed;
+  }
+}
+const click = () => ({
+  preventDefault() {},
+  altKey: false,
+  shiftKey: false,
+  ctrlKey: false,
+  metaKey: false,
+});
+app.on("test-tray-click", () =>
+  tray.instance?.emit("click", click(), tray.instance.getBounds()),
+);
+app.on("test-tray-right-click", () =>
+  tray.instance?.emit("right-click", click(), tray.instance.getBounds()),
+);
+app.on("test-tray-menu", (label) => {
+  const item = tray.menu?.items.find((entry) => entry.label === label);
+  if (!item) throw new Error(`No recorded menu bar icon menu item: ${label}`);
+  item.click();
+});
+const electronForMain = new Proxy(electron, {
+  get: (target, key, receiver) =>
+    key === "Tray" ? TestTray : Reflect.get(target, key, receiver),
+});
+const load = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (request === "electron" && parent?.filename === mainBundle)
+    return electronForMain;
+  return load.call(this, request, parent, isMain);
+};
 
 app.on("browser-window-created", (_event, window) => {
   // Keep native visibility/lifecycle observable, but make windows invisible and
