@@ -168,6 +168,12 @@ test("rail and sidebar: every entry opens its object in the centre, the old tabs
           .getByRole("heading", { level: 1, name: heading }),
       ).toBeVisible();
     }
+    // The widget page speaks of widgets, not of the former 工作台.
+    await railEntry(page, "控件").click();
+    await expect(
+      page.locator(".center").getByRole("heading", { name: "还没有控件" }),
+    ).toBeVisible();
+    await expect(page.locator(".center")).not.toContainText("工作台");
     await goTo(page, "设置");
     await expect(
       page

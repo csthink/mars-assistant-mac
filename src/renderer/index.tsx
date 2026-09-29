@@ -1204,7 +1204,10 @@ function App() {
       </div>
     );
   }
-  /** The widget page: the main window reaches it from the rail, the panel from its 工作台 page. */
+  /**
+   * The widget page: the main window reaches it from the rail as 控件, the panel from its 工作台 page; the empty
+   * state names the page the person is on.
+   */
   function widgetsContent(title: string, detail?: string) {
     return (
       <div className="page">
@@ -1227,7 +1230,7 @@ function App() {
           />
         ) : (
           emptyPage(
-            "工作台还是空的",
+            title === "控件" ? "还没有控件" : "工作台还是空的",
             "从一个想法开始。控件生成开放后，你可以在聊天中创建自己的工具。",
             "grid",
             { label: "到聊天记录想法", run: () => go("chat") },
