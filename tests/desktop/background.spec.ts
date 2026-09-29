@@ -130,3 +130,76 @@ test("background: clipboard is process-local and unexpected native dialogs are r
     await app.close();
   }
 });
+
+test("background: the menu bar icon is an in-process stand-in: no system status item, a test click opens and closes the panel, the context menu is recorded", async () => {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const root = mkdtempSync(resolve(".test-data/disposable/menu-bar-icon-"));
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+  });
+  type Record = {
+    created: number;
+    realTrayUsed: boolean;
+    toolTip: string | null;
+    imageEmpty: boolean;
+    menus: string[][];
+  };
+  const record = () =>
+    app.evaluate(() => {
+      const { created, realTrayUsed, toolTip, imageEmpty, menus } = (
+        globalThis as unknown as { testTray: Record }
+      ).testTray;
+      return { created, realTrayUsed, toolTip, imageEmpty, menus };
+    });
+  const panelVisible = () =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().some(
+        (w) => w.getTitle() === "工作台助手" && w.isVisible(),
+      ),
+    );
+  try {
+    await expect(
+      (await app.firstWindow())
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
+    ).toBeEnabled();
+    // The production code made exactly one icon, with its image and tooltip, and never a real one.
+    expect(await record()).toEqual({
+      created: 1,
+      realTrayUsed: false,
+      toolTip: "csthink-assistant",
+      imageEmpty: false,
+      menus: [],
+    });
+    const opening = app.waitForEvent("window");
+    await app.evaluate(({ app }) => app.emit("test-tray-click"));
+    await opening;
+    await expect.poll(panelVisible).toBe(true);
+    await app.evaluate(({ app }) => app.emit("test-tray-click"));
+    await expect.poll(panelVisible).toBe(false);
+    await app.evaluate(({ app }) => app.emit("test-tray-right-click"));
+    expect((await record()).menus).toEqual([
+      ["打开主窗口", "退出 csthink-assistant"],
+    ]);
+    // The recorded menu still acts: with the main window closed, its first item opens a new one.
+    const mainVisible = () =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some(
+          (w) => w.getTitle() !== "工作台助手" && w.isVisible(),
+        ),
+      );
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((w) => w.getTitle() !== "工作台助手")
+        ?.close(),
+    );
+    await expect.poll(mainVisible).toBe(false);
+    const reopening = app.waitForEvent("window");
+    await app.evaluate(({ app }) => app.emit("test-tray-menu", "打开主窗口"));
+    await reopening;
+    await expect.poll(mainVisible).toBe(true);
+    expect((await record()).realTrayUsed).toBe(false);
+  } finally {
+    await closeLocal(app);
+  }
+});

@@ -45,7 +45,7 @@ npm run test:desktop
 ```
 
 - 前四条与 CI 的步骤相同；`test:integration` 与 `test:desktop` 只在本机运行，CI 通过不代表它们通过。
-- `test:integration` 与 `test:desktop` 会先构建，再启动真实 Electron，需要已登录的图形会话；测试窗口透明、不取得焦点。
+- `test:integration` 与 `test:desktop` 会先构建，再启动真实 Electron，需要已登录的图形会话；测试窗口透明、不取得焦点，菜单栏图标由测试进程内的替身代替，不出现在系统菜单栏。
 - 开发过程中只跑受影响的用例，先 `npm run build`，再用 `npm exec --no -- playwright test --project=<项目> <文件>`，总是带 `--project`。定向结果不能代替提交前的完整检查。
 - 任何失败、跳过或重试都要查明原因，不以重跑通过作为结论。
 - `npm run test:native` 会使用前台桌面，只在改动窗口焦点、菜单栏面板或跨应用行为时安排运行。
