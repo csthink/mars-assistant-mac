@@ -14,9 +14,8 @@ test("native: widget focus, trusted search occlusion and generation recovery", a
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
-    // feature-t31 S-01 made 项目 the default workbench tab; the widget controls live under 控件 (KB-331).
-    await page.getByRole("tab", { name: "控件", exact: true }).click();
+    // The widget page is the rail's 控件 entry.
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     const live = () =>
       client

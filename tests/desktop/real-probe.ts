@@ -160,7 +160,7 @@ export class ProbeClient {
   }
   /** Opens a project from the list and returns its 仓库治理接入 section. */
   async openProject(name: string) {
-    await goTo(this.page, "工作台");
+    await goTo(this.page, "项目");
     const back = this.page.getByRole("button", { name: "返回项目列表" });
     if (await back.count()) await back.click();
     await this.page.locator(".project-open").filter({ hasText: name }).click();

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { goTo, requestSize, windowClasses } from "./shell";
 import type { AddressInfo } from "node:net";
 import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
@@ -229,7 +230,11 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
       .click();
     const layout = f.page.locator(".project-work-grid");
     await expect(layout).toHaveAttribute("data-full", "true");
-    await expect(f.page.locator(".home-header")).toBeHidden();
+    // The enlarged content covers the window: the rail and the sidebar step aside.
+    await expect(
+      f.page.getByRole("navigation", { name: "全局导航" }),
+    ).toBeHidden();
+    await expect(f.page.locator("#main-sidebar")).toBeHidden();
     await expect(input).toHaveValue("保留草稿，不发送");
     expect(await content.evaluate((el) => el.scrollTop)).toBe(scroll);
     await f.page
@@ -294,14 +299,10 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
       .getByRole("button", { name: "还原内容区", exact: true })
       .click();
     await expect(layout).toHaveAttribute("data-full", "false");
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "聊天", exact: true })
-      .click();
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(f.page, "聊天");
+    await goTo(f.page, "项目");
+    // 全部项目 opens the project list; the project row reopens its detail, as returning to it did before.
+    await f.page.locator(".project-open").first().click();
     await expect(input).toHaveValue("保留草稿，不发送");
     await expect(content).toContainText("当前候选 1");
     await expect
@@ -498,7 +499,7 @@ test("project evidence: a fullscreen chat sends once while Runtime candidate upd
   }
 });
 
-test("project evidence: 适应内容 shows the whole topology inside the canvas at a readable size in the default and the 900 × 680 window (KB-319)", async ({}, info) => {
+test("project evidence: 适应内容 shows the whole topology inside the canvas with node titles of at least 10 px at 900 × 680 with the sidebar expanded and folded and at the standard width, in light and dark (KB-319)", async ({}, info) => {
   const f = await reader();
   try {
     const graph = f.page.getByRole("region", { name: "流程拓扑", exact: true });
@@ -531,34 +532,63 @@ test("project evidence: 适应内容 shows the whole topology inside the canvas 
                 Number(node.querySelector("rect")!.getAttribute("width"))),
           };
         });
-        return { width: box.width, height: box.height, nodes };
+        return {
+          centre: document.querySelector(".center")!.getBoundingClientRect()
+            .width,
+          width: box.width,
+          height: box.height,
+          nodes,
+        };
       });
     };
-    for (const size of [null, [900, 680]] as const) {
-      if (size) {
-        await f.app.evaluate(
-          ({ BrowserWindow }, [w, h]) =>
-            BrowserWindow.getAllWindows()[0].setContentSize(w, h),
-          size,
-        );
-        await expect
-          .poll(() => f.page.evaluate(() => [innerWidth, innerHeight]))
-          .toEqual(size);
+    const fold = f.page
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "折叠侧栏", exact: true });
+    const unfold = f.page
+      .getByRole("navigation", { name: "全局导航" })
+      .getByRole("button", { name: "展开侧栏", exact: true });
+    const sidebar = async (expanded: boolean) => {
+      if (expanded && (await unfold.isVisible())) await unfold.click();
+      if (!expanded && (await fold.isVisible())) await fold.click();
+      await expect(f.page.locator("#main-sidebar")).toHaveCount(
+        expanded ? 1 : 0,
+      );
+    };
+    for (const theme of ["light", "dark"] as const) {
+      await f.page.evaluate(
+        (appearance) =>
+          window.desktop.command({ type: "setAppearance", appearance }),
+        theme,
+      );
+      await expect(f.page.locator("html")).toHaveAttribute("data-theme", theme);
+      const { standard } = await windowClasses(f.app, f.page);
+      for (const [label, size, expanded] of [
+        ["900-expanded", [900, 680], true],
+        ["900-folded", [900, 680], false],
+        ["standard-expanded", standard, true],
+        ["standard-folded", standard, false],
+      ] as const) {
+        const got = await requestSize(f.app, f.page, size[0], size[1]);
+        expect(got).toEqual([...size]);
+        await sidebar(expanded);
+        const result = await fitted();
+        const shown = JSON.stringify(result);
+        const smallest = Math.min(...result.nodes.map((n) => n.titlePx));
+        info.annotations.push({
+          type: "topology title",
+          description: `${theme} ${label} ${got.join("x")}: centre ${result.centre}, canvas ${result.width}x${result.height}, smallest title ${smallest.toFixed(2)} px`,
+        });
+        expect(
+          result.nodes.every((n) => n.inside),
+          shown,
+        ).toBe(true);
+        expect(smallest, shown).toBeGreaterThanOrEqual(10);
+        await graph.scrollIntoViewIfNeeded();
+        await graph.screenshot({
+          path: info.outputPath(`topology-fit-${theme}-${label}.png`),
+        });
       }
-      const result = await fitted();
-      const shown = JSON.stringify(result);
-      expect(
-        result.nodes.every((n) => n.inside),
-        shown,
-      ).toBe(true);
-      expect(
-        Math.min(...result.nodes.map((n) => n.titlePx)),
-        shown,
-      ).toBeGreaterThanOrEqual(10);
-      await graph.scrollIntoViewIfNeeded();
-      await graph.screenshot({
-        path: info.outputPath(`topology-fit-${size ? "900" : "default"}.png`),
-      });
+      await sidebar(true);
     }
   } finally {
     await closeLocal(f.app);

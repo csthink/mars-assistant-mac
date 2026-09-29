@@ -23,11 +23,12 @@ const NODE_W = 220,
   MARGIN = 24;
 /**
  * Levels by the longest path from a source, the members of a level stacked in one slot. KB-319: a long chain
- * as one column fitted a 380 px canvas at about 29 %; the levels now run in rows that turn back at each end
- * (the accepted prototype's flow wraps its stages the same way), about 1.5 times as many rows as slots per
- * row, so fitting the whole graph keeps the node titles readable.
+ * as one column fitted a 380 px canvas at about 29 %; the levels run in rows of `slots` that turn back at each
+ * end (the accepted prototype's flow wraps its stages the same way). The default is about 1.5 times as many
+ * rows as slots per row; 适应内容 picks the slot count that gives the largest scale for the canvas it has, so a
+ * narrow canvas takes fewer, longer columns.
  */
-function layout(nodes: Node[], edges: Edge[]) {
+function layout(nodes: Node[], edges: Edge[], slots?: number) {
   const positions = new Map<string, { x: number; y: number }>(),
     levels = new Map<string, number>();
   const incoming = new Map(nodes.map((n) => [n.id, 0])),
@@ -59,12 +60,18 @@ function layout(nodes: Node[], edges: Edge[]) {
     (members[level] ??= []).push(n.id);
   });
   for (let level = 0; level < members.length; level++) members[level] ??= [];
-  const slots = Math.max(1, Math.ceil(Math.sqrt(members.length / 1.5)));
+  const count = Math.max(
+    1,
+    Math.min(
+      members.length,
+      slots ?? Math.ceil(Math.sqrt(members.length / 1.5)),
+    ),
+  );
   let top = MARGIN;
-  for (let row = 0; row * slots < members.length; row++) {
-    const band = members.slice(row * slots, (row + 1) * slots);
+  for (let row = 0; row * count < members.length; row++) {
+    const band = members.slice(row * count, (row + 1) * count);
     band.forEach((ids, i) => {
-      const slot = row % 2 ? slots - 1 - i : i;
+      const slot = row % 2 ? count - 1 - i : i;
       ids.forEach((id, k) =>
         positions.set(id, {
           x: MARGIN + slot * (NODE_W + GAP_X),
@@ -75,8 +82,41 @@ function layout(nodes: Node[], edges: Edge[]) {
     const tallest = Math.max(1, ...band.map((ids) => ids.length));
     top += tallest * (NODE_H + STACK) - STACK + GAP_Y;
   }
-  return positions;
+  return { positions, levels: members.length };
 }
+/** Width and height of a laid-out graph, with room for the loops of edges back up their own slot. */
+function extent(
+  positions: Map<string, { x: number; y: number }>,
+  edges: Edge[],
+) {
+  const loops = edges.some((e) => {
+    const a = positions.get(e.source),
+      b = positions.get(e.target);
+    return a && b && !sideBySide(a, b) && b.y < a.y + NODE_H;
+  });
+  return {
+    width:
+      Math.max(...[...positions.values()].map((p) => p.x)) +
+      NODE_W +
+      MARGIN +
+      (loops ? LOOP : 0),
+    height:
+      Math.max(...[...positions.values()].map((p) => p.y)) + NODE_H + MARGIN,
+  };
+}
+/** The scale at which a graph of this extent fits a canvas of this box, capped at 130 %. */
+const fitScale = (
+  box: { width: number; height: number },
+  size: { width: number; height: number },
+) =>
+  Math.max(
+    0.001,
+    Math.min(
+      1.3,
+      (box.width - 24) / size.width,
+      (box.height - 24) / size.height,
+    ),
+  );
 /** An edge between two node boxes: side to side along a row, bottom to top between rows, a loop on the right back up a slot. */
 const sideBySide = (a: { x: number }, b: { x: number }) =>
   b.x >= a.x + NODE_W || b.x + NODE_W <= a.x;
@@ -133,8 +173,7 @@ function Graph({
   projectId: string;
 }) {
   const nodes = object.view.nodes as Node[],
-    edges = object.view.edges as Edge[],
-    positions = layout(nodes, edges);
+    edges = object.view.edges as Edge[];
   const key = `project-graph:${projectId}:${object.objectRef}`,
     marker = useId().replaceAll(":", "");
   const initial = () => {
@@ -151,11 +190,21 @@ function Graph({
           x: v.x as number,
           y: v.y as number,
           node: typeof v.node === "string" ? v.node : "",
+          slots:
+            Number.isInteger(v.slots) && v.slots > 0
+              ? (v.slots as number)
+              : undefined,
         };
     } catch {
       /* invalid local layout is ignored */
     }
-    return { zoom: 1, x: 0, y: 0, node: "" };
+    return {
+      zoom: 1,
+      x: 0,
+      y: 0,
+      node: "",
+      slots: undefined as number | undefined,
+    };
   };
   const [view, setView] = useState(initial),
     svg = useRef<SVGSVGElement>(null),
@@ -165,31 +214,25 @@ function Graph({
       originX: number;
       originY: number;
     } | null>(null);
+  const { positions, levels } = layout(nodes, edges, view.slots);
   const selected = nodes.find((n) => n.id === view.node);
+  /** Fits the whole graph: every slot count is tried and the one with the largest scale for this canvas wins. */
   function fit() {
     const box = svg.current?.getBoundingClientRect();
     if (!box || !positions.size) return;
-    const loops = edges.some((e) => {
-      const a = positions.get(e.source),
-        b = positions.get(e.target);
-      return a && b && !sideBySide(a, b) && b.y < a.y + NODE_H;
-    });
-    const width =
-        Math.max(...[...positions.values()].map((p) => p.x)) +
-        NODE_W +
-        MARGIN +
-        (loops ? LOOP : 0),
-      height =
-        Math.max(...[...positions.values()].map((p) => p.y)) + NODE_H + MARGIN;
-    const zoom = Math.max(
-      0.001,
-      Math.min(1.3, (box.width - 24) / width, (box.height - 24) / height),
-    );
+    let best = { slots: 1, zoom: 0, width: 0, height: 0 };
+    for (let slots = 1; slots <= Math.max(1, levels); slots++) {
+      const size = extent(layout(nodes, edges, slots).positions, edges),
+        zoom = fitScale(box, size);
+      // Ties keep the fewer slots: the flow reads top to bottom with fewer turns.
+      if (zoom > best.zoom + 1e-9) best = { slots, zoom, ...size };
+    }
     setView((v) => ({
       ...v,
-      zoom,
-      x: (box.width - width * zoom) / 2,
-      y: (box.height - height * zoom) / 2,
+      slots: best.slots,
+      zoom: best.zoom,
+      x: (box.width - best.width * best.zoom) / 2,
+      y: (box.height - best.height * best.zoom) / 2,
     }));
   }
   function locate(id: string) {

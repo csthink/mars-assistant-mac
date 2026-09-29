@@ -119,7 +119,7 @@ async function setModel(name: string, model: string) {
 async function newChatWith(connectionName: string) {
   await goTo(page, "聊天");
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
   const select = page.getByRole("combobox", { name: "本次连接" });

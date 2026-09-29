@@ -167,8 +167,8 @@ async function snapshotOf(page: Page): Promise<Snapshot> {
 async function sendTurn(page: Page, label: string, level: string | null) {
   await goTo(page, "聊天");
   await page
-    .locator(".home-header")
-    .getByRole("button", { name: "新建对话", exact: true })
+    .locator("#main-sidebar")
+    .getByRole("button", { name: "新建聊天", exact: true })
     .click();
   const picker = page.getByRole("combobox", { name: "本次连接", exact: true });
   await picker.selectOption({ label });

@@ -4,8 +4,9 @@ name: CI
 # 静态检查、构建与服务层测试。
 #
 # 不进入 CI 的测试：
-#   tests/desktop/*.integration.ts  集成测试（npm run test:integration）与桌面测试（npm run test:desktop）
-#   tests/desktop/*.spec.ts         启动真实 Electron，需要已登录的图形会话，在本机运行；开 PR 前须在本机全部通过。
+#   tests/desktop/*.integration.ts  集成测试（npm run test:integration）
+#   tests/desktop/*.spec.ts         桌面测试（npm run test:desktop）
+#                                   两者都启动真实 Electron，需要已登录的图形会话，在本机运行；开 PR 前须在本机全部通过。
 #   tests/desktop/real-*.spec.ts    调用真实提供方与本地 Agent，只由 npm run test:real 在显式授权下运行。
 #   tests/desktop/*.native.ts       使用前台桌面，只由 npm run test:native 运行。
 #

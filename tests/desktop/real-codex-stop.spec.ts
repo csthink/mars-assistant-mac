@@ -106,7 +106,7 @@ test("real codex: one authorized stop-only turn preserves the independent Codex 
     alive();
     await goTo(page, "聊天");
     await page
-      .getByRole("button", { name: "新建对话", exact: true })
+      .getByRole("button", { name: /^新建(聊天|对话)$/ })
       .first()
       .click();
     await page

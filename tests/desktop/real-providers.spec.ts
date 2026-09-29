@@ -74,8 +74,8 @@ async function launch() {
   if (!window) throw new Error("Main window not found over CDP");
   await expect(
     window
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   return { process_, connection, window };
 }
@@ -99,7 +99,7 @@ async function openConnections() {
 async function newChatWith(connectionName: string) {
   await goTo(page, "聊天");
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
   const select = page.getByRole("combobox", { name: "本次连接" });

@@ -1,5 +1,9 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
-import type { Appearance } from "../shared/protocol";
+import {
+  validInterfacePreferences,
+  type Appearance,
+  type InterfacePreferences,
+} from "../shared/protocol";
 
 const choices: readonly string[] = ["light", "dark", "auto"];
 
@@ -22,5 +26,38 @@ export function readAppearanceCache(path: string): Appearance | undefined {
 export function writeAppearanceCache(path: string, appearance: Appearance) {
   const next = `${path}.next`;
   writeFileSync(next, appearance, { mode: 0o600 });
+  renameSync(next, path);
+}
+
+/**
+ * The saved interface preferences as last applied, kept next to the appearance so that a new window lays out
+ * its columns before the business service answers. Like the appearance it only mirrors the business settings;
+ * a missing, unreadable or not exactly valid file reads as unknown.
+ */
+export function readInterfaceCache(
+  path: string,
+): InterfacePreferences | undefined {
+  try {
+    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+    return validInterfacePreferences(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Replaces the cached preferences in one step, so a reader never sees a partial value. */
+export function writeInterfaceCache(
+  path: string,
+  preferences: InterfacePreferences,
+) {
+  const next = `${path}.next`;
+  writeFileSync(
+    next,
+    JSON.stringify({
+      sidebarCollapsed: preferences.sidebarCollapsed,
+      rightPanelWidth: preferences.rightPanelWidth,
+    }),
+    { mode: 0o600 },
+  );
   renameSync(next, path);
 }

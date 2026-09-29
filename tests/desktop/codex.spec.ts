@@ -50,8 +50,8 @@ async function restartClient() {
   page = await app.firstWindow();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   await providersPage(page);
 }
@@ -187,7 +187,7 @@ test("codex: confirmed native connection becomes selectable and a synthetic answ
     .click();
   await goTo(page, "聊天");
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
   const input = page.getByRole("textbox", { name: "输入草稿" });
@@ -244,7 +244,7 @@ async function configureNative() {
     .click();
   await goTo(page, "聊天");
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
 }
@@ -714,7 +714,7 @@ test("codex: search, multiple configured native models and API models remain sel
   await restartClient();
   await goTo(page, "聊天");
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
   const picker = page.getByRole("combobox", { name: "本次连接" });
@@ -981,8 +981,8 @@ test("codex: native image probe and unknown image submission preserve the select
   ).toHaveLength(0);
   await goTo(page, "聊天");
   await page
-    .locator(".home-header")
-    .getByRole("button", { name: "新建对话", exact: true })
+    .locator("#main-sidebar")
+    .getByRole("button", { name: "新建聊天", exact: true })
     .click();
   const bytes = Buffer.concat([pngSample(), Buffer.alloc(1_500_000)]),
     path = join(root, "large.png");

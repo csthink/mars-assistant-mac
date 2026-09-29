@@ -940,7 +940,10 @@ test("extensions: the card follows the real checks: the periodic health check tu
     });
     // Keyboard: the disclosure is reachable by Tab from the card and shows the focus ring in both appearances.
     const focusRing = async () => {
-      await list.getByRole("heading", { level: 3 }).click();
+      // Inside the settings dialog a click on text focuses the dialog itself, so the keyboard path starts
+      // from the control before the disclosure: Shift+Tab away and Tab back.
+      await list.locator(".extension-diagnostics summary").focus();
+      await page.keyboard.press("Shift+Tab");
       await page.keyboard.press("Tab");
       return list.locator(".extension-diagnostics summary").evaluate((el) => {
         const style = getComputedStyle(el);

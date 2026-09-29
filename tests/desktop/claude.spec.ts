@@ -26,8 +26,8 @@ async function start() {
   page = await app.firstWindow();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   await openProvider(page, "Claude Code");
 }
@@ -185,8 +185,8 @@ test("claude: settings configure multiple models and a default, then chat uses o
   });
   await goTo(page, "聊天");
   await page
-    .locator(".home-header")
-    .getByRole("button", { name: "新建对话", exact: true })
+    .locator("#main-sidebar")
+    .getByRole("button", { name: "新建聊天", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "输入草稿" })
@@ -228,7 +228,7 @@ async function configureNative() {
     .click();
   await goTo(page, "聊天");
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
 }
@@ -544,8 +544,8 @@ test("claude: unknown images send intact, native probes stay model-specific and 
     .click();
   await goTo(page, "聊天");
   await page
-    .locator(".home-header")
-    .getByRole("button", { name: "新建对话", exact: true })
+    .locator("#main-sidebar")
+    .getByRole("button", { name: "新建聊天", exact: true })
     .click();
   const bytes = Buffer.concat([pngSample(), Buffer.alloc(1_500_000)]);
   const path = join(root, "large.png");

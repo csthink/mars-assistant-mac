@@ -214,8 +214,8 @@ test("real Codex Reviewer (V-18): one execution completes with exactly one nativ
     page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const ev = <A extends Json, R>(
       fn: (

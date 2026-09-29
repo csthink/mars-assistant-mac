@@ -22,6 +22,14 @@ const icons: Record<string, string> = {
   close: "M5 5l14 14M19 5 5 19",
   check: "m5 12 4 4L19 6",
   refresh: "M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5",
+  home: "M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5",
+  sidebar: "M4 5h16v14H4ZM10 5v14",
+  panelRight: "M4 5h16v14H4ZM14 5v14",
+  widen: "M4 12h16M7.5 8.5 4 12l3.5 3.5M16.5 8.5 20 12l-3.5 3.5",
+  narrow: "M4 12h6M20 12h-6M7 8.5 10.5 12 7 15.5M17 8.5 13.5 12l3.5 3.5",
+  takeover: "M4 5h16v14H4ZM9 5v14M14 9.5 11.5 12l2.5 2.5",
+  file: "M7 4h7.5L19 8.5V20H7ZM14.5 4v4.5H19",
+  activity: "M3.5 12h3.8l2.4-6 4.6 12 2.4-6h3.8",
 };
 export function Icon({ name }: { name: string }) {
   return (

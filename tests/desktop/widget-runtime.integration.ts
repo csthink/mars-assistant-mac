@@ -55,8 +55,8 @@ async function setup(source = candidate()) {
     const shell = await client.firstWindow();
     await expect(
       shell
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await expect
       .poll(() =>
@@ -458,8 +458,8 @@ test("widget runtime: hung generated script retires without blocking the trusted
     const page = await client.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const outcome = await client.evaluate(() => {
       const h = Reflect.get(globalThis, "widgetHarness") as Harness;

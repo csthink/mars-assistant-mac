@@ -40,8 +40,8 @@ test("search: rename preserves manual titles, duplicate identity and failed inpu
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await expect((await recent(page)).getByText(/同名 2/)).toHaveCount(2);
     await closeRecent(page);
@@ -121,8 +121,8 @@ test("search: offline literal results, keyboard navigation, precise messages and
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()
@@ -234,6 +234,8 @@ test("search: offline literal results, keyboard navigation, precise messages and
     await expect(
       page.getByText("搜索索引已重建。", { exact: true }),
     ).toBeVisible();
+    // Command + K never opens the search panel over the settings dialog; close it first.
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Meta+k");
     await input.fill("独有正文");
     await expect(dialog.getByRole("option")).toHaveCount(1);
@@ -282,8 +284,8 @@ test("search: 1000 conversations and 20000 messages render cold and warm first p
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await page.keyboard.press("Meta+k");
     const dialog = page.getByRole("dialog", { name: "搜索对话" }),

@@ -117,8 +117,8 @@ export async function launchReal(root: string): Promise<RealClient> {
   if (!page) throw new Error("Main window not found over CDP");
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   const mainEval = (expression: string) => main.evaluate(expression);
   const pickFiles = async (paths: string[]) => {

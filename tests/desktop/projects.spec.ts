@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { goTo } from "./shell";
 import { launchLocal } from "./local-client";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -18,8 +19,8 @@ async function launch() {
   const page = await app.firstWindow();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({
@@ -27,11 +28,7 @@ async function launch() {
       filePaths: [path],
     });
   }, folder);
-  await page
-    .getByRole("navigation", { name: "主要页面" })
-    .getByRole("button", { name: "工作台", exact: true })
-    .click();
-  await page.getByRole("tab", { name: "项目", exact: true }).click();
+  await goTo(page, "项目");
   return { app, page, data, folder };
 }
 test("projects: create, edit, archive and undo preserve project identity and render both themes", async ({}, info) => {
@@ -149,8 +146,8 @@ test("projects: create, edit, archive and undo preserve project identity and ren
       const restored = await reopened.firstWindow();
       await expect(
         restored
-          .locator(".home-header")
-          .getByRole("button", { name: "新建对话", exact: true }),
+          .locator("#main-sidebar")
+          .getByRole("button", { name: "新建聊天", exact: true }),
       ).toBeEnabled();
       const project = await restored.evaluate(async () => {
         const reply = await window.desktop.command({ type: "snapshot" });

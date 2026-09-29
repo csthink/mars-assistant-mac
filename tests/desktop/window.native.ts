@@ -17,8 +17,8 @@ test("native: production window activation and focus transfer", async ({}, info)
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const mainId = await app.evaluate(
       ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].id,

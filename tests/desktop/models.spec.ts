@@ -58,8 +58,8 @@ test("models: fetched and manual models coexist; probes and budgets stay per mod
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const snapshot = () =>
       page.evaluate(async () => {
@@ -189,7 +189,7 @@ test("models: fetched and manual models coexist; probes and budgets stay per mod
     });
     await goTo(page, "聊天");
     await page
-      .getByRole("button", { name: "新建对话", exact: true })
+      .getByRole("button", { name: /^新建(聊天|对话)$/ })
       .first()
       .click();
     const input = page.getByRole("textbox", { name: "输入草稿", exact: true });
@@ -236,7 +236,7 @@ test("models: fetched and manual models coexist; probes and budgets stay per mod
         delete state.releaseModelSelection;
       });
     await page
-      .getByRole("button", { name: "新建对话", exact: true })
+      .getByRole("button", { name: /^新建(聊天|对话)$/ })
       .first()
       .click();
     await expect(selector).toBeDisabled();
@@ -388,8 +388,8 @@ test("model tests: explicit text calls keep independent results, allow cancellat
     let page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     let detail = await addProvider(page, {
       name: "独立测试",
@@ -447,8 +447,8 @@ test("model tests: explicit text calls keep independent results, allow cancellat
     page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     detail = await openProvider(page, "独立测试");
     await expect(row("alpha").getByRole("status")).toContainText(

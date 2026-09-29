@@ -48,8 +48,8 @@ async function launch(root: string) {
   const page = await app.firstWindow();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   return app;
 }

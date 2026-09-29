@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { journeyFixture } from "./project-action-fixture";
 import { closeLocal, launchLocal } from "./local-client";
-import { goTo, ready } from "./shell";
+import { goTo, ready, requestSize, windowClasses } from "./shell";
+/** Returns to the project detail: 全部项目 opens the project list, the project row reopens its detail. */
+async function backToProject(page: Page) {
+  await goTo(page, "项目");
+  await page.locator(".project-open").first().click();
+}
 
 type Fixture = Awaited<ReturnType<typeof journeyFixture>>;
 async function projection(f: Fixture) {
@@ -171,7 +176,7 @@ test("project pending: global and project decisions share identities, filter wit
     await decide(f, "接纳任务");
     await goTo(f.page, "待处理");
     await decide(f, "冻结定义");
-    await goTo(f.page, "工作台");
+    await backToProject(f.page);
     await decide(f, "开始实施", false);
     await decide(f, "执行验证", false);
     await decide(f, "提交变更评审", false);
@@ -179,11 +184,11 @@ test("project pending: global and project decisions share identities, filter wit
     await decide(f, "执行验证", false);
     await goTo(f.page, "待处理");
     await decide(f, "调整评审额度", true, false, 2);
-    await goTo(f.page, "工作台");
+    await backToProject(f.page);
     await decide(f, "提交变更评审", false);
     await goTo(f.page, "待处理");
     await decide(f, "授权发布");
-    await goTo(f.page, "工作台");
+    await backToProject(f.page);
     await decide(f, "Publish", false);
     await decide(f, "核对合并结果", false);
     await goTo(f.page, "待处理");
@@ -423,10 +428,13 @@ test("project pending: a disconnected source preserves the last item and disable
   }
 });
 
-/** Label text, control box and text size of each labelled search or select of the visible filter bar (KB-309). */
+/**
+ * The visible filter bar (KB-309): label text line, control box and text size of each labelled search or
+ * select, the checkbox centre and the reset button box, and whether the bar overflows its own width.
+ */
 async function filterGeometry(page: Page) {
-  return page.locator(".record-query-controls").evaluate((bar) =>
-    [...bar.querySelectorAll(":scope > label")].flatMap((label) => {
+  return page.locator(".record-query-controls").evaluate((bar) => {
+    const controls = [...bar.querySelectorAll("label")].flatMap((label) => {
       const control = label.querySelector("input:not([type=checkbox]), select");
       if (!control || !label.firstChild) return [];
       const range = document.createRange();
@@ -437,54 +445,87 @@ async function filterGeometry(page: Page) {
         {
           name: label.firstChild.textContent!.trim(),
           labelTop: text.top,
+          labelHeight: label.getBoundingClientRect().height,
           top: box.top,
           height: box.height,
           fontSize: getComputedStyle(control).fontSize,
         },
       ];
-    }),
-  );
-}
-function expectAligned(rows: Awaited<ReturnType<typeof filterGeometry>>) {
-  for (const key of ["labelTop", "top", "height"] as const) {
-    const values = rows.map((r) => r[key]);
-    expect(
-      Math.max(...values) - Math.min(...values),
-      `${key}: ${JSON.stringify(rows)}`,
-    ).toBeLessThanOrEqual(0.5);
-  }
-  expect(new Set(rows.map((r) => r.fontSize)).size, JSON.stringify(rows)).toBe(
-    1,
-  );
-}
-/** The checkbox row is centred on the controls and the reset button shares their edges (KB-309). */
-async function expectBand(page: Page) {
-  const band = await page.locator(".record-query-controls").evaluate((bar) => {
-    const box = (el: Element | null) => el?.getBoundingClientRect() ?? null;
-    const select = box(bar.querySelector("select"))!,
-      check = box(bar.querySelector(".record-query-check input")),
-      reset = box(bar.querySelector(":scope > .button"));
+    });
+    const check = bar.querySelector(".record-query-check input"),
+      reset = [...bar.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "返回全部范围",
+      );
+    const checkBox = check?.getBoundingClientRect(),
+      resetBox = reset?.getBoundingClientRect();
     return {
-      select: { top: select.top, height: select.height },
-      checkCenter: check && check.top + check.height / 2,
-      reset: reset && { top: reset.top, height: reset.height },
+      controls,
+      checkCenter: checkBox ? checkBox.top + checkBox.height / 2 : null,
+      reset: resetBox ? { top: resetBox.top, height: resetBox.height } : null,
+      overflow: bar.scrollWidth > bar.clientWidth,
+      height: bar.getBoundingClientRect().height,
+      gap: parseFloat(getComputedStyle(bar).rowGap) || 0,
     };
   });
-  const center = band.select.top + band.select.height / 2;
-  if (band.checkCenter !== null)
+}
+/**
+ * The bar has `rows` rows. Within each row every label sits on one line and every control has one height and
+ * top edge; the checkbox is centred on its row's controls and the reset button shares their edges; all
+ * controls share one text size and nothing overflows the bar.
+ */
+function expectRows(
+  bar: Awaited<ReturnType<typeof filterGeometry>>,
+  rows: number,
+) {
+  const shown = JSON.stringify(bar);
+  expect(bar.overflow, shown).toBe(false);
+  expect(new Set(bar.controls.map((c) => c.fontSize)).size, shown).toBe(1);
+  const tops: number[] = [];
+  for (const c of bar.controls)
+    if (!tops.some((t) => Math.abs(t - c.top) <= 0.5)) tops.push(c.top);
+  if (bar.reset && !tops.some((t) => Math.abs(t - bar.reset!.top) <= 0.5))
+    tops.push(bar.reset.top);
+  expect(tops.length, `rows: ${shown}`).toBe(rows);
+  // No empty band: the bar is exactly its rows and the gaps between them.
+  const tallest = Math.max(...bar.controls.map((c) => c.labelHeight));
+  expect(
+    bar.height - (rows * tallest + (rows - 1) * bar.gap),
+    `bar height: ${shown}`,
+  ).toBeLessThanOrEqual(0.5);
+  for (const top of tops) {
+    const row = bar.controls.filter((c) => Math.abs(c.top - top) <= 0.5);
+    if (!row.length) continue;
+    for (const key of ["labelTop", "height"] as const) {
+      const values = row.map((r) => r[key]);
+      expect(
+        Math.max(...values) - Math.min(...values),
+        `${key}: ${shown}`,
+      ).toBeLessThanOrEqual(0.5);
+    }
+  }
+  const rowOf = (y: number) =>
+    bar.controls.filter((c) => y >= c.top - 0.5 && y <= c.top + c.height + 0.5);
+  if (bar.checkCenter !== null) {
+    const row = rowOf(bar.checkCenter);
+    expect(row.length, `checkbox row: ${shown}`).toBeGreaterThan(0);
     expect(
-      Math.abs(band.checkCenter - center),
-      JSON.stringify(band),
+      Math.abs(bar.checkCenter - (row[0].top + row[0].height / 2)),
+      shown,
     ).toBeLessThanOrEqual(0.5);
-  expect(band.reset, JSON.stringify(band)).not.toBeNull();
-  expect(
-    Math.abs(band.reset!.top - band.select.top),
-    JSON.stringify(band),
-  ).toBeLessThanOrEqual(0.5);
-  expect(
-    Math.abs(band.reset!.height - band.select.height),
-    JSON.stringify(band),
-  ).toBeLessThanOrEqual(0.5);
+  }
+  if (bar.reset) {
+    const row = bar.controls.filter(
+      (c) => Math.abs(c.top - bar.reset!.top) <= 0.5,
+    );
+    expect(
+      row.length,
+      `reset shares a row with controls: ${shown}`,
+    ).toBeGreaterThan(0);
+    expect(
+      Math.abs(bar.reset.height - row[0].height),
+      shown,
+    ).toBeLessThanOrEqual(0.5);
+  }
 }
 /** The focused element's ring and the current accent colour. */
 async function focusRing(page: Page) {
@@ -506,7 +547,7 @@ async function focusRing(page: Page) {
   });
 }
 
-test("record filters: the pending and run-record filter bars share one label line, control height, top edge and text size, and focused controls show the accent focus ring in light and dark", async ({}, info) => {
+test("record filters: the pending and run-record filter bars keep one row in a wide centre and two rows in a narrow one, each row with one label line, control height and top edge, one text size throughout, and focused controls show the accent focus ring in light and dark", async ({}, info) => {
   mkdirSync(".test-data/disposable", { recursive: true });
   const data = join(
     mkdtempSync(resolve(".test-data/disposable/record-filters-")),
@@ -518,8 +559,20 @@ test("record filters: the pending and run-record filter bars share one label lin
     cwd: resolve("."),
   });
   const page = await app.firstWindow();
+  const fold = page
+    .locator("#main-sidebar")
+    .getByRole("button", { name: "折叠侧栏", exact: true });
+  const unfold = page
+    .getByRole("navigation", { name: "全局导航" })
+    .getByRole("button", { name: "展开侧栏", exact: true });
+  const sidebar = async (expanded: boolean) => {
+    if (expanded && (await unfold.isVisible())) await unfold.click();
+    if (!expanded && (await fold.isVisible())) await fold.click();
+    await expect(page.locator("#main-sidebar")).toHaveCount(expanded ? 1 : 0);
+  };
   try {
     await ready(page);
+    const { standard } = await windowClasses(app, page);
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate(
         (appearance) =>
@@ -527,62 +580,66 @@ test("record filters: the pending and run-record filter bars share one label lin
         theme,
       );
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      for (const [name, search, names] of [
-        ["待处理", "搜索事项", ["搜索", "范围", "类型", "排序"]],
-        ["运行记录", "搜索运行记录", ["搜索", "范围", "类型", "排序", "时间"]],
+      // The standard width is wide enough for one row; the 900 point window, folded or not, is not.
+      for (const [label, size, expanded, rows] of [
+        ["standard", standard, true, 1],
+        ["900-expanded", [900, 680], true, 2],
+        ["900-folded", [900, 680], false, 2],
       ] as const) {
-        await goTo(page, name);
-        const box = page.getByRole("textbox", { name: search, exact: true });
-        await expect(box).toBeVisible();
-        const rows = await filterGeometry(page);
-        expect(rows.map((r) => r.name)).toEqual(names);
-        expectAligned(rows);
-        // The search field and, by keyboard, the next select carry the accent ring.
-        await box.click();
-        const text = await focusRing(page);
-        expect(text).toMatchObject({ tag: "input", visible: true });
-        expect(text.ring).toBe("solid 2px");
-        expect(text.color).toBe(text.accent);
-        await page.keyboard.press("Tab");
-        const select = await focusRing(page);
-        expect(select).toMatchObject({ tag: "select", visible: true });
-        expect(select.color).toBe(select.accent);
-        await box.fill("筛选");
-        await expect(
-          page.getByRole("button", { name: "返回全部范围", exact: true }),
-        ).toBeVisible();
-        expectAligned(await filterGeometry(page));
-        await expectBand(page);
-        await page.screenshot({
-          path: info.outputPath(
-            `filters-${name === "待处理" ? "pending" : "records"}-${theme}.png`,
-          ),
-        });
-        await page
-          .getByRole("button", { name: "返回全部范围", exact: true })
-          .click();
+        expect(await requestSize(app, page, size[0], size[1])).toEqual([
+          ...size,
+        ]);
+        await sidebar(expanded);
+        for (const [name, search, names] of [
+          ["待处理", "搜索事项", ["搜索", "范围", "类型", "排序"]],
+          [
+            "运行记录",
+            "搜索运行记录",
+            ["搜索", "范围", "类型", "排序", "时间"],
+          ],
+        ] as const) {
+          await goTo(page, name);
+          const box = page.getByRole("textbox", { name: search, exact: true });
+          await expect(box).toBeVisible();
+          const before = await filterGeometry(page);
+          expect(before.controls.map((r) => r.name)).toEqual(names);
+          expectRows(before, rows);
+          if (label === "standard") {
+            // The search field and, by keyboard, the next select carry the accent ring.
+            await box.click();
+            const text = await focusRing(page);
+            expect(text).toMatchObject({ tag: "input", visible: true });
+            expect(text.ring).toBe("solid 2px");
+            expect(text.color).toBe(text.accent);
+            await page.keyboard.press("Tab");
+            const select = await focusRing(page);
+            expect(select).toMatchObject({ tag: "select", visible: true });
+            expect(select.color).toBe(select.accent);
+          }
+          // A filter adds the reset button without adding a row.
+          await box.fill("筛选");
+          await expect(
+            page.getByRole("button", { name: "返回全部范围", exact: true }),
+          ).toBeVisible();
+          const filtered = await filterGeometry(page);
+          expect(filtered.reset).not.toBeNull();
+          expectRows(filtered, rows);
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= innerWidth,
+            ),
+          ).toBe(true);
+          await page.screenshot({
+            path: info.outputPath(
+              `filters-${name === "待处理" ? "pending" : "records"}-${theme}-${label}.png`,
+            ),
+          });
+          await page
+            .getByRole("button", { name: "返回全部范围", exact: true })
+            .click();
+        }
       }
-    }
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setContentSize(900, 680),
-    );
-    await expect
-      .poll(() => page.evaluate(() => [innerWidth, innerHeight]))
-      .toEqual([900, 680]);
-    for (const [name, file] of [
-      ["待处理", "pending"],
-      ["运行记录", "records"],
-    ] as const) {
-      await goTo(page, name);
-      expectAligned(await filterGeometry(page));
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      await page.screenshot({
-        path: info.outputPath(`filters-${file}-dark-900.png`),
-      });
+      await sidebar(true);
     }
   } finally {
     await closeLocal(app);

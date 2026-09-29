@@ -68,14 +68,15 @@ async function launch(root: string) {
   const page = await app.firstWindow();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   return { app, page };
 }
 const avatar = (page: Page) =>
   page.getByRole("button", { name: /^我，个人空间/ });
-const profileMenu = (page: Page) => page.locator("section#profile-menu");
+const rail = (page: Page) => page.getByRole("navigation", { name: "全局导航" });
+const settings = (page: Page) => page.getByRole("dialog", { name: "设置" });
 async function servicePID(app: ElectronApplication) {
   return app.evaluate(({ app }) => {
     const service = app
@@ -86,86 +87,84 @@ async function servicePID(app: ElectronApplication) {
   });
 }
 
-test("shell: the top navigation, avatar popover and settings entry replace the sidebar in both appearances", async ({}, info) => {
+test("shell: the rail, the sidebar and the settings dialog replace the top navigation and the avatar popover in both appearances", async ({}, info) => {
   const { root } = seed();
   const { app, page } = await launch(root);
   try {
-    // The old sidebar, its brand row, the collapse toggle and the bottom-left entries are gone.
-    await expect(page.locator(".sidebar")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /侧栏/ })).toHaveCount(0);
-    await expect(page.locator(".local-profile")).toHaveCount(0);
-    await expect(page.getByRole("navigation", { name: "主导航" })).toHaveCount(
+    // The top page switch, the avatar popover, the recent chats popover and the workbench tabs are gone.
+    await expect(
+      page.getByRole("navigation", { name: "主要页面" }),
+    ).toHaveCount(0);
+    await expect(page.locator("section#profile-menu")).toHaveCount(0);
+    await expect(page.locator("section#home-history")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "最近聊天", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("tablist", { name: "工作台内容" })).toHaveCount(
       0,
     );
-    // Only 聊天 and 工作台 sit in the primary navigation; the current page carries aria-current.
-    const primary = page.getByRole("navigation", { name: "主要页面" });
-    await expect(primary.getByRole("button")).toHaveText(["聊天", "工作台"]);
-    await expect(primary.getByRole("button", { name: "聊天" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    await primary.getByRole("button", { name: "工作台" }).click();
+    // No Command + K hint in the lower right corner.
+    await expect(page.locator("kbd").filter({ hasText: "⌘" })).toHaveCount(1);
+    // The rail: 主页, 控件, 待处理, 记录, then the avatar; the current object carries aria-current.
+    await expect(rail(page).locator(".rail-item")).toHaveText([
+      "主页",
+      "控件",
+      "待处理",
+      "记录",
+    ]);
     await expect(
-      primary.getByRole("button", { name: "工作台" }),
+      rail(page).getByRole("button", { name: /^主页/ }),
     ).toHaveAttribute("aria-current", "page");
+    // The sidebar: new chat, search, the project area and recent chats, in this order.
+    const sidebar = page.locator("#main-sidebar");
+    await expect(sidebar.locator(".side-fixed button")).toHaveText([
+      "新建聊天",
+      "搜索⌘K",
+    ]);
+    await expect(sidebar.getByRole("heading", { level: 2 })).toHaveText([
+      "项目",
+      "最近聊天",
+    ]);
+    // Each rail entry opens its object in the centre and becomes the current entry.
+    for (const [entry, heading] of [
+      ["控件", "控件"],
+      ["待处理", "待处理"],
+      ["记录", "运行记录"],
+    ] as const) {
+      await rail(page)
+        .getByRole("button", { name: new RegExp(`^${entry}`) })
+        .click();
+      await expect(
+        page.getByRole("heading", { level: 1, name: heading }),
+      ).toBeVisible();
+      await expect(
+        rail(page).getByRole("button", { name: new RegExp(`^${entry}`) }),
+      ).toHaveAttribute("aria-current", "page");
+      await expect(
+        rail(page).getByRole("button", { name: /^主页/ }),
+      ).not.toHaveAttribute("aria-current", "page");
+    }
+    // 全部项目 opens the project list and is the current sidebar item.
+    await sidebar.getByRole("button", { name: /^全部项目/ }).click();
     await expect(
-      primary.getByRole("button", { name: "聊天" }),
-    ).not.toHaveAttribute("aria-current", "page");
-    await expect(
-      page.getByRole("heading", { level: 1, name: "工作台" }),
+      page.getByRole("heading", { level: 1, name: "项目" }),
     ).toBeVisible();
-    // The avatar opens a non-modal popover below it with pending, records and settings.
-    await expect(avatar(page)).toHaveAttribute("aria-haspopup", "menu");
-    await expect(avatar(page)).toHaveAttribute("aria-expanded", "false");
-    await expect(avatar(page).locator(".profile-pending-dot")).toHaveCount(0);
+    await expect(
+      sidebar.getByRole("button", { name: /^全部项目/ }),
+    ).toHaveAttribute("aria-current", "page");
+    // The avatar opens settings as a modal dialog with the individual space line on top; the categories
+    // and their content are unchanged.
+    await expect(avatar(page)).toHaveAttribute("aria-haspopup", "dialog");
     await avatar(page).click();
-    await expect(avatar(page)).toHaveAttribute("aria-expanded", "true");
-    const menu = profileMenu(page);
-    await expect(menu).toBeVisible();
-    await expect(menu).toHaveAttribute("aria-label", "个人空间");
-    await expect(menu.locator(".profile-menu-heading")).toContainText(
+    const dialog = settings(page);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(".settings-dialog-profile")).toContainText(
       "个人空间",
     );
-    await expect(menu.locator(".profile-menu-heading")).toContainText(
+    await expect(dialog.locator(".settings-dialog-profile")).toContainText(
       "保存在这台 Mac 上",
     );
-    await expect(menu.getByRole("menuitem")).toHaveText([
-      /^待处理/,
-      "记录",
-      "设置",
-    ]);
-    await expect(menu.getByRole("menuitem", { name: /^待处理/ })).toContainText(
-      "0",
-    );
-    await expect(menu.getByRole("menuitem").first()).toBeFocused();
-    // Nothing covers the page: the primary navigation is still clickable while the popover is open.
-    await expect(page.locator(".modal-backdrop, dialog[open]")).toHaveCount(0);
-    const menuBox = (await menu.boundingBox())!;
-    const avatarBox = (await avatar(page).boundingBox())!;
-    expect(menuBox.y).toBeGreaterThan(avatarBox.y + avatarBox.height);
-    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(
-      avatarBox.x + avatarBox.width + 1,
-    );
-    // Escape closes and hands focus back to the avatar; a second Escape does nothing harmful.
-    await page.keyboard.press("Escape");
-    await expect(menu).toHaveCount(0);
-    await expect(avatar(page)).toBeFocused();
-    await expect(avatar(page)).toHaveAttribute("aria-expanded", "false");
-    // Keyboard: ArrowDown moves between items, End jumps to the last, Enter activates 设置 → 通用.
-    await avatar(page).click();
-    await page.keyboard.press("ArrowDown");
-    await expect(menu.getByRole("menuitem", { name: "记录" })).toBeFocused();
-    await page.keyboard.press("End");
-    await expect(menu.getByRole("menuitem", { name: "设置" })).toBeFocused();
-    await page.keyboard.press("Home");
-    await expect(menu.getByRole("menuitem").first()).toBeFocused();
-    await page.keyboard.press("End");
-    await page.keyboard.press("Enter");
-    await expect(menu).toHaveCount(0);
-    await expect(
-      page.getByRole("heading", { level: 1, name: "设置" }),
-    ).toBeVisible();
-    const categories = page.getByRole("navigation", { name: "设置分类" });
+    const categories = dialog.getByRole("navigation", { name: "设置分类" });
     await expect(categories.getByRole("button")).toHaveText([
       "通用",
       "模型",
@@ -178,77 +177,46 @@ test("shell: the top navigation, avatar popover and settings entry replace the s
     await expect(
       categories.getByRole("button", { name: "通用" }),
     ).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("group", { name: "外观" })).toBeVisible();
-    // The current page is marked inside the popover; an outside click closes it; an inside click does not.
-    await avatar(page).click();
-    await expect(menu.getByRole("menuitem", { name: "设置" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    await menu.locator(".profile-menu-heading").click();
-    await expect(menu).toBeVisible();
-    await page.getByRole("heading", { level: 1, name: "设置" }).click();
-    await expect(menu).toHaveCount(0);
-    await avatar(page).click();
-    await menu.getByRole("menuitem", { name: "记录" }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "运行记录" }),
-    ).toBeVisible();
-    await expect(
-      primary.getByRole("button", { name: "聊天" }),
-    ).not.toHaveAttribute("aria-current", "page");
-    await expect(
-      primary.getByRole("button", { name: "工作台" }),
-    ).not.toHaveAttribute("aria-current", "page");
-    // The chat tool group (new, recent, search) is absent on 记录 and 待处理, present on 聊天, 工作台 and 设置.
-    await expect(page.locator(".home-history-actions")).toHaveCount(0);
-    await avatar(page).click();
-    await menu.getByRole("menuitem", { name: /^待处理/ }).click();
-    await expect(
-      page.getByRole("heading", { level: 1, name: "待处理" }),
-    ).toBeVisible();
-    await expect(page.locator(".home-history-actions")).toHaveCount(0);
-    await primary.getByRole("button", { name: "聊天" }).click();
-    await expect(page.locator(".home-history-actions")).toBeVisible();
-    // Dark appearance keeps the same shell and a visible focus ring on the avatar.
+    await expect(dialog.getByRole("group", { name: "外观" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(avatar(page)).toBeFocused();
+    // 主页 returns to the new-conversation page.
+    await rail(page).getByRole("button", { name: /^主页/ }).click();
+    await expect(page.locator(".welcome")).toBeVisible();
     await page.screenshot({ path: info.outputPath("shell-light.png") });
+    // Dark appearance keeps the same shell and a visible focus ring on the avatar.
     await avatar(page).click();
-    await menu.getByRole("menuitem", { name: "设置" }).click();
-    await page
+    await settings(page)
       .getByRole("group", { name: "外观" })
       .getByRole("button", { name: "深色" })
       .click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    // Keyboard focus (Tab from the page switch) must show a ring; pointer focus alone does not count.
-    await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台" })
-      .focus();
+    await settings(page).getByRole("button", { name: "关闭设置" }).click();
+    await rail(page).getByRole("button", { name: /^记录/ }).focus();
     await page.keyboard.press("Tab");
     await expect(avatar(page)).toBeFocused();
     const ring = await avatar(page).evaluate((el) => {
       const style = getComputedStyle(el);
       return {
+        visible: el.matches(":focus-visible"),
         outline: style.outlineStyle,
-        width: style.outlineWidth,
-        box: style.boxShadow,
       };
     });
-    expect(ring.outline !== "none" || ring.box !== "none").toBe(true);
-    await avatar(page).click();
-    await expect(menu).toBeVisible();
+    expect(ring).toEqual({ visible: true, outline: "solid" });
     await page.screenshot({ path: info.outputPath("shell-dark.png") });
-    await page.keyboard.press("Escape");
-    await page
+    await avatar(page).click();
+    await settings(page)
       .getByRole("group", { name: "外观" })
       .getByRole("button", { name: "浅色" })
       .click();
+    await page.keyboard.press("Escape");
   } finally {
     await app.close();
   }
 });
 
-test("shell: at the 900 × 680 minimum window the header stacks, nothing overlaps and both popovers stay inside the viewport", async ({}, info) => {
+test("shell: at the 900 × 680 minimum window the four columns do not overlap, the settings dialog stays inside the viewport and the composer is reachable", async ({}, info) => {
   const { root } = seed();
   const { app, page } = await launch(root);
   try {
@@ -263,163 +231,117 @@ test("shell: at the 900 × 680 minimum window the header stacks, nothing overlap
       .toEqual([900, 680]);
     const box = async (locator: ReturnType<Page["locator"]>) =>
       (await locator.boundingBox())!;
-    const tools = await box(page.locator(".home-history-actions"));
-    const nav = await box(page.getByRole("navigation", { name: "主要页面" }));
-    const account = await box(avatar(page));
-    // Two rows: the tools and the avatar share the first, the page switch sits below them.
-    expect(nav.y).toBeGreaterThanOrEqual(tools.y + tools.height);
-    expect(tools.x + tools.width).toBeLessThan(account.x);
-    expect(nav.x).toBeGreaterThanOrEqual(0);
-    expect(nav.x + nav.width).toBeLessThanOrEqual(900);
+    const railBox = await box(rail(page));
+    const sidebarBox = await box(page.locator("#main-sidebar"));
+    const centerBox = await box(page.locator(".center"));
+    // Rail 56, sidebar 248, the centre the rest; side by side without overlap or horizontal scrolling.
+    expect([railBox.x, railBox.width]).toEqual([0, 56]);
+    expect([sidebarBox.x, sidebarBox.width]).toEqual([56, 248]);
+    expect([centerBox.x, centerBox.width]).toEqual([304, 596]);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
     await avatar(page).click();
-    const menu = await box(profileMenu(page));
-    expect(menu.x).toBeGreaterThanOrEqual(0);
-    expect(menu.x + menu.width).toBeLessThanOrEqual(900);
-    expect(menu.y + menu.height).toBeLessThanOrEqual(680);
+    const dialog = await box(settings(page));
+    expect(dialog.x).toBeGreaterThanOrEqual(0);
+    expect(dialog.x + dialog.width).toBeLessThanOrEqual(900);
+    expect(dialog.y).toBeGreaterThanOrEqual(0);
+    expect(dialog.y + dialog.height).toBeLessThanOrEqual(680);
     await page.screenshot({
-      path: info.outputPath("shell-900x680-profile.png"),
+      path: info.outputPath("shell-900x680-settings.png"),
     });
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "最近聊天", exact: true }).click();
-    const history = await box(page.locator("section#home-history"));
-    expect(history.x).toBeGreaterThanOrEqual(0);
-    expect(history.x + history.width).toBeLessThanOrEqual(900);
-    expect(history.y).toBeGreaterThanOrEqual(tools.y + tools.height);
-    expect(history.y + history.height).toBeLessThanOrEqual(680);
-    await page.screenshot({
-      path: info.outputPath("shell-900x680-recent.png"),
-    });
-    // The chat page's composer is still reachable below the stacked header.
+    // The composer is inside the window below the centre title row.
     const composer = await box(page.getByRole("textbox", { name: "输入草稿" }));
     expect(composer.y + composer.height).toBeLessThanOrEqual(680);
+    expect(composer.x).toBeGreaterThanOrEqual(centerBox.x);
+    await page.screenshot({ path: info.outputPath("shell-900x680.png") });
   } finally {
     await app.close();
   }
 });
 
-test("shell: recent chats open in an anchored popover that keeps the existing list and closes on selection", async ({}, info) => {
+test("shell: the sidebar keeps the existing recent list with its menus and archived entry, and selecting a row opens the conversation in the centre", async ({}, info) => {
   const { root, ids } = seed();
   const { app, page } = await launch(root);
   try {
-    const trigger = page.getByRole("button", { name: "最近聊天", exact: true });
-    await expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByLabel("最近对话")).toHaveCount(0);
-    await trigger.click();
-    await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const history = page.locator("section#home-history");
+    const history = page.locator("#main-sidebar #recent-chats");
     await expect(history).toHaveAttribute("aria-label", "最近聊天");
     await expect(
       history.getByRole("heading", { level: 2, name: "最近聊天" }),
     ).toBeVisible();
-    const triggerBox = (await trigger.boundingBox())!;
-    const historyBox = (await history.boundingBox())!;
-    expect(historyBox.y).toBeGreaterThan(triggerBox.y + triggerBox.height);
-    // The popover holds the existing list: same rows, same menus, same archived entry; the page did not move.
+    // The existing list: same rows, same menus, same archived entry.
     const recent = history.getByLabel("最近对话");
     await expect(recent.locator(".session")).toHaveCount(2);
     await expect(
       history.getByRole("button", { name: "已归档 0", exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "输入草稿" })).toBeVisible();
     await recent
       .getByLabel(`对话菜单 ${ids[1].slice(0, 8)}`, { exact: true })
       .click();
     await expect(page.getByRole("menu", { name: "对话菜单" })).toBeVisible();
-    await expect(history).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu", { name: "对话菜单" })).toHaveCount(0);
     await expect(history).toBeVisible();
     await page.screenshot({ path: info.outputPath("recent-chats.png") });
-    // Selecting a conversation closes the popover and lands on 聊天 with that conversation.
-    await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台" })
+    // From another object, selecting a conversation opens it in the centre and marks its row.
+    await rail(page)
+      .getByRole("button", { name: /^待处理/ })
       .click();
-    await expect(history).toHaveCount(0);
-    await trigger.click();
     await recent
       .getByLabel(`对话 ${ids[1].slice(0, 8)}`, { exact: true })
       .click();
-    await expect(history).toHaveCount(0);
+    await expect(page.locator(".chat-layout")).toBeVisible();
     await expect(
-      page
-        .getByRole("navigation", { name: "主要页面" })
-        .getByRole("button", { name: "聊天" }),
-    ).toHaveAttribute("aria-current", "page");
-    await expect(page.locator(".home-chat-title")).toHaveCount(0);
+      recent.getByLabel(`对话 ${ids[1].slice(0, 8)}`, { exact: true }),
+    ).toHaveAttribute("aria-current", "true");
     await expect(
       page.getByRole("textbox", { name: "输入草稿" }),
     ).toBeEditable();
-    // Escape and outside click close it and return focus to the trigger; the avatar popover replaces it.
-    await trigger.click();
-    await page.keyboard.press("Escape");
-    await expect(history).toHaveCount(0);
-    await expect(trigger).toBeFocused();
-    await trigger.click();
-    await page.getByRole("textbox", { name: "输入草稿" }).click();
-    await expect(history).toHaveCount(0);
-    await trigger.click();
-    await avatar(page).click();
-    await expect(history).toHaveCount(0);
-    await expect(profileMenu(page)).toBeVisible();
-    await trigger.click();
-    await expect(profileMenu(page)).toHaveCount(0);
-    await expect(history).toBeVisible();
+    // While another object is in the centre no row is marked current.
+    await rail(page).getByRole("button", { name: /^记录/ }).click();
+    await expect(recent.locator('[aria-current="true"]')).toHaveCount(0);
   } finally {
     await app.close();
   }
 });
 
-test("shell: the avatar dot and pending count follow open items and keep the last value when the service is lost", async () => {
+test("shell: the rail's pending badge follows open items, equals the pending page's unresolved count and keeps the last value when the service is lost", async () => {
   const { root } = seed({ pending: true });
   const { app, page } = await launch(root);
   try {
-    await expect(avatar(page)).toHaveAttribute(
-      "aria-label",
-      "我，个人空间，1 项待处理",
-    );
-    await expect(avatar(page).locator(".profile-pending-dot")).toHaveCount(1);
-    await avatar(page).click();
-    const menu = profileMenu(page);
-    await expect(
-      menu
-        .getByRole("menuitem", { name: /^待处理/ })
-        .locator(".profile-menu-count"),
-    ).toHaveText("1");
-    await menu.getByRole("menuitem", { name: /^待处理/ }).click();
+    const entry = rail(page).getByRole("button", { name: /^待处理/ });
+    const badge = entry.locator(".rail-badge");
+    await expect(entry).toHaveAttribute("aria-label", "待处理，1 项未解决");
+    await expect(badge).toHaveText("1");
+    await entry.click();
     await expect(
       page.getByRole("list", { name: "待处理事项" }).getByRole("listitem"),
     ).toHaveCount(1);
+    await expect(page.getByText(/^全部未解决：1/)).toBeVisible();
     // Losing the business service must not turn the count into a reassuring zero.
     const pid = await servicePID(app);
     await app.evaluate((_electron, id) => process.kill(id, "SIGKILL"), pid);
     await expect(
       page.getByText("业务服务已失联。", { exact: false }),
     ).toBeVisible();
-    await expect(avatar(page)).toHaveAttribute(
+    await expect(entry).toHaveAttribute(
       "aria-label",
-      "我，个人空间，1 项待处理，未连接",
+      "待处理，1 项未解决，未连接",
     );
-    await expect(avatar(page).locator(".profile-pending-dot")).toHaveCount(1);
-    await avatar(page).click();
-    await expect(
-      menu
-        .getByRole("menuitem", { name: /^待处理/ })
-        .locator(".profile-menu-count"),
-    ).toHaveText("1");
-    await page.keyboard.press("Escape");
+    await expect(badge).toHaveText("1");
     await page.getByRole("button", { name: "重新连接" }).click();
-    await expect(avatar(page)).toHaveAttribute(
-      "aria-label",
-      "我，个人空间，1 项待处理",
-    );
+    await expect(entry).toHaveAttribute("aria-label", "待处理，1 项未解决");
     await expect(
       page.getByRole("button", { name: "忽略", exact: true }),
     ).toBeEnabled();
-    // Dismissing the item removes the dot and the count.
+    // Dismissing the item removes the badge.
     await page.getByRole("button", { name: "忽略", exact: true }).click();
-    await expect(avatar(page)).toHaveAttribute("aria-label", "我，个人空间");
-    await expect(avatar(page).locator(".profile-pending-dot")).toHaveCount(0);
+    await expect(entry).toHaveAttribute("aria-label", "待处理");
+    await expect(badge).toHaveCount(0);
+    await expect(page.getByText(/^全部未解决：0/)).toBeVisible();
   } finally {
     await app.close();
   }
@@ -445,7 +367,7 @@ async function countSearches(app: ElectronApplication) {
     );
 }
 
-test("shell: the recent chats popover filters its own list by title only, keeps the archived entry and stays open while a row's confirm dialog is up", async ({}, info) => {
+test("shell: the sidebar's recent list filters by title only, keeps the archived entry and stays while a row's confirm dialog is up", async ({}, info) => {
   const { root, ids } = seed();
   const { app, page } = await launch(root);
   try {
@@ -454,9 +376,7 @@ test("shell: the recent chats popover filters its own list by title only, keeps 
       await window.desktop.command({ type: "select", id });
     }, ids[0]);
     const searches = await countSearches(app);
-    const trigger = page.getByRole("button", { name: "最近聊天", exact: true });
-    await trigger.click();
-    const history = page.locator("section#home-history");
+    const history = page.locator("#main-sidebar #recent-chats");
     const toggle = history.getByRole("button", { name: "搜索最近聊天" });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(history.locator("#history-query-row")).toBeHidden();
@@ -488,7 +408,13 @@ test("shell: the recent chats popover filters its own list by title only, keeps 
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("第一个对话");
     await page.screenshot({ path: info.outputPath("recent-filter.png") });
-    // A row's delete confirmation opens over the popover and the popover survives it; cancelling keeps the row.
+    // The filter stays while other objects are shown in the centre.
+    await rail(page)
+      .getByRole("button", { name: /^待处理/ })
+      .click();
+    await expect(input).toHaveValue("第一");
+    await expect(rows).toHaveCount(1);
+    // A row's delete confirmation opens over the sidebar; cancelling keeps the row.
     await history
       .locator(".session-line")
       .first()
@@ -497,7 +423,6 @@ test("shell: the recent chats popover filters its own list by title only, keeps 
     await page.getByRole("menuitem", { name: "删除对话" }).click();
     const confirm = page.getByRole("dialog", { name: "删除对话", exact: true });
     await expect(confirm).toBeVisible();
-    await expect(history).toBeVisible();
     await confirm.getByRole("button", { name: "取消", exact: true }).click();
     await expect(confirm).toHaveCount(0);
     await expect(history).toBeVisible();
@@ -506,7 +431,7 @@ test("shell: the recent chats popover filters its own list by title only, keeps 
     await toggle.click();
     await expect(history.locator("#history-query-row")).toBeHidden();
     await expect(rows).toHaveCount(2);
-    // Opening the archived list from the popover keeps the archive behaviour; unarchive returns the row.
+    // The archived entry keeps the archive behaviour; unarchive returns the row.
     await history
       .locator(".session-line")
       .first()
@@ -521,8 +446,6 @@ test("shell: the recent chats popover filters its own list by title only, keeps 
     await expect(archive).toBeVisible();
     await archive.getByRole("button", { name: "取消归档并打开" }).click();
     await expect(archive).toHaveCount(0);
-    await expect(history).toHaveCount(0);
-    await trigger.click();
     await expect(rows).toHaveCount(2);
   } finally {
     await app.close();
@@ -537,7 +460,10 @@ test("shell: the global search offers all, conversation, project and widget cate
       await window.desktop.command({ type: "select", id });
     }, ids[0]);
     const searches = await countSearches(app);
-    await page.getByRole("button", { name: "全局搜索" }).click();
+    await page
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "搜索", exact: true })
+      .click();
     const dialog = page.getByRole("dialog", { name: "搜索对话" });
     await expect(dialog).toBeVisible();
     const tabs = dialog.getByRole("tablist", { name: "搜索分类" });
@@ -598,12 +524,12 @@ test("shell: the global search offers all, conversation, project and widget cate
       "true",
     );
     await expect(tabs.getByRole("tab", { name: "对话" })).toBeFocused();
-    // Command + K from the workbench page opens the same panel; Escape returns to the page.
+    // Command + K from the project list opens the same panel as the sidebar search; Escape returns to the page.
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台" })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: /^全部项目/ })
       .click();
     await page.keyboard.press("Meta+k");
     await expect(dialog).toBeVisible();
@@ -613,7 +539,7 @@ test("shell: the global search offers all, conversation, project and widget cate
     );
     await page.keyboard.press("Escape");
     await expect(
-      page.getByRole("heading", { level: 1, name: "工作台" }),
+      page.getByRole("heading", { level: 1, name: "项目" }),
     ).toBeVisible();
   } finally {
     await app.close();
@@ -629,7 +555,7 @@ const focused = (page: Page) =>
       : "body";
   });
 
-test("shell: keyboard order runs tools, page switch, avatar then content in both appearances, and a composition never fires shortcuts or sends in either entry", async ({}, info) => {
+test("shell: keyboard order runs the rail, the sidebar, the centre title then content in both appearances, and a composition never fires shortcuts or sends in either entry", async ({}, info) => {
   const { root, ids } = seed();
   const { app, page } = await launch(root);
   try {
@@ -638,34 +564,35 @@ test("shell: keyboard order runs tools, page switch, avatar then content in both
     }, ids[0]);
     for (const theme of ["浅色", "深色"] as const) {
       await goToSettingsAppearance(page, theme);
-      await page
-        .getByRole("navigation", { name: "主要页面" })
-        .getByRole("button", { name: "聊天" })
-        .click();
-      // From the first tool, Tab walks the shell left to right before entering the content.
-      const first = page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true });
+      // From the first rail entry, Tab walks the rail, the sidebar and the centre title row before the content.
+      const first = rail(page).getByRole("button", { name: /^主页/ });
       await first.focus();
       const order: string[] = [await focused(page)];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 16; i++) {
         await page.keyboard.press("Tab");
         order.push(await focused(page));
+        if (order.at(-1) === "打开右栏") break;
       }
-      expect(order.slice(0, 6)).toEqual([
-        "新建对话",
-        "最近聊天",
-        "全局搜索",
-        "聊天",
-        "工作台",
-        "我，个人空间",
+      expect(order.slice(0, 10)).toEqual([
+        "主页",
+        "控件",
+        "待处理",
+        "记录",
+        "我，个人空间，打开设置",
+        "折叠侧栏",
+        "新建聊天",
+        "搜索⌘K",
+        "全部项目 · 0",
+        "搜索最近聊天",
       ]);
-      expect(order[6]).not.toBe("body");
-      expect(order[6]).not.toBe("新建对话");
+      expect(order.at(-1)).toBe("打开右栏");
+      const rows = order.slice(10, -1);
+      expect(rows.filter((name) => name.startsWith("对话 ")).length).toBe(2);
+      expect(rows.at(-1)).toBe("已归档 0");
       // Every shell control shows a visible ring when reached by keyboard.
       await first.focus();
       await page.keyboard.press("Shift+Tab");
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < order.length; i++) {
         await page.keyboard.press("Tab");
         const ring = await page.evaluate(() => {
           const el = document.activeElement as HTMLElement;
@@ -680,39 +607,21 @@ test("shell: keyboard order runs tools, page switch, avatar then content in both
         expect(ring.outline).toBe("solid");
         expect(ring.width).toBeGreaterThanOrEqual(2);
       }
-      // Enter on the avatar opens the popover with focus inside; Escape returns it; the same for recent chats.
+      // Enter on the avatar opens the settings dialog with focus inside; Escape returns it to the avatar.
+      await avatar(page).focus();
       await page.keyboard.press("Enter");
-      await expect(
-        profileMenu(page).getByRole("menuitem").first(),
-      ).toBeFocused();
+      await expect(settings(page)).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => !!document.activeElement?.closest("dialog[open]"),
+        ),
+      ).toBe(true);
       await page.keyboard.press("Escape");
+      await expect(settings(page)).toHaveCount(0);
       await expect(avatar(page)).toBeFocused();
-      await page.getByRole("button", { name: "最近聊天", exact: true }).focus();
-      await page.keyboard.press("Enter");
-      await expect(page.locator("section#home-history")).toBeVisible();
-      // Opening moves focus into the popover (search toggle); Tab then reaches the first row.
-      await expect(
-        page
-          .locator("section#home-history")
-          .getByRole("button", { name: "搜索最近聊天" }),
-      ).toBeFocused();
-      await page.keyboard.press("Tab");
-      const inPopover = await page.evaluate(
-        () =>
-          !!document.activeElement?.closest("section#home-history .sessions"),
-      );
-      expect(inPopover).toBe(true);
-      await page.keyboard.press("Escape");
-      await expect(
-        page.getByRole("button", { name: "最近聊天", exact: true }),
-      ).toBeFocused();
       await page.screenshot({ path: info.outputPath(`keyboard-${theme}.png`) });
     }
     await goToSettingsAppearance(page, "浅色");
-    await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "聊天" })
-      .click();
     // A composition in the composer: Enter does not send, Command + K does not open search,
     // Command + Shift + A does not archive; the draft keeps the committed text.
     const input = page.getByRole("textbox", { name: "输入草稿" });
@@ -802,8 +711,7 @@ test("shell: keyboard order runs tools, page switch, avatar then content in both
 
 async function goToSettingsAppearance(page: Page, theme: "浅色" | "深色") {
   await avatar(page).click();
-  await profileMenu(page).getByRole("menuitem", { name: "设置" }).click();
-  await page
+  await settings(page)
     .getByRole("group", { name: "外观" })
     .getByRole("button", { name: theme })
     .click();
@@ -811,13 +719,17 @@ async function goToSettingsAppearance(page: Page, theme: "浅色" | "深色") {
     "data-theme",
     theme === "深色" ? "dark" : "light",
   );
+  await settings(page).getByRole("button", { name: "关闭设置" }).click();
+  await expect(settings(page)).toHaveCount(0);
 }
 
 test("shell: a click outside the global search panel closes it like Escape and returns focus, while an inside press released outside keeps it open", async ({}, info) => {
   const { root } = seed();
   const { app, page } = await launch(root);
   try {
-    const trigger = page.getByRole("button", { name: "全局搜索" });
+    const trigger = page
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "搜索", exact: true });
     const dialog = page.getByRole("dialog", { name: "搜索对话" });
     await trigger.click();
     await expect(dialog).toBeVisible();

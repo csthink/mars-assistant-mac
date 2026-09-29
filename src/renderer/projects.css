@@ -1,23 +1,3 @@
-.workbench-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--c-line);
-  padding-bottom: 12px;
-}
-.workbench-tabs button {
-  border: 0;
-  border-radius: 10px;
-  padding: 9px 20px;
-  background: transparent;
-  color: var(--c-muted);
-  font-size: 15px;
-}
-.workbench-tabs button[aria-selected="true"] {
-  color: var(--c-accent);
-  background: var(--c-selected);
-  font-weight: 600;
-}
 .projects-workspace {
   color: var(--c-text);
 }
@@ -484,7 +464,7 @@
   padding: 18px 0;
   color: var(--c-muted);
 }
-@media (max-width: 1000px) {
+@container (max-width: 1000px) {
   .project-controls {
     gap: 6px;
   }
@@ -713,7 +693,7 @@
   cursor: pointer;
   padding: 4px;
 }
-@media (max-width: 1100px) {
+@container (max-width: 1100px) {
   .project-work-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -990,6 +970,13 @@
   touch-action: none;
   cursor: grab;
 }
+/* KB-319: in a narrow centre (the 900 point window with the sidebar beside it) the canvas is taller, so
+   适应内容 can lay the flow out in fewer, longer columns and keep the node titles readable. */
+@container (max-width: 760px) {
+  .project-graph .project-graph-canvas {
+    height: 520px;
+  }
+}
 .project-graph-canvas:active {
   cursor: grabbing;
 }
@@ -1179,9 +1166,6 @@
   border: 0;
   box-shadow: none;
 }
-.app:has(.project-work-grid[data-full="true"]) .home-header {
-  visibility: hidden;
-}
 .project-restore {
   position: fixed;
   right: 18px;
@@ -1200,10 +1184,12 @@
     opacity: 1;
   }
 }
-@media (max-width: 1000px) {
+@container (max-width: 1000px) {
   .project-diff {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+@media (max-width: 1000px) {
   .project-work-grid[data-full="true"][data-chat="docked"] {
     grid-template-columns: minmax(0, 1fr) minmax(300px, 40%);
     gap: 12px;
@@ -1301,10 +1287,14 @@
   background: var(--c-surface);
   max-width: 260px;
 }
+/* In a wide centre the two rows of the markup are one flex row. */
+.record-query-row {
+  display: contents;
+}
 /* The search field grows to show its whole placeholder (运行记录's names objects, events and
-   identifiers) where the row has room; in a narrow window it keeps the filter bar on one line and
-   the placeholder ends in an ellipsis instead of a cut glyph. */
-.record-query-controls > label:has(> .record-query-search) {
+   identifiers) where the row has room, and the placeholder ends in an ellipsis instead of a cut glyph
+   where it does not. */
+.record-query-controls label:has(> .record-query-search) {
   flex: 1 1 200px;
   max-width: 272px;
 }
@@ -1312,6 +1302,31 @@
   width: 100%;
   max-width: none;
   text-overflow: ellipsis;
+}
+/* KB-309: one row needs about 924 px of bar (the search field at its full 272 px, four filters and the
+   reset button), so a centre narrower than 980 px (the 900 point window, and the default window with the
+   sidebar beside it) takes two rows: the search field and its scope, then the other filters and the reset.
+   Each row keeps one label line, control height and top edge. */
+@container (max-width: 979px) {
+  .record-query-controls {
+    display: grid;
+  }
+  .record-query-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+  }
+  .record-query-controls label:has(> .record-query-search) {
+    flex: 1 1 272px;
+    max-width: none;
+  }
+}
+/* In the menu bar panel the search field takes a row of its own. */
+@container (max-width: 520px) {
+  .record-query-controls label:has(> .record-query-search) {
+    flex-basis: 100%;
+  }
 }
 .record-query-controls .record-query-check {
   display: flex;
@@ -1322,7 +1337,7 @@
 .record-query-check input {
   margin: 0;
 }
-.record-query-controls > .button {
+.record-query-controls .button {
   height: 40px;
 }
 .event-date-group {

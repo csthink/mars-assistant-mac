@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type {
-  Command,
-  DesktopBridge,
-  Snapshot,
-  Status,
+import {
+  validInterfacePreferences,
+  type Command,
+  type DesktopBridge,
+  type Snapshot,
+  type Status,
 } from "../shared/protocol";
 function listen<T>(channel: string, callback: (value: T) => void) {
   const listener = (_event: Electron.IpcRendererEvent, value: T) =>
@@ -23,6 +24,21 @@ const appearance =
   appearanceArgument === "auto"
     ? appearanceArgument
     : undefined;
+// The saved interface preferences the main process knew when it created the main window; the page lays out
+// its columns from them for the first frame. Anything that is not exactly valid is treated as unknown.
+const interfaceArgument = process.argv
+  .find((arg) => arg.startsWith("--interface="))
+  ?.slice("--interface=".length);
+const interfacePreferences = (() => {
+  try {
+    const value: unknown = interfaceArgument
+      ? JSON.parse(interfaceArgument)
+      : undefined;
+    return validInterfacePreferences(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+})();
 const occlude = () => {
   if (widgetEnabled) ipcRenderer.sendSync("widget:occlude");
 };
@@ -79,6 +95,7 @@ const bridge: DesktopBridge = {
   acceptCodex: (token) => ipcRenderer.invoke("codex:accept", token),
   surface: process.argv.includes("--surface=panel") ? "panel" : "main",
   appearance,
+  interface: interfacePreferences,
   copyConversation: (id, kind) =>
     ipcRenderer.invoke("conversation:copy", id, kind),
   search: (request) => ipcRenderer.invoke("business:search", request),

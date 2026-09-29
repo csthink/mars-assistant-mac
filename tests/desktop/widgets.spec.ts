@@ -8,8 +8,6 @@ import { launchLocal } from "./local-client";
 import { goTo as goToShell } from "./shell";
 async function goTo(page: Page, name: Parameters<typeof goToShell>[1]) {
   await goToShell(page, name);
-  if (name === "工作台")
-    await page.getByRole("tab", { name: "控件", exact: true }).click();
 }
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve } from "node:path";
@@ -48,7 +46,7 @@ test("widget client: acceptance gate, real preview config and durable data throu
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
+    await goTo(page, "控件");
     await expect(
       page.getByRole("button", { name: "载入测试候选" }),
     ).toHaveCount(0);
@@ -65,7 +63,7 @@ test("widget client: acceptance gate, real preview config and durable data throu
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     let widget = await view(client);
     await expect(
@@ -129,10 +127,13 @@ test("widget client: trusted search occludes native view and crash leaves usable
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     await view(client);
-    await page.getByRole("button", { name: "全局搜索", exact: true }).click();
+    await page
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "搜索", exact: true })
+      .click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect
       .poll(
@@ -186,7 +187,7 @@ test("widget client: unapplied settings drafts and confirmed widget draft surviv
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     const widget = await view(client);
     await widget.getByLabel("随手记").fill("重启后恢复的草稿");
@@ -222,7 +223,7 @@ test("widget client: unapplied settings drafts and confirmed widget draft surviv
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     let widget = await view(client);
     await expect(widget.getByLabel("随手记")).toHaveValue("重启后恢复的草稿");
@@ -285,7 +286,7 @@ test("widget client: two entries reject stale drafts without losing input and pa
   });
   try {
     const main = await client.firstWindow();
-    await goTo(main, "工作台");
+    await goTo(main, "控件");
     await main.getByRole("button", { name: "载入测试候选" }).click();
     const first = await view(client);
     let panel = await panelWindow(client);
@@ -358,7 +359,7 @@ test("widget client: leaving the viewport destroys the instance and returning re
   });
   try {
     const page = await client.firstWindow();
-    await goTo(page, "工作台");
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     const old = await view(client);
     await old.getByLabel("随手记").fill("离开可见区域前已保存");

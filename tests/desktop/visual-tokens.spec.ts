@@ -319,23 +319,30 @@ function seedConversations() {
   return root;
 }
 
-/** Header, page switch and avatar: the same on every main-window page. */
+/** Rail, avatar and sidebar: the same on every main-window page. */
 const shellProbes: Probe[] = [
   [".app", "background-color", "var(--c-canvas)"],
-  [".home-nav", "background-color", surface],
-  [".home-nav", "border-top-color", line],
-  [".home-nav button:not(.selected)", "color", text],
-  [".home-avatar", "background-color", "var(--c-raised)"],
-  [".home-avatar", "color", text],
+  [".rail", "background-color", "var(--c-sidebar)"],
+  [".rail", "border-right-color", "var(--c-line-soft)"],
+  [".rail-item:not(.active)", "color", muted],
+  [".rail-avatar", "background-color", "var(--c-raised)"],
+  [".rail-avatar", "color", text],
+  [".sidebar", "background-color", "var(--c-sidebar)"],
+  [".side-title", "color", text],
+  [".side-fixed .nav-item", "color", text],
+  [".side-fixed .nav-item kbd", "color", muted],
 ];
+/** The rail entry of the current object: the selected block around icon and name, the name not bold. */
 const selectedNav: Probe[] = [
-  [".home-nav .selected", "color", accent],
-  [".home-nav .selected", "background-color", selected],
+  [".rail-item.active", "background-color", selected],
+  [".rail-item.active", "color", text],
+  [".rail-item.active .rail-icon", "color", accent],
 ];
+/** The centre title row of a conversation or the new-conversation page. */
 const chatShell: Probe[] = [
-  [".home-tool", "color", text],
-  [".home-global-search kbd", "background-color", "var(--c-raised)"],
-  [".home-global-search kbd", "color", muted],
+  [".center-header", "background-color", surface],
+  [".center-header", "border-bottom-color", line],
+  [".panel-toggle", "color", muted],
 ];
 const composer: Probe[] = [
   [".composer", "background-color", surface],
@@ -381,8 +388,8 @@ const chatPages: View[] = [
     open: async (page) => {
       await goTo(page, "聊天");
       await page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true })
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true })
         .click();
       await expect(page.locator(".welcome")).toBeVisible();
     },
@@ -435,7 +442,7 @@ const chatPages: View[] = [
     probes: [
       ...shellProbes,
       ...composer,
-      [".home-chat-title .conversation-title", "color", text],
+      [".center-title .conversation-title", "color", text],
       [".bubble.user", "background-color", "var(--c-accent-soft)"],
       [".bubble.user", "border-top-color", "var(--c-accent-edge)"],
       [".bubble.user p", "color", text],
@@ -445,7 +452,7 @@ const chatPages: View[] = [
       [".turn-state.state-failed", "color", "var(--c-red)"],
       [".turn-meta", "color", muted],
     ],
-    focus: ".home-chat-title .conversation-title",
+    focus: ".center-title .conversation-title",
   },
   {
     id: "MW-20",
@@ -501,46 +508,42 @@ const chatPages: View[] = [
     },
     probes: [
       ...shellProbes,
-      [".home-history", "background-color", surface],
-      [".home-history", "border-top-color", line],
-      [".home-history", "box-shadow", "var(--c-shadow)"],
-      [".history-trigger", "background-color", surface],
-      [".history-trigger", "border-top-color", line],
+      [".recent-chats .section-title", "color", muted],
       [".session-line.active", "background-color", selected],
       [".session-name", "color", text],
       [".session time", "color", muted],
+      [".rail-badge", "background-color", "var(--c-amber-badge)"],
+      [".rail-badge", "color", "var(--c-on-amber)"],
     ],
-    focus: "section#home-history .session",
+    focus: "#recent-chats .session",
     keep: true,
   },
   {
     id: "MW-04",
     open: async (page) => {
-      await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: /^我，个人空间/ }).click();
-      await expect(page.locator("section#profile-menu")).toBeVisible();
+      await goTo(page, "设置");
     },
     probes: [
-      ...shellProbes,
-      [".profile-menu", "background-color", surface],
-      [".profile-menu", "border-top-color", line],
-      [".profile-menu", "box-shadow", "var(--c-shadow)"],
-      [".profile-menu", "color", text],
-      [".profile-menu-heading small", "color", muted],
-      [".profile-menu-avatar", "background-color", "var(--c-raised)"],
-      [".profile-menu-count", "background-color", "var(--c-amber-badge)"],
-      [".profile-menu-count", "color", "var(--c-on-amber)"],
-      [".profile-pending-dot", "background-color", "var(--c-amber-badge)"],
-      [".profile-menu-divider", "background-color", line],
+      [".settings-dialog", "background-color", surface],
+      [".settings-dialog", "border-top-color", line],
+      [".settings-dialog", "box-shadow", "var(--c-shadow)"],
+      [".settings-dialog", "color", text],
+      [".settings-dialog-top", "border-bottom-color", line],
+      [".settings-dialog-profile small", "color", muted],
+      [".settings-dialog-avatar", "background-color", "var(--c-raised)"],
     ],
-    focus: ".profile-menu-item",
+    focus: ".settings-dialog .settings-nav button.active",
     keep: true,
   },
   {
     id: "MW-05",
     open: async (page) => {
       await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: "全局搜索" }).click();
+      await expect(page.locator("dialog[open]")).toHaveCount(0);
+      await page
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "搜索", exact: true })
+        .click();
       await expect(page.locator(".search-dialog")).toBeVisible();
       await page.locator(".search-input-row input").fill("读书");
       await expect(page.locator(".search-result").first()).toBeVisible();
@@ -585,13 +588,18 @@ const chatPages: View[] = [
       ).toBeVisible();
     },
     probes: [
-      ...shellProbes,
-      [".page-heading h1", "color", text],
-      [".page-heading p", "color", muted],
-      [".settings-nav", "border-bottom-color", line],
-      [".settings-nav button.active", "color", accent],
-      [".settings-nav button.active", "border-bottom-color", accent],
-      [".settings-nav button:not(.active)", "color", muted],
+      [
+        ".settings-dialog .settings-nav",
+        "border-right-color",
+        "var(--c-line-soft)",
+      ],
+      [".settings-dialog .settings-nav button.active", "color", accent],
+      [
+        ".settings-dialog .settings-nav button.active",
+        "background-color",
+        selected,
+      ],
+      [".settings-dialog .settings-nav button:not(.active)", "color", text],
       [".settings-content > h2", "color", text],
       ...(tab === "通用"
         ? ([
@@ -638,11 +646,12 @@ const chatPages: View[] = [
               ? ([...secondaryButton(".settings-content .button")] as Probe[])
               : []),
     ],
-    focus: ".settings-nav button.active",
+    focus: ".settings-dialog .settings-nav button.active",
+    keep: true,
   })),
 ];
 
-test("main window: chat, recent chats, avatar menu, search and settings take the semantic colour tokens in light and dark at both window sizes", async ({}, info) => {
+test("main window: the rail, the sidebar with recent chats, chat, search and the settings dialog take the semantic colour tokens in light and dark at both window sizes", async ({}, info) => {
   const root = seedConversations();
   const app = await launchLocal({
     args: [resolve("."), `--data-root=${root}`],
@@ -703,11 +712,8 @@ const projectPages: View[] = [
     },
     probes: [
       ...shellProbes,
-      ...selectedNav,
-      [".workbench-tabs", "border-bottom-color", line],
-      [".workbench-tabs [aria-selected=true]", "color", accent],
-      [".workbench-tabs [aria-selected=true]", "background-color", selected],
-      [".workbench-tabs [aria-selected=false]", "color", muted],
+      [".sidebar .nav-item[aria-current=page]", "background-color", selected],
+      [".sidebar .nav-item[aria-current=page] svg", "color", accent],
       [".projects-workspace", "color", text],
       [".project-detail-card", "background-color", surface],
       [".project-detail-card", "border-top-color", line],
@@ -845,13 +851,11 @@ const projectPages: View[] = [
     open: async (page) => {
       await page.keyboard.press("Escape");
       await expect(page.locator(".project-form-dialog")).toHaveCount(0);
-      await page
-        .getByRole("tablist", { name: "工作台内容" })
-        .getByRole("tab", { name: "控件" })
-        .click();
+      await goTo(page, "控件");
     },
     probes: [
       ...shellProbes,
+      ...selectedNav,
       [".empty-icon", "background-color", surface],
       [".empty-icon", "border-top-color", line],
       [".empty-icon", "color", muted],
@@ -862,10 +866,6 @@ const projectPages: View[] = [
   {
     id: "MW-11",
     open: async (page) => {
-      await page
-        .getByRole("tablist", { name: "工作台内容" })
-        .getByRole("tab", { name: "项目" })
-        .click();
       await goTo(page, "待处理");
       await expect(
         page.getByRole("region", { name: "项目待处理", exact: true }),
@@ -873,7 +873,8 @@ const projectPages: View[] = [
     },
     probes: [
       ...shellProbes,
-      [".home-header-compact", "border-bottom-color", line],
+      ...selectedNav,
+      [".rail-badge", "background-color", "var(--c-amber-badge)"],
       ...field(".record-query-controls input:not([type=checkbox])"),
       ...field(".record-query-controls select"),
       [".record-query-controls label", "color", muted],
@@ -904,6 +905,7 @@ const projectPages: View[] = [
     },
     probes: [
       ...shellProbes,
+      ...selectedNav,
       ...field(".record-query-controls input:not([type=checkbox])"),
       [".record-page .page-heading-actions .icon-button", "color", muted],
     ],
@@ -920,10 +922,7 @@ test("main window: projects, project detail, widgets, pending and run records ta
       await setAppearance(f.page, appearance);
       for (const [index, [width, height]] of sizes.entries()) {
         await windowSize(f.app, f.page, width, height);
-        await f.page
-          .getByRole("navigation", { name: "主要页面" })
-          .getByRole("button", { name: "工作台", exact: true })
-          .click();
+        await goTo(f.page, "项目");
         if (await f.page.locator(".project-table").isVisible())
           await f.page
             .locator(".project-open")
@@ -1315,13 +1314,11 @@ test("dark surfaces: selected tabs, filter fields, pending cards, the confirmati
         );
       for (const selector of [
         ".record-query [role=tab][aria-selected=true]",
-        ".workbench-tabs [aria-selected=true]",
+        ".rail-item.active",
+        ".sidebar .nav-item[aria-current=page]",
       ]) {
-        if (selector.startsWith(".workbench")) {
-          await f.page
-            .getByRole("navigation", { name: "主要页面" })
-            .getByRole("button", { name: "工作台", exact: true })
-            .click();
+        if (selector.startsWith(".sidebar")) {
+          await goTo(f.page, "项目");
           await rest(f.page);
         }
         const c = await contrastOf(f.page, selector);
@@ -1348,10 +1345,7 @@ test("dark surfaces: selected tabs, filter fields, pending cards, the confirmati
         path: info.outputPath(`${appearance}-pending.png`),
       });
       // Project detail: cards, the object list, operation records, the three-dot menu and the chat input.
-      await f.page
-        .getByRole("navigation", { name: "主要页面" })
-        .getByRole("button", { name: "工作台", exact: true })
-        .click();
+      await goTo(f.page, "项目");
       if (await f.page.locator(".project-table").isVisible())
         await f.page
           .locator(".project-open")
@@ -1797,7 +1791,11 @@ test("existing page defects: a user bubble sits at the right in the main window 
       [
         "main window",
         page,
-        () => page.getByRole("button", { name: "全局搜索" }).click(),
+        () =>
+          page
+            .locator("#main-sidebar")
+            .getByRole("button", { name: "搜索", exact: true })
+            .click(),
       ],
       [
         "panel",
@@ -1822,10 +1820,7 @@ test("existing page defects: a user bubble sits at the right in the main window 
       await window.keyboard.press("Escape");
       await expect(window.locator(".search-dialog")).toBeHidden();
     }
-    await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(page, "项目");
     await page
       .getByRole("button", { name: "新建项目", exact: true })
       .first()
@@ -1886,10 +1881,7 @@ test("form fields: a focused field in dialogs, settings, project settings and wi
       // Project settings: the project chat's settings and input are form fields (the execution roles use the
       // same rule but are disabled without a configured local Agent); the object list's search and grouping
       // controls are a filter bar.
-      await page
-        .getByRole("navigation", { name: "主要页面" })
-        .getByRole("button", { name: "工作台", exact: true })
-        .click();
+      await goTo(page, "项目");
       if (await page.locator(".project-table").isVisible())
         await page
           .locator(".project-open")
@@ -1939,10 +1931,7 @@ test("form fields: a focused field in dialogs, settings, project settings and wi
         ".record-query-controls select",
       ]);
       // A new project's form.
-      await page
-        .getByRole("navigation", { name: "主要页面" })
-        .getByRole("button", { name: "工作台", exact: true })
-        .click();
+      await goTo(page, "项目");
       if (await page.getByRole("button", { name: "返回项目列表" }).isVisible())
         await page.getByRole("button", { name: "返回项目列表" }).click();
       await page.getByRole("button", { name: "新建项目", exact: true }).click();
@@ -1980,11 +1969,7 @@ test("form fields: a focused field in dialogs, settings, project settings and wi
   const page = await app.firstWindow();
   try {
     await ready(page);
-    await goTo(page, "工作台");
-    await page
-      .getByRole("tablist", { name: "工作台内容" })
-      .getByRole("tab", { name: "控件" })
-      .click();
+    await goTo(page, "控件");
     await page.getByRole("button", { name: "载入测试候选" }).click();
     await page
       .getByRole("region", { name: "测试候选预览" })
@@ -2097,16 +2082,16 @@ test("selected states: every current item keeps its selection colours and weight
     await expect(panelNav).toBeVisible();
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(page, appearance);
-      await goTo(page, "聊天");
-      await openConversation(page, conversation);
-      // The page switch: the prototype's page navigation (the narrow column) keeps names regular.
+      // The rail: the prototype's narrow column keeps its names regular in the selected block.
+      await goTo(page, "运行记录");
       await check(
         page,
         appearance,
-        "page switch",
-        page.locator('.home-nav [aria-current="page"]'),
+        "rail entry",
+        page.locator('.rail-item[aria-current="page"]'),
         "400",
       );
+      await openConversation(page, conversation);
       // Recent chats: the prototype's current chat row is bold.
       const history = await recent(page);
       const current = history.locator('.session[aria-current="true"]');
@@ -2116,7 +2101,10 @@ test("selected states: every current item keeps its selection colours and weight
       });
       await page.keyboard.press("Escape");
       // Global search: category chips stay regular; the current result keeps its tint.
-      await page.getByRole("button", { name: "全局搜索" }).click();
+      await page
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "搜索", exact: true })
+        .click();
       await page.locator(".search-input-row input").fill("读书");
       await expect(page.locator(".search-result").first()).toBeVisible();
       await check(
@@ -2152,16 +2140,8 @@ test("selected states: every current item keeps its selection colours and weight
         page.locator('.appearance-control [aria-pressed="true"]'),
         "600",
       );
-      // The avatar menu's current page item: a page navigation item, regular like the narrow column.
-      await page.getByRole("button", { name: /^我，个人空间/ }).click();
-      await check(
-        page,
-        appearance,
-        "avatar menu current",
-        page.locator('.profile-menu-item[aria-current="page"]'),
-        "400",
-      );
       await page.keyboard.press("Escape");
+      await expect(page.locator("dialog[open]")).toHaveCount(0);
       // The menu bar panel: tabs stay regular as in its prototype; its settings category is bold.
       await expect(panel.locator("html")).toHaveAttribute(
         "data-theme",
@@ -2194,10 +2174,7 @@ test("selected states: every current item keeps its selection colours and weight
     const page = f.page;
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(page, appearance);
-      await page
-        .getByRole("navigation", { name: "主要页面" })
-        .getByRole("button", { name: "工作台", exact: true })
-        .click();
+      await goTo(page, "项目");
       if (await page.locator(".project-table").isVisible())
         await page
           .locator(".project-open")
@@ -2212,12 +2189,12 @@ test("selected states: every current item keeps its selection colours and weight
         "600",
       );
       await page.getByRole("button", { name: "返回项目列表" }).click();
-      // Workbench tabs: bold, as the prototype's sub-navigation.
+      // The sidebar's current object (全部项目): bold, as the prototype's sidebar items.
       await check(
         page,
         appearance,
-        "workbench tab",
-        page.locator('.workbench-tabs [aria-selected="true"]'),
+        "sidebar current",
+        page.locator('.sidebar .nav-item[aria-current="page"]'),
         "600",
       );
       // The archived toggle when pressed: accent text as the prototype's pressed toolbar button, regular weight.

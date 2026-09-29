@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { goTo } from "./shell";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { journeyFixture } from "./project-action-fixture";
@@ -102,10 +103,9 @@ test("project publish: authorization refusal, lost Publish reply, merge readback
     writeFileSync(fault, "{}");
     // Re-enter through the persisted project and query the same operation after a renderer reload.
     await f.page.reload();
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(f.page, "项目");
+    // 全部项目 opens the project list; the project row reopens its detail, as returning to it did before.
+    await f.page.locator(".project-open").first().click();
     const row = pane.getByRole("article", {
       name: `操作 ${lost.operationId}`,
       exact: true,

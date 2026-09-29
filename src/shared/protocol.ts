@@ -306,10 +306,65 @@ export interface Connection {
   updatedAt: string;
 }
 export type Appearance = "light" | "dark" | "auto";
+/**
+ * Local interface preferences of the main window, saved with the appearance in the business settings:
+ * whether the person folded the sidebar and the width they gave the right column (null is the default).
+ * Whether the right column is open is not a preference; it starts folded.
+ */
+export interface InterfacePreferences {
+  sidebarCollapsed: boolean;
+  rightPanelWidth: number | null;
+}
+export const defaultInterfacePreferences: InterfacePreferences = {
+  sidebarCollapsed: false,
+  rightPanelWidth: null,
+};
+export const rightPanelWidthRange = { min: 320, max: 2000 } as const;
+/** One preference key with a value of the right type and range. */
+export function validInterfacePreference(key: unknown, value: unknown) {
+  if (key === "sidebarCollapsed") return typeof value === "boolean";
+  if (key === "rightPanelWidth")
+    return (
+      value === null ||
+      (Number.isInteger(value) &&
+        (value as number) >= rightPanelWidthRange.min &&
+        (value as number) <= rightPanelWidthRange.max)
+    );
+  return false;
+}
+/**
+ * Reads stored preferences key by key: a key that is missing or not valid takes its default, so one damaged
+ * value never changes the other key; keys this version does not know are ignored.
+ */
+export function readInterfacePreferences(value: unknown): InterfacePreferences {
+  const stored =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const result = { ...defaultInterfacePreferences };
+  for (const key of Object.keys(result) as (keyof InterfacePreferences)[])
+    if (validInterfacePreference(key, stored[key]))
+      (result as Record<string, unknown>)[key] = stored[key];
+  return result;
+}
+/** Exactly the two keys with valid values: the form the shell caches and hands to a new window. */
+export function validInterfacePreferences(
+  value: unknown,
+): value is InterfacePreferences {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Object.keys(record).sort().join(",") ===
+      "rightPanelWidth,sidebarCollapsed" &&
+    validInterfacePreference("sidebarCollapsed", record.sidebarCollapsed) &&
+    validInterfacePreference("rightPanelWidth", record.rightPanelWidth)
+  );
+}
 export interface Settings {
   codex: CodexSettings;
   claude: ClaudeSettings;
   appearance: Appearance;
+  interface: InterfacePreferences;
   defaultModelId: string | null;
   defaultConnectionId: string | null;
   telemetryEnabled: boolean;
@@ -638,6 +693,16 @@ export type Command =
     }
   | { type: "setAppearance"; appearance: Appearance }
   | {
+      type: "setInterfacePreference";
+      key: "sidebarCollapsed";
+      value: boolean;
+    }
+  | {
+      type: "setInterfacePreference";
+      key: "rightPanelWidth";
+      value: number | null;
+    }
+  | {
       type: "organizeConversation";
       id: string;
       action: ConversationAction;
@@ -884,6 +949,8 @@ export interface DesktopBridge {
   surface: Surface;
   /** The saved appearance known when the window was created, before the first snapshot; absent when unknown. */
   appearance?: Appearance;
+  /** The saved interface preferences known when the window was created, before the first snapshot; absent when unknown. */
+  interface?: InterfacePreferences;
   copyConversation: (
     id: string,
     kind: "link" | "markdown",
@@ -1118,6 +1185,10 @@ export function validCommand(value: unknown): value is Command {
     return (
       keys === "appearance,type" &&
       ["light", "dark", "auto"].includes(String(c.appearance))
+    );
+  if (c.type === "setInterfacePreference")
+    return (
+      keys === "key,type,value" && validInterfacePreference(c.key, c.value)
     );
   if (c.type === "setTelemetry")
     return keys === "enabled,type" && typeof c.enabled === "boolean";

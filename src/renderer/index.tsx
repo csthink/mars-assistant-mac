@@ -45,27 +45,27 @@ import {
 import { useOrganization } from "./organization";
 import { RenameDialog } from "./conversation-title";
 import { Icon } from "./icons";
+import type { Page } from "./shell";
 import {
-  HomeHeader,
-  ProfileMenu,
-  RecentChatsPopover,
-  usePopover,
-  type Page,
-} from "./shell";
+  CenterHeader,
+  Rail,
+  RecentChats,
+  RightPanel,
+  Sidebar,
+  useOverlayOpen,
+  useWindowWidth,
+  type MainView,
+} from "./main-shell";
+import { columnLayout, expandsAsOverlay } from "./column-layout";
+import { SettingsDialog, SettingsNav, settingTitles } from "./settings-dialog";
+import {
+  defaultInterfacePreferences,
+  type Command,
+  type InterfacePreferences,
+} from "../shared/protocol";
 import { ExtensionGrants, ExtensionSettings } from "./extensions";
 import "./style.css";
 
-const settingTabs = [
-  "通用",
-  "模型",
-  "最近删除",
-  "扩展管理",
-  "访问权限",
-  "数据保留",
-  "数据与隐私",
-];
-/** The extension category's content title is "扩展" (RUNTIME-01); other categories keep their name. */
-const settingTitles: Record<string, string> = { 扩展管理: "扩展" };
 const suggestions = [
   ["解释一个概念", "把复杂的问题说清楚", "帮我解释一个概念："],
   ["整理一段文字", "提炼重点，调整表达", "帮我整理这段文字："],
@@ -204,11 +204,17 @@ function App() {
         .length ?? 0),
     0,
   );
+  /** Global unresolved items: the rail badge and the pending page read the same count. */
+  const unresolvedCount =
+    domainPendingCount +
+    (snapshot?.pendingItems.length ?? 0) +
+    (snapshot?.toolOperations ?? []).filter(
+      (o) => o.state === "pending" || o.state === "unknown",
+    ).length;
   function openProjectSource(projectId: string, objectRef: string) {
     sessionStorage.setItem("project-selected", projectId);
     sessionStorage.setItem(`project-object:${projectId}`, objectRef);
-    setWorkbenchTab("projects");
-    setPage("工作台");
+    go("projects");
   }
 
   useAppearance(snapshot?.settings.appearance ?? window.desktop.appearance);
@@ -225,6 +231,8 @@ function App() {
       // An IME composition owns the keyboard until it commits (UI-01: no shortcut fires mid-composition).
       if (event.isComposing) return;
       if (event.metaKey && event.key.toLowerCase() === "k") {
+        // The search panel never opens on top of another modal dialog.
+        if (document.querySelector("dialog[open]")) return;
         event.preventDefault();
         setSearchOpen(true);
       }
@@ -234,23 +242,214 @@ function App() {
   }, []);
   const [renameId, setRenameId] = useState<string>();
   const renameTarget = snapshot?.conversations.find((c) => c.id === renameId);
+  // The menu bar panel keeps its four pages; the main window shows one object in the centre, settings as a
+  // dialog and the right column beside it.
   const [page, setPage] = useState<Page>(panel ? "工作台" : "聊天");
-  const [workbenchTab, setWorkbenchTab] = useState<"projects" | "widgets">(
-    panel ? "widgets" : "projects",
-  );
-  useEffect(() => window.desktop.onOpenConversation(() => setPage("聊天")), []);
+  const [view, setView] = useState<MainView>("chat");
+  const [projectsKey, setProjectsKey] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => window.desktop.onOpenConversation(() => go("chat")), []);
   const [readOnlyView, setReadOnlyView] = useState<string>();
   useEffect(() => {
     if (status.connected) setReadOnlyView(undefined);
   }, [status.connected]);
   const [tab, setTab] = useState("模型");
   const [notice, setNotice] = useState("");
-  const popover = usePopover();
   const [recentFilter, setRecentFilter] = useState("");
-  // The in-list filter lives only while the popover is open; reopening starts from the full list.
+  const width = useWindowWidth();
+  const overlayOpen = useOverlayOpen();
+  const [rightOpen, setRightOpen] = useState(false);
+  const [takeover, setTakeover] = useState(false);
+  const [overlay, setOverlay] = useState(false);
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  // A preference the person just changed shows at once; it stays for this window when saving fails.
+  const [preferenceOverride, setPreferenceOverride] = useState<
+    Partial<InterfacePreferences>
+  >({});
+  const savedPreferences =
+    snapshot?.settings.interface ??
+    window.desktop.interface ??
+    defaultInterfacePreferences;
+  const preferences = { ...savedPreferences, ...preferenceOverride };
   useEffect(() => {
-    if (popover.open !== "recent") setRecentFilter("");
-  }, [popover.open]);
+    setPreferenceOverride((override) => {
+      const next = { ...override };
+      for (const key of Object.keys(next) as (keyof InterfacePreferences)[])
+        if (next[key] === savedPreferences[key]) delete next[key];
+      return Object.keys(next).length === Object.keys(override).length
+        ? override
+        : next;
+    });
+  }, [savedPreferences.sidebarCollapsed, savedPreferences.rightPanelWidth]);
+  async function savePreference<K extends keyof InterfacePreferences>(
+    key: K,
+    value: InterfacePreferences[K],
+  ) {
+    setPreferenceOverride((override) => ({ ...override, [key]: value }));
+    const failed = "界面偏好未保存，本窗口内保持，重启后不会保持。";
+    try {
+      const reply = await window.desktop.command({
+        type: "setInterfacePreference",
+        key,
+        value,
+      } as Command);
+      if (!reply.ok) setNotice(`${failed}${reply.message}`);
+    } catch {
+      setNotice(failed);
+    }
+  }
+  const railSidebarButton = useRef<HTMLButtonElement>(null);
+  const avatarButton = useRef<HTMLButtonElement>(null);
+  const foldButton = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const panelToggle = useRef<HTMLButtonElement>(null);
+  const takeoverButton = useRef<HTMLButtonElement>(null);
+  const rightPanel = useRef<HTMLElement>(null);
+  /** Moves focus after the next render, when the target exists. */
+  const focusSoon = (target: () => HTMLElement | null | undefined) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => target()?.focus()));
+  // The right column belongs to the conversation and the new-conversation page in this version.
+  const rightAvailable = !panel && view === "chat";
+  const effectiveRight = rightOpen && rightAvailable;
+  const layout = columnLayout({
+    width,
+    sidebarCollapsed: preferences.sidebarCollapsed,
+    rightOpen: effectiveRight,
+    rightWidth: dragWidth ?? preferences.rightPanelWidth,
+    takeover: takeover && effectiveRight,
+  });
+  useEffect(() => {
+    if (overlay && layout.sidebar === "expanded") setOverlay(false);
+  }, [overlay, layout.sidebar]);
+  useEffect(() => {
+    if (!effectiveRight && takeover) setTakeover(false);
+  }, [effectiveRight, takeover]);
+  function go(target: MainView) {
+    if (panel) {
+      setPage(
+        target === "chat"
+          ? "聊天"
+          : target === "pending"
+            ? "待处理"
+            : target === "records"
+              ? "运行记录"
+              : "工作台",
+      );
+      return;
+    }
+    setSettingsOpen(false);
+    if (overlay) {
+      // Opening an object from the floating sidebar folds it and puts focus on the centre title.
+      setOverlay(false);
+      focusSoon(() =>
+        document.querySelector<HTMLElement>(".center [data-center-title]"),
+      );
+    }
+    if (target === "projects") setProjectsKey((key) => key + 1);
+    setView(target);
+  }
+  function openSettings(category: string) {
+    setTab(category);
+    if (panel) setPage("设置");
+    else setSettingsOpen(true);
+  }
+  function railSidebar() {
+    const floats = expandsAsOverlay({ width, rightOpen: effectiveRight });
+    if (preferences.sidebarCollapsed) {
+      void savePreference("sidebarCollapsed", false);
+      if (floats) {
+        setOverlay(true);
+        focusSoon(() =>
+          sidebarRef.current?.querySelector(".side-fixed button"),
+        );
+      } else focusSoon(() => foldButton.current);
+      return;
+    }
+    const next = !overlay;
+    setOverlay(next);
+    focusSoon(() =>
+      next
+        ? sidebarRef.current?.querySelector(".side-fixed button")
+        : railSidebarButton.current,
+    );
+  }
+  function foldSidebar() {
+    if (overlay) setOverlay(false);
+    else void savePreference("sidebarCollapsed", true);
+    focusSoon(() => railSidebarButton.current);
+  }
+  function toggleRight() {
+    if (effectiveRight) {
+      closeRight();
+      return;
+    }
+    setRightOpen(true);
+    focusSoon(() =>
+      document.querySelector<HTMLElement>(
+        '#right-panel [role="tab"][aria-selected="true"]',
+      ),
+    );
+  }
+  function closeRight() {
+    setRightOpen(false);
+    setTakeover(false);
+    focusSoon(() => panelToggle.current);
+  }
+  // A press outside the floating sidebar folds it again (menus and dialogs opened from it keep it open).
+  useEffect(() => {
+    if (!overlay) return;
+    const press = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (
+        sidebarRef.current?.contains(target) ||
+        railSidebarButton.current?.contains(target) ||
+        target?.closest(".conversation-menu, .menu-dismiss, dialog") ||
+        document.querySelector("dialog[open]")
+      )
+        return;
+      const inside = sidebarRef.current?.contains(document.activeElement);
+      setOverlay(false);
+      if (inside) focusSoon(() => railSidebarButton.current);
+    };
+    document.addEventListener("pointerdown", press, true);
+    return () => document.removeEventListener("pointerdown", press, true);
+  }, [overlay]);
+  // Escape closes only the innermost layer: menus and dialogs handle their own first, then the floating
+  // sidebar, then a right column that took over the centre, then the right column holding focus.
+  useEffect(() => {
+    if (panel) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing || event.defaultPrevented)
+        return;
+      if (
+        document.querySelector(
+          'dialog[open], .conversation-menu, .project-menu, [role="menu"]',
+        )
+      )
+        return;
+      if (overlay) {
+        event.preventDefault();
+        setOverlay(false);
+        focusSoon(() => railSidebarButton.current);
+        return;
+      }
+      if (effectiveRight && layout.takeover && !layout.takeoverOnly) {
+        event.preventDefault();
+        setTakeover(false);
+        focusSoon(() => takeoverButton.current);
+        return;
+      }
+      if (
+        effectiveRight &&
+        rightPanel.current?.contains(document.activeElement)
+      ) {
+        event.preventDefault();
+        closeRight();
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
   const textarea = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const [pendingBusy, setPendingBusy] = useState(false);
@@ -505,7 +704,7 @@ function App() {
     const selected = await model.select(hit.conversationId);
     if (!selected) return false;
     setReadOnlyView(undefined);
-    setPage("聊天");
+    go("chat");
     setSearchTarget(
       hit.messageId
         ? {
@@ -521,7 +720,7 @@ function App() {
     setSearchTarget(undefined);
     const created = await model.create();
     if (created) {
-      setPage("聊天");
+      go("chat");
       setTimeout(() => textarea.current?.focus(), 0);
     }
   }
@@ -529,12 +728,21 @@ function App() {
     const target = id ?? (await model.create());
     if (target) {
       model.edit(target, value);
-      setPage("聊天");
+      go("chat");
       setTimeout(() => textarea.current?.focus(), 0);
     }
   }
+  /** The new-conversation page: no conversation yet, or the current one has no messages. */
+  const home = !current || conversationMessages.length === 0;
+  function goHome() {
+    // Without the business service no conversation can be created; the current one stays in view.
+    if (current && conversationMessages.length > 0 && status.connected)
+      void newConversation();
+    else go("chat");
+  }
   const organization = useOrganization({
-    page,
+    page: panel ? page : view,
+    highlightCurrent: panel || view === "chat",
     snapshot,
     connected: status.connected && !model.switching,
     currentId: id,
@@ -543,22 +751,27 @@ function App() {
       if (!status.connected) {
         setReadOnlyView(target);
         setSearchTarget(undefined);
-        popover.close(false);
-        setPage("聊天");
+        go("chat");
+        return true;
+      }
+      // The current, already read conversation only needs showing; selecting it again (which also marks
+      // it read) would be a needless command.
+      if (target === id && !readOnlyView && current && !current.unread) {
+        setSearchTarget(undefined);
+        go("chat");
         return true;
       }
       const ok = await model.select(target);
       if (ok) {
         setReadOnlyView(undefined);
         setSearchTarget(undefined);
-        popover.close(false);
-        setPage("聊天");
+        go("chat");
       }
       return ok;
     },
     rename: setRenameId,
     notice: setNotice,
-    filter: popover.open === "recent" ? recentFilter : "",
+    filter: recentFilter,
   });
   const conversationList = organization.list;
   const chatProject = snapshot?.projects.find((p) =>
@@ -588,8 +801,7 @@ function App() {
               sessionStorage.setItem("project-selected", chatProject.id);
               if (id)
                 sessionStorage.setItem(`project-chat:${chatProject.id}`, id);
-              setWorkbenchTab("projects");
-              setPage("工作台");
+              go("projects");
             }}
           >
             {panel ? "在主窗口查看" : "打开项目"}
@@ -663,7 +875,7 @@ function App() {
         )}
       />
       {running?.state === "awaiting_authorization" && (
-        <button className="button" onClick={() => setPage("待处理")}>
+        <button className="button" onClick={() => go("pending")}>
           到待处理确认资料读取
         </button>
       )}
@@ -838,10 +1050,7 @@ function App() {
           ) : (
             <button
               className="connection-choice"
-              onClick={() => {
-                setPage("设置");
-                setTab("模型");
-              }}
+              onClick={() => openSettings("模型")}
             >
               <Icon name="link" />
               <span>未配置模型连接</span>
@@ -932,348 +1141,442 @@ function App() {
       </div>
     );
   }
-  function content() {
-    if (page === "聊天")
-      return (
-        <div className="chat-layout">
-          {!panel && current && conversationMessages.length > 0 && (
-            <div className="home-chat-title">
-              <button
-                className="conversation-title"
-                aria-label="修改对话名称"
-                title={current.title}
-                disabled={!status.connected || model.switching}
-                onClick={() => setRenameId(current.id)}
-              >
-                {current.title}
-              </button>
-              <button
-                className="icon-button conversation-menu-trigger"
-                aria-label="当前对话菜单"
-                disabled={!status.connected}
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  organization.openMenu(current, rect.left, rect.bottom);
-                }}
-              >
-                ⋯
-              </button>
-            </div>
-          )}
-          <div className="messages">
-            {conversationMessages.length > 0 ? (
-              <Transcript
-                focus={
-                  searchTarget?.conversationId === id ? searchTarget : undefined
-                }
-                onClearFocus={() => setSearchTarget(undefined)}
-                messages={conversationMessages}
-                turns={conversationTurns}
-                attachments={snapshot?.attachments ?? []}
-                messageAttachments={snapshot?.messageAttachments ?? []}
-                onStop={(executionId) => {
-                  void model.stop(executionId);
-                }}
-                onOpenAttachment={openAttachment}
-              />
-            ) : (
-              <div className="welcome">
-                <div className="large-mark">
-                  <Icon name="spark" />
-                </div>
-                <h1>有什么可以帮你？</h1>
-                <p>聊聊想法，整理资料，或为自己做一个小工具。</p>
-                <div className="suggestions">
-                  {suggestions.map(([title, detail, value], index) => (
-                    <button
-                      key={title}
-                      className="suggestion"
-                      disabled={!status.connected || model.switching}
-                      onClick={() => {
-                        void suggestion(value);
-                      }}
-                    >
-                      <Icon name={["spark", "edit", "list", "grid"][index]} />
-                      <span>
-                        {title}
-                        <small>{detail}</small>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                {!current && (
-                  <button
-                    className="button start-conversation"
-                    disabled={!status.connected || model.switching}
-                    onClick={() => {
-                      void newConversation();
-                    }}
-                  >
-                    <Icon name="plus" />
-                    新建对话
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          {composer}
-        </div>
-      );
-    if (page === "工作台")
-      return (
-        <div className="page">
-          <div className="page-heading">
-            <div>
-              <h1>工作台</h1>
-              <p>你的常用工具，都在这里。</p>
-            </div>
-            {(panel || workbenchTab === "widgets") && (
-              <button className="button" disabled title="控件生成尚未开放">
-                <Icon name="plus" />
-                添加控件
-              </button>
-            )}
-          </div>
-          {!panel && (
-            <div
-              className="workbench-tabs"
-              role="tablist"
-              aria-label="工作台内容"
-            >
-              <button
-                role="tab"
-                aria-selected={workbenchTab === "projects"}
-                onClick={() => setWorkbenchTab("projects")}
-              >
-                项目
-              </button>
-              <button
-                role="tab"
-                aria-selected={workbenchTab === "widgets"}
-                onClick={() => setWorkbenchTab("widgets")}
-              >
-                控件
-              </button>
-            </div>
-          )}
-          {!panel && workbenchTab === "projects" ? (
-            <Projects
-              snapshot={snapshot}
-              connected={status.connected}
-              model={model}
-              onOpenSettings={(target) => {
-                setPage("设置");
-                setTab(target);
+  function chatContent() {
+    return (
+      <div className="chat-layout">
+        <div className="messages">
+          {conversationMessages.length > 0 ? (
+            <Transcript
+              focus={
+                searchTarget?.conversationId === id ? searchTarget : undefined
+              }
+              onClearFocus={() => setSearchTarget(undefined)}
+              messages={conversationMessages}
+              turns={conversationTurns}
+              attachments={snapshot?.attachments ?? []}
+              messageAttachments={snapshot?.messageAttachments ?? []}
+              onStop={(executionId) => {
+                void model.stop(executionId);
               }}
-            />
-          ) : window.desktop.widgetEnabled ? (
-            <WidgetWorkspace
-              occluded={searchOpen}
-              connected={status.connected}
+              onOpenAttachment={openAttachment}
             />
           ) : (
-            emptyPage(
-              "工作台还是空的",
-              "从一个想法开始。控件生成开放后，你可以在聊天中创建自己的工具。",
-              "grid",
-              { label: "到聊天记录想法", run: () => setPage("聊天") },
-            )
+            <div className="welcome">
+              <div className="large-mark">
+                <Icon name="spark" />
+              </div>
+              <h1>有什么可以帮你？</h1>
+              <p>聊聊想法，整理资料，或为自己做一个小工具。</p>
+              <div className="suggestions">
+                {suggestions.map(([title, detail, value], index) => (
+                  <button
+                    key={title}
+                    className="suggestion"
+                    disabled={!status.connected || model.switching}
+                    onClick={() => {
+                      void suggestion(value);
+                    }}
+                  >
+                    <Icon name={["spark", "edit", "list", "grid"][index]} />
+                    <span>
+                      {title}
+                      <small>{detail}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {!current && (
+                <button
+                  className="button start-conversation"
+                  disabled={!status.connected || model.switching}
+                  onClick={() => {
+                    void newConversation();
+                  }}
+                >
+                  <Icon name="plus" />
+                  新建对话
+                </button>
+              )}
+            </div>
           )}
         </div>
-      );
-    if (page === "待处理")
-      return (
-        <div className="page record-page">
-          <div className="page-heading">
-            <div>
-              <h1>待处理</h1>
-              <p>需要你确认或继续处理的事项。</p>
-            </div>
-            <RefreshControl
-              label="刷新待处理"
-              connected={status.connected}
-              reload={model.reload}
-            />
+        {composer}
+      </div>
+    );
+  }
+  /**
+   * The widget page: the main window reaches it from the rail as 控件, the panel from its 工作台 page; the empty
+   * state names the page the person is on.
+   */
+  function widgetsContent(title: string, detail?: string) {
+    return (
+      <div className="page">
+        <div className="page-heading">
+          <div>
+            <h1 tabIndex={-1} data-center-title>
+              {title}
+            </h1>
+            {detail && <p>{detail}</p>}
           </div>
-          {snapshot && (
-            <RecordFilters
-              query={pendingQuery}
-              change={setPendingQuery}
-              snapshot={snapshot}
-              pending
-              types={[
-                ...projectProjections.flatMap((e) =>
-                  (e.view?.projection?.pendingItems ?? []).map(
-                    (i): [string, string] => [
-                      `runtime:${i.capability.id}:${i.typeId}`,
-                      i.typeLabel,
-                    ],
-                  ),
+          <button className="button" disabled title="控件生成尚未开放">
+            <Icon name="plus" />
+            添加控件
+          </button>
+        </div>
+        {window.desktop.widgetEnabled ? (
+          <WidgetWorkspace
+            occluded={searchOpen || overlayOpen || overlay}
+            connected={status.connected}
+          />
+        ) : (
+          emptyPage(
+            title === "控件" ? "还没有控件" : "工作台还是空的",
+            "从一个想法开始。控件生成开放后，你可以在聊天中创建自己的工具。",
+            "grid",
+            { label: "到聊天记录想法", run: () => go("chat") },
+          )
+        )}
+      </div>
+    );
+  }
+  function projectsContent() {
+    return (
+      <div className="page">
+        <div className="page-heading">
+          <div>
+            <h1 tabIndex={-1} data-center-title>
+              项目
+            </h1>
+          </div>
+        </div>
+        <Projects
+          key={projectsKey}
+          snapshot={snapshot}
+          connected={status.connected}
+          model={model}
+          onOpenSettings={openSettings}
+        />
+      </div>
+    );
+  }
+  function pendingContent() {
+    return (
+      <div className="page record-page">
+        <div className="page-heading">
+          <div>
+            <h1 tabIndex={-1} data-center-title>
+              待处理
+            </h1>
+            <p>需要你确认或继续处理的事项。</p>
+          </div>
+          <RefreshControl
+            label="刷新待处理"
+            connected={status.connected}
+            reload={model.reload}
+          />
+        </div>
+        {snapshot && (
+          <RecordFilters
+            query={pendingQuery}
+            change={setPendingQuery}
+            snapshot={snapshot}
+            pending
+            types={[
+              ...projectProjections.flatMap((e) =>
+                (e.view?.projection?.pendingItems ?? []).map(
+                  (i): [string, string] => [
+                    `runtime:${i.capability.id}:${i.typeId}`,
+                    i.typeLabel,
+                  ],
                 ),
-                ...snapshot.pendingItems.map((i): [string, string] => [
-                  `host:${i.kind}`,
-                  i.kind === "stop_unconfirmed"
-                    ? "停止未确认"
-                    : i.kind === "failed_turn"
-                      ? "回合失败"
-                      : "回合被中断",
-                ]),
-                ...(snapshot.runtimeExecutions.some(stopConfirmed)
-                  ? [
-                      ["host:stop_unconfirmed", "停止未确认"] as [
-                        string,
-                        string,
-                      ],
-                    ]
-                  : []),
-                ...(snapshot.toolOperations.length
-                  ? [
-                      ["host:tool-authorization", "资料读取授权"] as [
-                        string,
-                        string,
-                      ],
-                    ]
-                  : []),
-              ]}
+              ),
+              ...snapshot.pendingItems.map((i): [string, string] => [
+                `host:${i.kind}`,
+                i.kind === "stop_unconfirmed"
+                  ? "停止未确认"
+                  : i.kind === "failed_turn"
+                    ? "回合失败"
+                    : "回合被中断",
+              ]),
+              ...(snapshot.runtimeExecutions.some(stopConfirmed)
+                ? [["host:stop_unconfirmed", "停止未确认"] as [string, string]]
+                : []),
+              ...(snapshot.toolOperations.length
+                ? [
+                    ["host:tool-authorization", "资料读取授权"] as [
+                      string,
+                      string,
+                    ],
+                  ]
+                : []),
+            ]}
+          />
+        )}
+        <p className="quiet">
+          全部未解决：
+          {unresolvedCount} · 阻塞：
+          {projectProjections.reduce(
+            (n, e) =>
+              n +
+              (e.view?.projection?.pendingItems.filter(
+                (i) => i.status === "pending" && i.blocking,
+              ).length ?? 0),
+            0,
+          ) +
+            heldStops.length +
+            (snapshot?.toolOperations.filter(
+              (o) => o.state === "pending" || o.state === "unknown",
+            ).length ?? 0)}
+        </p>
+        {projectProjections.length > 0 && (
+          <ProjectPendingList
+            entries={projectProjections}
+            refresh={() => void model.reload()}
+            onOpen={openProjectSource}
+            query={pendingQuery}
+          />
+        )}
+        {pendingQuery.tab === "pending" && (
+          <>
+            <ToolPending
+              operations={queriedTools}
+              connected={status.connected}
+              onOpen={(conversationId) => {
+                void model.select(conversationId);
+                go("chat");
+              }}
             />
-          )}
-          <p className="quiet">
-            全部未解决：
-            {domainPendingCount +
-              (snapshot?.pendingItems.length ?? 0) +
-              (snapshot?.toolOperations.filter(
-                (o) => o.state === "pending" || o.state === "unknown",
-              ).length ?? 0)}{" "}
-            · 阻塞：
-            {projectProjections.reduce(
-              (n, e) =>
-                n +
-                (e.view?.projection?.pendingItems.filter(
-                  (i) => i.status === "pending" && i.blocking,
-                ).length ?? 0),
-              0,
-            ) +
-              heldStops.length +
-              (snapshot?.toolOperations.filter(
-                (o) => o.state === "pending" || o.state === "unknown",
-              ).length ?? 0)}
-          </p>
-          {projectProjections.length > 0 && (
-            <ProjectPendingList
-              entries={projectProjections}
-              refresh={() => void model.reload()}
-              onOpen={openProjectSource}
-              query={pendingQuery}
-            />
-          )}
-          {pendingQuery.tab === "pending" && (
-            <>
-              <ToolPending
-                operations={queriedTools}
-                connected={status.connected}
+            {hostPending.length && snapshot ? (
+              <PendingList
+                items={hostPending}
+                executions={snapshot.runtimeExecutions}
+                connections={snapshot.connections}
+                busy={!status.connected || pendingBusy}
+                onRetry={(item) => {
+                  void resolvePending(item.id, "retry");
+                }}
+                onDismiss={(item) => {
+                  void resolvePending(item.id, "dismiss");
+                }}
+                onRecheck={(record) => {
+                  void recheckExecution(record);
+                }}
                 onOpen={(conversationId) => {
                   void model.select(conversationId);
-                  setPage("聊天");
+                  go("chat");
                 }}
               />
-              {hostPending.length && snapshot ? (
-                <PendingList
-                  items={hostPending}
-                  executions={snapshot.runtimeExecutions}
-                  connections={snapshot.connections}
-                  busy={!status.connected || pendingBusy}
-                  onRetry={(item) => {
-                    void resolvePending(item.id, "retry");
-                  }}
-                  onDismiss={(item) => {
-                    void resolvePending(item.id, "dismiss");
-                  }}
-                  onRecheck={(record) => {
-                    void recheckExecution(record);
-                  }}
-                  onOpen={(conversationId) => {
-                    void model.select(conversationId);
-                    setPage("聊天");
-                  }}
-                />
-              ) : projectProjections.length >
-                0 ? null : snapshot?.toolOperations.some(
-                  (o) => o.state === "pending" || o.state === "unknown",
-                ) ? null : snapshot?.runtimeExecutions.some(stopConfirmed) ? (
-                <p className="quiet pending-empty-line">
-                  没有待处理事项。失败或中断的回合、授权与恢复事项会出现在这里。
-                </p>
-              ) : (
-                emptyPage(
-                  "没有待处理事项",
-                  "失败或中断的回合、授权与恢复事项会出现在这里。",
-                  "inbox",
-                )
-              )}
-            </>
-          )}
-          {snapshot && pendingQuery.tab === "processed" && (
-            <ResolvedStops
-              executions={queriedStops}
-              connections={snapshot.connections}
-            />
-          )}
-        </div>
-      );
-    if (page === "运行记录")
-      return (
-        <div className="page record-page">
-          <div className="page-heading">
-            <div>
-              <h1>运行记录</h1>
-              <p>查看每次执行实际发生的事件。</p>
-            </div>
-            <RefreshControl
-              label="刷新运行记录"
-              connected={status.connected}
-              reload={model.reload}
-            />
-          </div>
-          {snapshot && (
-            <RecordFilters
-              query={runQuery}
-              change={setRunQuery}
-              snapshot={snapshot}
-              types={[
-                ...Object.entries(eventLabels).map(
-                  ([id, label]): [string, string] => [`host:${id}`, label],
-                ),
-                ["runtime:trace", "Runtime 记录"],
-              ]}
-            />
-          )}
-          <ProjectRunLog
-            entries={projectProjections}
-            onOpen={openProjectSource}
-            query={runQuery}
+            ) : projectProjections.length >
+              0 ? null : snapshot?.toolOperations.some(
+                (o) => o.state === "pending" || o.state === "unknown",
+              ) ? null : snapshot?.runtimeExecutions.some(stopConfirmed) ? (
+              <p className="quiet pending-empty-line">
+                没有待处理事项。失败或中断的回合、授权与恢复事项会出现在这里。
+              </p>
+            ) : (
+              emptyPage(
+                "没有待处理事项",
+                "失败或中断的回合、授权与恢复事项会出现在这里。",
+                "inbox",
+              )
+            )}
+          </>
+        )}
+        {snapshot && pendingQuery.tab === "processed" && (
+          <ResolvedStops
+            executions={queriedStops}
+            connections={snapshot.connections}
           />
-          {snapshot?.events.length ? (
-            <RunLog
-              events={queriedEvents}
-              executions={snapshot.runtimeExecutions}
-              connections={snapshot.connections}
-            />
-          ) : projectProjections.some((e) =>
-              e.view?.projection?.objects.some(
-                (o) =>
-                  o.view.kind === "trace" &&
-                  Array.isArray(o.view.entries) &&
-                  o.view.entries.length > 0,
-              ),
-            ) ? null : (
-            emptyPage(
-              "还没有运行记录",
-              "当前尚未执行模型或控件任务。历史事件将在执行后保留。",
-              "list",
-            )
-          )}
+        )}
+      </div>
+    );
+  }
+  function recordsContent() {
+    return (
+      <div className="page record-page">
+        <div className="page-heading">
+          <div>
+            <h1 tabIndex={-1} data-center-title>
+              运行记录
+            </h1>
+            <p>查看每次执行实际发生的事件。</p>
+          </div>
+          <RefreshControl
+            label="刷新运行记录"
+            connected={status.connected}
+            reload={model.reload}
+          />
         </div>
-      );
+        {snapshot && (
+          <RecordFilters
+            query={runQuery}
+            change={setRunQuery}
+            snapshot={snapshot}
+            types={[
+              ...Object.entries(eventLabels).map(
+                ([id, label]): [string, string] => [`host:${id}`, label],
+              ),
+              ["runtime:trace", "Runtime 记录"],
+            ]}
+          />
+        )}
+        <ProjectRunLog
+          entries={projectProjections}
+          onOpen={openProjectSource}
+          query={runQuery}
+        />
+        {snapshot?.events.length ? (
+          <RunLog
+            events={queriedEvents}
+            executions={snapshot.runtimeExecutions}
+            connections={snapshot.connections}
+          />
+        ) : projectProjections.some((e) =>
+            e.view?.projection?.objects.some(
+              (o) =>
+                o.view.kind === "trace" &&
+                Array.isArray(o.view.entries) &&
+                o.view.entries.length > 0,
+            ),
+          ) ? null : (
+          emptyPage(
+            "还没有运行记录",
+            "当前尚未执行模型或控件任务。历史事件将在执行后保留。",
+            "list",
+          )
+        )}
+      </div>
+    );
+  }
+  /** The content of the chosen settings category; the dialog and the panel's settings page share it. */
+  function settingsBody() {
+    return (
+      <>
+        {tab === "扩展管理" && (
+          <ExtensionSettings snapshot={snapshot} connected={status.connected} />
+        )}
+        {tab === "模型" && (
+          <ConnectionSettings snapshot={snapshot} status={status} />
+        )}
+        {tab === "通用" && (
+          <>
+            <AppearanceSettings
+              value={snapshot?.settings.appearance ?? "light"}
+              connected={status.connected}
+            />
+            <div className="setting-row">
+              <div>
+                <strong>开机启动</strong>
+                <p>尚未开放，未修改系统登录项。</p>
+              </div>
+              <input
+                type="checkbox"
+                className="setting-switch"
+                disabled
+                aria-label="开机启动"
+                checked={false}
+                readOnly
+              />
+            </div>
+            <div className="setting-row" data-testid="app-update-row">
+              <div>
+                <strong>应用更新</strong>
+                {heldStops.length > 0 && (
+                  <p
+                    className="setting-issue"
+                    role="status"
+                    data-testid="app-update-blocked"
+                  >
+                    有一次已取消的执行还剩进程没退出，等它退出后才能更新（
+                    {heldStops.length} 项，见待处理）。
+                  </p>
+                )}
+                <p>尚未配置更新来源。</p>
+              </div>
+              <button
+                className="button"
+                disabled
+                title={
+                  heldStops.length > 0
+                    ? "有一次已取消的执行还剩进程没退出，等它退出后才能更新"
+                    : undefined
+                }
+              >
+                检查更新
+              </button>
+            </div>
+          </>
+        )}
+        {tab === "访问权限" && (
+          <>
+            <TrustBoundaryNotice />
+            <PermissionSettings
+              permissions={snapshot?.permissions ?? []}
+              connected={status.connected}
+              onHistory={() => go("records")}
+              onModels={() => setTab("模型")}
+            />
+            <ExtensionGrants snapshot={snapshot} connected={status.connected} />
+          </>
+        )}
+        {tab === "最近删除" && organization.trash}
+        {tab === "数据与隐私" && (
+          <>
+            <SearchIndexSettings connected={status.connected} />
+            <div className="setting-row">
+              <div>
+                <strong>业务数据目录</strong>
+                <p className="data-path">{snapshot?.dataRoot ?? "尚未读取"}</p>
+              </div>
+            </div>
+            <p className="info">
+              对话与已确认的草稿保存于本机。API
+              密钥经系统加密保存在业务数据之外的独立存储，当前已保存{" "}
+              {snapshot?.connections.filter((c) => c.secretRef).length ?? 0}{" "}
+              个密钥。
+            </p>
+            <div className="setting-row">
+              <div>
+                <strong>可选诊断统计</strong>
+                <p>
+                  默认关闭。本版本没有任何统计上报实现，开启只保存你的选择；模型调用所需的请求与统计无关。
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="setting-switch"
+                checked={
+                  telemetryDraft ?? snapshot?.settings.telemetryEnabled ?? false
+                }
+                disabled={!status.connected}
+                aria-label="可选诊断统计"
+                onChange={(event) => {
+                  // Optimistic until the business service confirms; a failure reverts and explains.
+                  const enabled = event.target.checked;
+                  setTelemetryDraft(enabled);
+                  void window.desktop
+                    .command({ type: "setTelemetry", enabled })
+                    .then((reply) => {
+                      setTelemetryDraft(null);
+                      if (!reply.ok) setNotice(reply.message);
+                    });
+                }}
+              />
+            </div>
+            <button className="button" disabled>
+              迁移数据目录
+            </button>
+          </>
+        )}
+      </>
+    );
+  }
+  function panelContent() {
+    if (page === "聊天") return chatContent();
+    if (page === "工作台")
+      return widgetsContent("工作台", "你的常用工具，都在这里。");
+    if (page === "待处理") return pendingContent();
+    if (page === "运行记录") return recordsContent();
     return (
       <div className="page settings-page">
         <div className="page-heading">
@@ -1283,223 +1586,75 @@ function App() {
           </div>
         </div>
         <div className="settings-layout">
-          <nav className="settings-nav" aria-label="设置分类">
-            {settingTabs.map((name) => (
-              <button
-                key={name}
-                aria-current={tab === name ? "page" : undefined}
-                className={tab === name ? "active" : ""}
-                onClick={() => setTab(name)}
-              >
-                {name}
-              </button>
-            ))}
-          </nav>
+          <SettingsNav tab={tab} onTab={setTab} />
           <section className="settings-content" aria-label={tab}>
             <h2>{settingTitles[tab] ?? tab}</h2>
-            {tab === "扩展管理" && (
-              <ExtensionSettings
-                snapshot={snapshot}
-                connected={status.connected}
-              />
-            )}
-            {tab === "模型" && (
-              <ConnectionSettings snapshot={snapshot} status={status} />
-            )}
-            {tab === "通用" && (
-              <>
-                <AppearanceSettings
-                  value={snapshot?.settings.appearance ?? "light"}
-                  connected={status.connected}
-                />
-                <div className="setting-row">
-                  <div>
-                    <strong>开机启动</strong>
-                    <p>尚未开放，未修改系统登录项。</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    className="setting-switch"
-                    disabled
-                    aria-label="开机启动"
-                    checked={false}
-                    readOnly
-                  />
-                </div>
-                <div className="setting-row" data-testid="app-update-row">
-                  <div>
-                    <strong>应用更新</strong>
-                    {heldStops.length > 0 && (
-                      <p
-                        className="setting-issue"
-                        role="status"
-                        data-testid="app-update-blocked"
-                      >
-                        有一次已取消的执行还剩进程没退出，等它退出后才能更新（
-                        {heldStops.length} 项，见待处理）。
-                      </p>
-                    )}
-                    <p>尚未配置更新来源。</p>
-                  </div>
-                  <button
-                    className="button"
-                    disabled
-                    title={
-                      heldStops.length > 0
-                        ? "有一次已取消的执行还剩进程没退出，等它退出后才能更新"
-                        : undefined
-                    }
-                  >
-                    检查更新
-                  </button>
-                </div>
-              </>
-            )}
-            {tab === "访问权限" && (
-              <>
-                <TrustBoundaryNotice />
-                <PermissionSettings
-                  permissions={snapshot?.permissions ?? []}
-                  connected={status.connected}
-                  onHistory={() => setPage("运行记录")}
-                  onModels={() => setTab("模型")}
-                />
-                <ExtensionGrants
-                  snapshot={snapshot}
-                  connected={status.connected}
-                />
-              </>
-            )}
-            {tab === "最近删除" && organization.trash}
-            {tab === "数据与隐私" && (
-              <>
-                <SearchIndexSettings connected={status.connected} />
-                <div className="setting-row">
-                  <div>
-                    <strong>业务数据目录</strong>
-                    <p className="data-path">
-                      {snapshot?.dataRoot ?? "尚未读取"}
-                    </p>
-                  </div>
-                </div>
-                <p className="info">
-                  对话与已确认的草稿保存于本机。API
-                  密钥经系统加密保存在业务数据之外的独立存储，当前已保存{" "}
-                  {snapshot?.connections.filter((c) => c.secretRef).length ?? 0}{" "}
-                  个密钥。
-                </p>
-                <div className="setting-row">
-                  <div>
-                    <strong>可选诊断统计</strong>
-                    <p>
-                      默认关闭。本版本没有任何统计上报实现，开启只保存你的选择；模型调用所需的请求与统计无关。
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    className="setting-switch"
-                    checked={
-                      telemetryDraft ??
-                      snapshot?.settings.telemetryEnabled ??
-                      false
-                    }
-                    disabled={!status.connected}
-                    aria-label="可选诊断统计"
-                    onChange={(event) => {
-                      // Optimistic until the business service confirms; a failure reverts and explains.
-                      const enabled = event.target.checked;
-                      setTelemetryDraft(enabled);
-                      void window.desktop
-                        .command({ type: "setTelemetry", enabled })
-                        .then((reply) => {
-                          setTelemetryDraft(null);
-                          if (!reply.ok) setNotice(reply.message);
-                        });
-                    }}
-                  />
-                </div>
-                <button className="button" disabled>
-                  迁移数据目录
-                </button>
-              </>
-            )}
+            {settingsBody()}
           </section>
         </div>
       </div>
     );
   }
-  const pending = {
-    count:
-      domainPendingCount +
-      (snapshot?.pendingItems.length ?? 0) +
-      (snapshot?.toolOperations ?? []).filter(
-        (o) => o.state === "pending" || o.state === "unknown",
-      ).length,
-    connected: status.connected,
-  };
-  function navigate(target: Page) {
-    popover.close(false);
-    setPage(target);
-    if (target === "设置") setTab("通用");
+  function mainContent() {
+    if (view === "widgets") return widgetsContent("控件");
+    if (view === "projects") return projectsContent();
+    if (view === "pending") return pendingContent();
+    if (view === "records") return recordsContent();
+    return chatContent();
   }
-  return (
-    <div className={`app ${panel ? "panel-app" : ""}`}>
-      {organization.overlays}
-      {searchOpen && (
-        <SearchDialog
-          onClose={() => setSearchOpen(false)}
-          onOpen={openSearchHit}
-        />
-      )}
-      {renameTarget && (
-        <RenameDialog
-          key={renameTarget.id}
-          conversation={renameTarget}
-          onClose={() => setRenameId(undefined)}
-        />
-      )}
-      {!panel && popover.open === "profile" && (
-        <ProfileMenu
-          page={page}
-          pending={pending}
-          trigger={popover.avatarTrigger}
-          onNavigate={navigate}
-          onClose={popover.close}
-        />
-      )}
-      {!panel && popover.open === "recent" && (
-        <RecentChatsPopover
-          trigger={popover.recentTrigger}
-          onClose={popover.close}
-          filter={recentFilter}
-          onFilter={setRecentFilter}
-        >
-          {conversationList}
-        </RecentChatsPopover>
-      )}
-      <main className="shell">
-        {!panel && (
-          <HomeHeader
-            page={page}
-            onNavigate={navigate}
-            connected={status.connected}
-            busy={model.switching}
-            onNew={() => {
-              popover.close(false);
-              void newConversation();
+  const pending = { count: unresolvedCount, connected: status.connected };
+  const banners = (
+    <>
+      {!status.connected && (
+        <div className="service-error" role="alert">
+          <span>{status.message}</span>
+          <button
+            onClick={() => {
+              void window.desktop.reconnect();
             }}
-            onSearch={() => {
-              popover.close(false);
-              setSearchOpen(true);
-            }}
-            popover={popover.open}
-            onToggle={popover.toggle}
-            pending={pending}
-            recentTrigger={popover.recentTrigger}
-            avatarTrigger={popover.avatarTrigger}
+          >
+            重新连接
+          </button>
+        </div>
+      )}
+      {model.actionError && (
+        <div className="service-error" role="alert">
+          <span>{model.actionError}</span>
+          <button onClick={model.clearActionError}>关闭提示</button>
+        </div>
+      )}
+      {notice && (
+        <div className="notice" role="status">
+          <span>{notice}</span>
+          <button
+            className="icon-button"
+            aria-label="关闭提示"
+            onClick={() => setNotice("")}
+          >
+            <Icon name="close" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+  if (panel)
+    return (
+      <div className="app panel-app">
+        {organization.overlays}
+        {searchOpen && (
+          <SearchDialog
+            onClose={() => setSearchOpen(false)}
+            onOpen={openSearchHit}
           />
         )}
-        {panel && (
+        {renameTarget && (
+          <RenameDialog
+            key={renameTarget.id}
+            conversation={renameTarget}
+            onClose={() => setRenameId(undefined)}
+          />
+        )}
+        <main className="shell">
           <>
             <header className="topbar">
               <div className="breadcrumb">
@@ -1596,39 +1751,158 @@ function App() {
               </label>
             )}
           </>
+          {banners}
+          <div className="viewport">{panelContent()}</div>
+        </main>
+      </div>
+    );
+  const showSidebar = layout.sidebar === "expanded" || overlay;
+  return (
+    <div
+      className="app four-column"
+      data-sidebar={layout.sidebar}
+      data-overlay={overlay ? "true" : undefined}
+      data-right={
+        !effectiveRight ? "closed" : layout.takeover ? "takeover" : "open"
+      }
+    >
+      {organization.overlays}
+      {searchOpen && (
+        <SearchDialog
+          onClose={() => setSearchOpen(false)}
+          onOpen={openSearchHit}
+        />
+      )}
+      {renameTarget && (
+        <RenameDialog
+          key={renameTarget.id}
+          conversation={renameTarget}
+          onClose={() => setRenameId(undefined)}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsDialog
+          tab={tab}
+          onTab={setTab}
+          onClose={() => setSettingsOpen(false)}
+          banners={banners}
+        >
+          {settingsBody()}
+        </SettingsDialog>
+      )}
+      <Rail
+        view={view}
+        home={home}
+        pending={pending}
+        sidebarFolded={layout.sidebar !== "expanded"}
+        overlay={overlay}
+        sidebarButton={railSidebarButton}
+        avatar={avatarButton}
+        onHome={goHome}
+        onNavigate={go}
+        onSidebar={railSidebar}
+        onSettings={() => openSettings("通用")}
+      />
+      {showSidebar && (
+        <Sidebar
+          overlay={overlay}
+          sidebarRef={sidebarRef}
+          foldButton={foldButton}
+          connected={status.connected}
+          busy={model.switching}
+          view={view}
+          projectCount={
+            (snapshot?.projects ?? []).filter((p) => !p.archivedAt).length
+          }
+          onFold={foldSidebar}
+          onNew={() => {
+            void newConversation();
+          }}
+          onSearch={() => setSearchOpen(true)}
+          onProjects={() => {
+            sessionStorage.removeItem("project-selected");
+            go("projects");
+          }}
+          recent={
+            <RecentChats onFilter={setRecentFilter}>
+              {conversationList}
+            </RecentChats>
+          }
+        />
+      )}
+      <main className="center" aria-label="中栏">
+        {!settingsOpen && banners}
+        {view === "chat" && (
+          <CenterHeader
+            rightOpen={effectiveRight}
+            toggle={panelToggle}
+            onToggle={toggleRight}
+          >
+            {current && conversationMessages.length > 0 ? (
+              <>
+                <button
+                  className="conversation-title"
+                  aria-label="修改对话名称"
+                  title={current.title}
+                  data-center-title
+                  disabled={!status.connected || model.switching}
+                  onClick={() => setRenameId(current.id)}
+                >
+                  {current.title}
+                </button>
+                <button
+                  className="icon-button conversation-menu-trigger"
+                  aria-label="当前对话菜单"
+                  disabled={!status.connected}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    organization.openMenu(current, rect.left, rect.bottom);
+                  }}
+                >
+                  ⋯
+                </button>
+              </>
+            ) : (
+              <h1 className="center-heading" tabIndex={-1} data-center-title>
+                新对话
+              </h1>
+            )}
+          </CenterHeader>
         )}
-        {!status.connected && (
-          <div className="service-error" role="alert">
-            <span>{status.message}</span>
-            <button
-              onClick={() => {
-                void window.desktop.reconnect();
-              }}
-            >
-              重新连接
-            </button>
-          </div>
-        )}
-        {model.actionError && (
-          <div className="service-error" role="alert">
-            <span>{model.actionError}</span>
-            <button onClick={model.clearActionError}>关闭提示</button>
-          </div>
-        )}
-        {notice && (
-          <div className="notice" role="status">
-            <span>{notice}</span>
-            <button
-              className="icon-button"
-              aria-label="关闭提示"
-              onClick={() => setNotice("")}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-        )}
-        <div className="viewport">{content()}</div>
+        <div className="viewport">{mainContent()}</div>
       </main>
+      {effectiveRight && (
+        <RightPanel
+          owner={current ? `${current.title} · 对话` : "新对话"}
+          tabs={[
+            {
+              id: "files",
+              name: "文件",
+              icon: "file",
+              body: <p className="right-empty">对话的文件尚未提供。</p>,
+            },
+            {
+              id: "events",
+              name: "事件",
+              icon: "activity",
+              body: <p className="right-empty">对话的事件尚未提供。</p>,
+            },
+          ]}
+          layout={layout}
+          width={layout.right}
+          panelRef={rightPanel}
+          takeoverButton={takeoverButton}
+          onWidth={(value) => {
+            void savePreference(
+              "rightPanelWidth",
+              value === null ? null : Math.round(value),
+            );
+          }}
+          onPreview={setDragWidth}
+          onTakeover={() => setTakeover(!layout.takeover)}
+          onClose={closeRight}
+        />
+      )}
     </div>
   );
 }
