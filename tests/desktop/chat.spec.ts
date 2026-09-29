@@ -32,8 +32,8 @@ async function launch(root = dataRoot) {
   const window = await application.firstWindow();
   await expect(
     window
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   return { application, window };
 }
@@ -125,7 +125,7 @@ async function addConnection(
 
 async function newChat() {
   await page
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
   await expect(page.getByRole("textbox", { name: "输入草稿" })).toBeEditable();

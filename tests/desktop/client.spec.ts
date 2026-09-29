@@ -26,8 +26,8 @@ async function launch(root = dataRoot) {
   const window = await application.firstWindow();
   await expect(
     window
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   return { application, window };
 }
@@ -55,7 +55,7 @@ async function saved(window = page) {
 async function newChat(window = page) {
   const count = await sessionCount(window);
   await window
-    .getByRole("button", { name: "新建对话", exact: true })
+    .getByRole("button", { name: /^新建(聊天|对话)$/ })
     .first()
     .click();
   await expect.poll(() => sessionCount(window)).toBe(count + 1);
@@ -118,10 +118,12 @@ test("navigation: minimum window, every page, keyboard, no external request or N
       BrowserWindow.getAllWindows()[0].getContentSize(),
     ),
   ).toEqual([900, 680]);
-  for (const title of ["工作台", "待处理", "运行记录", "设置"] as const) {
+  for (const title of ["项目", "控件", "待处理", "运行记录", "设置"] as const) {
     await goTo(page, title);
     await expect(
-      page.getByRole("heading", { name: title, exact: true }),
+      page
+        .locator(title === "设置" ? "dialog[open]" : ".center")
+        .getByRole("heading", { name: title, exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -150,20 +152,19 @@ test("navigation: minimum window, every page, keyboard, no external request or N
   const input = page.getByRole("textbox", { name: "输入草稿" });
   await input.fill("很长的中文草稿".repeat(90));
   await saved();
-  // feature-t28: the collapsible sidebar is gone (UI-01); the shell's recent chats popover
-  // covers the same keyboard round trip: Enter opens it, Escape closes it and returns focus.
-  const recentTrigger = page.getByRole("button", {
-    name: "最近聊天",
-    exact: true,
-  });
-  await recentTrigger.focus();
+  // Four columns: the rail and the sidebar stay; the sidebar folds and expands by keyboard, and the
+  // focus goes back to the control that expands it again.
+  const rail = page.getByRole("navigation", { name: "全局导航" });
+  await expect(rail).toBeVisible();
+  const fold = page.getByRole("button", { name: "折叠侧栏" });
+  await fold.focus();
   await page.keyboard.press("Enter");
-  await expect(page.locator("section#home-history")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(recentTrigger).toBeFocused();
-  await expect(
-    page.getByRole("navigation", { name: "主要页面" }),
-  ).toBeVisible();
+  await expect(page.locator("#main-sidebar")).toHaveCount(0);
+  const expand = rail.getByRole("button", { name: "展开侧栏" });
+  await expect(expand).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main-sidebar")).toBeVisible();
+  await expect(fold).toBeFocused();
   await page.screenshot({ path: "test-results/navigation-main.png" });
   expect(
     await page.evaluate(() => ({
@@ -249,8 +250,8 @@ test("drafts: identical titles, independent identities, durable restart, save fa
     .toBe(false);
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "用当前输入保存" }).click();
   await saved();
@@ -352,8 +353,8 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   await page.getByRole("button", { name: "重新连接" }).click();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   await expect(page.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
     "面板更新的中文",
@@ -622,7 +623,7 @@ test("drafts: pending new conversation freezes input and never writes into the o
   await app.evaluate((_electron, id) => process.kill(id, "SIGSTOP"), pid);
   try {
     await page
-      .getByRole("button", { name: "新建对话", exact: true })
+      .getByRole("button", { name: /^新建(聊天|对话)$/ })
       .first()
       .click();
     await expect(input).not.toBeEditable();

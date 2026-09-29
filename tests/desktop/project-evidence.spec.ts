@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { goTo } from "./shell";
 import type { AddressInfo } from "node:net";
 import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
@@ -229,7 +230,11 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
       .click();
     const layout = f.page.locator(".project-work-grid");
     await expect(layout).toHaveAttribute("data-full", "true");
-    await expect(f.page.locator(".home-header")).toBeHidden();
+    // The enlarged content covers the window: the rail and the sidebar step aside.
+    await expect(
+      f.page.getByRole("navigation", { name: "全局导航" }),
+    ).toBeHidden();
+    await expect(f.page.locator("#main-sidebar")).toBeHidden();
     await expect(input).toHaveValue("保留草稿，不发送");
     expect(await content.evaluate((el) => el.scrollTop)).toBe(scroll);
     await f.page
@@ -294,14 +299,10 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
       .getByRole("button", { name: "还原内容区", exact: true })
       .click();
     await expect(layout).toHaveAttribute("data-full", "false");
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "聊天", exact: true })
-      .click();
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(f.page, "聊天");
+    await goTo(f.page, "项目");
+    // 全部项目 opens the project list; the project row reopens its detail, as returning to it did before.
+    await f.page.locator(".project-open").first().click();
     await expect(input).toHaveValue("保留草稿，不发送");
     await expect(content).toContainText("当前候选 1");
     await expect

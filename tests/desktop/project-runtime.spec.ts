@@ -1,4 +1,5 @@
 import { createClaudeFixture } from "./claude-fixture";
+import { goTo } from "./shell";
 import { createCodexFixture } from "./codex-fixture";
 import { graphFakeDir } from "./runtime-fakes/build";
 import { GRAPH_CAPABILITY, GRAPH_SCHEMA } from "./runtime-fakes/graph-contract";
@@ -40,8 +41,8 @@ async function setup(env: NodeJS.ProcessEnv = process.env) {
   try {
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = async () => ({
@@ -60,10 +61,7 @@ async function setup(env: NodeJS.ProcessEnv = process.env) {
       if (!r.ok || !r.projectId) throw Error(JSON.stringify(r));
       return r.projectId;
     });
-    await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(page, "项目");
     await page
       .locator(".project-open")
       .filter({ hasText: "项目旅程验证" })
@@ -374,10 +372,9 @@ test("project access (OD-416): inside the project the folder is registered, the 
     ).toHaveLength(0);
     expect(afterRevoke.runtimeScopes[0].state).toBe("inactive");
     // Back in the project: the dependent actions stop, a new review re-authorizes with new references.
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(f.page, "项目");
+    // 全部项目 opens the project list; the project row reopens its detail, as returning to it did before.
+    await f.page.locator(".project-open").first().click();
     await expect(panel.getByTestId("access-summary")).toHaveText("接入未完成");
     await expect(panel.getByTestId("access-grant-state")).toHaveText(
       /^授权已于 .+ 撤销；重新核对范围后再授权。$/,
@@ -535,10 +532,7 @@ test("project runtime: real Host projection, explicit context, loopback send and
     expect(sent).toContain("只发送明确选择的上下文");
     expect(sent).not.toContain(f.folder);
     expect(sent).not.toContain("entry:e1");
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "聊天", exact: true })
-      .click();
+    await goTo(f.page, "聊天");
     const summary = f.page.getByRole("region", {
       name: "项目对话上下文",
       exact: true,

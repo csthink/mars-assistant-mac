@@ -4,6 +4,11 @@ import { join, resolve } from "node:path";
 import { journeyFixture } from "./project-action-fixture";
 import { closeLocal, launchLocal } from "./local-client";
 import { goTo, ready } from "./shell";
+/** Returns to the project detail: 全部项目 opens the project list, the project row reopens its detail. */
+async function backToProject(page: Page) {
+  await goTo(page, "项目");
+  await page.locator(".project-open").first().click();
+}
 
 type Fixture = Awaited<ReturnType<typeof journeyFixture>>;
 async function projection(f: Fixture) {
@@ -171,7 +176,7 @@ test("project pending: global and project decisions share identities, filter wit
     await decide(f, "接纳任务");
     await goTo(f.page, "待处理");
     await decide(f, "冻结定义");
-    await goTo(f.page, "工作台");
+    await backToProject(f.page);
     await decide(f, "开始实施", false);
     await decide(f, "执行验证", false);
     await decide(f, "提交变更评审", false);
@@ -179,11 +184,11 @@ test("project pending: global and project decisions share identities, filter wit
     await decide(f, "执行验证", false);
     await goTo(f.page, "待处理");
     await decide(f, "调整评审额度", true, false, 2);
-    await goTo(f.page, "工作台");
+    await backToProject(f.page);
     await decide(f, "提交变更评审", false);
     await goTo(f.page, "待处理");
     await decide(f, "授权发布");
-    await goTo(f.page, "工作台");
+    await backToProject(f.page);
     await decide(f, "Publish", false);
     await decide(f, "核对合并结果", false);
     await goTo(f.page, "待处理");

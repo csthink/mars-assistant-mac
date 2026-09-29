@@ -179,285 +179,530 @@ p {
   font-size: 11px;
   line-height: 1.8;
 }
-/* Navigation shell (prototype P1 home header): chat tools, page switch and avatar. */
-.app:not(.panel-app) {
+/* Main window: the four-column shell (rail, sidebar, centre, right column). Widths follow column-layout.ts. */
+.app.four-column {
+  display: flex;
+  position: relative;
   background: var(--c-canvas);
 }
-.home-header {
-  height: 116px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 0 40px;
+.rail {
   position: relative;
-  z-index: 12;
-  color: var(--c-text);
+  z-index: 4;
+  flex: none;
+  width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 12px;
+  background: var(--c-sidebar);
+  border-right: 1px solid var(--c-line-soft);
 }
-.home-header svg,
-.home-history svg,
-.profile-menu svg {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
+.rail-top {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 52px;
+  flex: none;
 }
-.home-header button {
-  color: var(--c-text);
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
 }
-.home-header button:disabled {
+.brand-mark svg {
+  width: 16px;
+  height: 16px;
+}
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 4px 0 8px;
+}
+/* Selected rail entries are a rounded block around icon and name: selected tint, name not bold. */
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 48px;
+  padding: 6px 0 5px;
+  border-radius: 12px;
   color: var(--c-muted);
-  cursor: default;
+  font-size: 11px;
+  line-height: 14px;
 }
-.home-history-actions,
-.home-account {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+.rail-item:hover:not(:disabled) {
+  background: var(--c-hover);
+  color: var(--c-text);
 }
-.home-history-placeholder {
-  width: 1px;
+.rail-item.active,
+.rail-item.active:hover:not(:disabled),
+.rail-item[aria-expanded="true"] {
+  background: var(--c-selected);
+  color: var(--c-text);
 }
-.home-tool {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+.rail-item.active .rail-icon {
+  color: var(--c-accent);
+}
+/* The ring wraps the whole block and stays inside the rail. */
+.rail-item:focus-visible,
+.rail-avatar:focus-visible {
+  outline-offset: 0;
+}
+.rail-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 24px;
+}
+.rail-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.rail-label {
   white-space: nowrap;
-  border: 1px solid transparent;
-  border-radius: 26px;
-  background: transparent;
-  font-size: 15px;
 }
-.history-trigger[aria-expanded="true"] {
-  background: var(--c-surface);
-  box-shadow: var(--c-shadow-sm);
-  border-color: var(--c-line);
+.rail-badge {
+  position: absolute;
+  top: -2px;
+  left: 19px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--c-amber-badge);
+  color: var(--c-on-amber);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--c-sidebar);
 }
-.home-global-search kbd {
-  background: var(--c-raised);
-  border-radius: 5px;
-  padding: 4px 7px;
-  color: var(--c-muted);
-  font: inherit;
-  font-size: 12px;
+.rail-item.active .rail-badge {
+  box-shadow: 0 0 0 2px var(--c-selected);
 }
-.home-divider {
-  width: 1px;
-  height: 22px;
-  flex-shrink: 0;
+.rail-sep {
+  flex: none;
+  width: 24px;
+  height: 1px;
+  margin: 6px 0;
   background: var(--c-line);
 }
-.home-nav {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  padding: 5px;
-  border: 1px solid var(--c-line);
-  border-radius: 32px;
-  background: var(--c-surface);
-  backdrop-filter: blur(24px);
-  box-shadow: var(--c-shadow-card);
-  white-space: nowrap;
-}
-.home-nav button {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: center;
-  min-width: 105px;
-  border-radius: 25px;
-  border: 1px solid transparent;
-  background: transparent;
-  font-size: 15px;
-  padding: 9px 16px;
-  position: relative;
-}
-.home-nav .selected {
-  color: var(--c-accent);
-  background: var(--c-selected);
-  border-color: var(--c-selected);
-}
-.home-avatar {
-  position: relative;
+.rail-avatar {
+  flex: none;
   width: 36px;
   height: 36px;
   border-radius: 50%;
   background: var(--c-raised);
+  color: var(--c-text);
   font-size: 14px;
+}
+
+/* Sidebar: expanded in the row, or floated over the centre next to the rail without changing its width. */
+.sidebar {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  width: 248px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-sidebar);
+  border-right: 1px solid var(--c-line-soft);
+}
+.sidebar[data-overlay="true"] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 56px;
+  z-index: 30;
+  border-right: 1px solid var(--c-line);
+  box-shadow: var(--c-shadow);
+}
+.side-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 10px 0 18px;
+  flex: none;
+}
+.side-title {
+  font-size: 14px;
+  font-weight: 620;
   color: var(--c-text);
 }
-.profile-pending-dot {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--c-amber-badge);
-  box-shadow: 0 0 0 2px var(--c-canvas);
+.side-fixed {
+  display: grid;
+  gap: 2px;
+  padding: 4px 8px 10px;
+  flex: none;
+  border-bottom: 1px solid var(--c-line-soft);
 }
-.home-header button:focus-visible,
-.profile-menu-item:focus-visible,
-.home-history button:focus-visible {
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--c-text);
+}
+.nav-item svg {
+  width: 17px;
+  height: 17px;
+  color: var(--c-muted);
+}
+.nav-item[aria-current="page"],
+.nav-item[aria-current="page"]:hover:not(:disabled) {
+  background: var(--c-selected);
+  font-weight: 600;
+}
+.nav-item[aria-current="page"] svg {
+  color: var(--c-accent);
+}
+.nav-item kbd {
+  font: inherit;
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A scroll area that takes keyboard focus itself (no focusable content inside) draws its ring inside its
+   own edge, so no ancestor clips it. */
+.viewport:focus-visible,
+.messages:focus-visible,
+.side-scroll:focus-visible,
+.right-body:focus-visible,
+.settings-dialog-content:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+/* Rows fill the sidebar width; the scroll area leaves room so a keyboard ring is never clipped. */
+.side-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 8px 12px;
+  scroll-padding-block: 8px;
+}
+.nav-section + .nav-section {
+  margin-top: 14px;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 4px 0 10px;
+}
+.section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-muted);
+}
+.recent-chats .history-search {
+  margin: 4px 0 8px;
+}
+/* In the sidebar the list flows with the scroll area (no nested scrolling that would clip focus rings). */
+.recent-chats .sessions {
+  padding: 2px 0;
+  overflow: visible;
+}
+.recent-chats .archived-entry {
+  width: 100%;
+  border-radius: 8px;
+}
+
+/* Centre: the current object; its own width drives the pages' narrow layouts. */
+.center {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-canvas);
+}
+.center-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 12px 8px 20px;
+  border-bottom: 1px solid var(--c-line);
+  background: var(--c-surface);
+}
+.center-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.center-title .conversation-title {
+  color: var(--c-text);
+  font-size: 14px;
+  font-weight: 560;
+}
+.center-heading {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 14px;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+[data-center-title]:focus {
+  outline: none;
+}
+[data-center-title]:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }
-.profile-menu-item:focus-visible {
-  outline-offset: -2px;
+.panel-toggle {
+  flex: none;
 }
 
-/* Avatar popover: individual space, pending count, records and settings. */
-.profile-menu {
-  position: fixed;
-  z-index: 60;
-  width: min(320px, calc(100vw - 16px));
-  overflow-y: auto;
-  padding: 10px;
+/* Right column: the context panel beside the centre, or in its place when it takes over. */
+.right-panel {
+  position: relative;
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-panel);
+  border-left: 1px solid var(--c-line);
+}
+.right-panel[data-takeover="true"] {
+  flex: 1 1 auto;
+}
+.app.four-column[data-right="takeover"] .center {
+  display: none;
+}
+.right-resizer {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  width: 8px;
+  margin: 0 -4px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.right-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+}
+.right-resizer:hover::after {
+  background: var(--c-accent-edge);
+}
+.right-resizer:focus-visible {
+  outline: none;
+}
+.right-resizer:focus-visible::after {
+  background: var(--c-accent);
+}
+.right-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--c-line);
+}
+.right-owner {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-muted);
+  font-size: 12px;
+}
+.right-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-line-soft);
+}
+.right-tabs [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  color: var(--c-muted);
+  font-size: 12px;
+}
+.right-tabs [role="tab"] svg {
+  width: 16px;
+  height: 16px;
+}
+.right-tabs [role="tab"][aria-selected="true"] {
+  background: var(--c-selected);
+  color: var(--c-accent);
+}
+.right-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  scroll-padding-block: 8px;
+}
+.right-empty {
+  margin: 0;
+  color: var(--c-muted);
+  font-size: 13px;
+}
+
+/* A project in the enlarged content view covers the window; the rail, sidebar and right column step aside. */
+.app.four-column:has(.project-work-grid[data-full="true"]) .rail,
+.app.four-column:has(.project-work-grid[data-full="true"]) .sidebar,
+.app.four-column:has(.project-work-grid[data-full="true"]) .right-panel,
+.app.four-column:has(.project-work-grid[data-full="true"]) .right-resizer {
+  visibility: hidden;
+}
+
+/* Settings dialog: individual space on top, categories on the left, the chosen category on the right. */
+.settings-dialog {
+  width: min(920px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 32px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
   border: 1px solid var(--c-line);
   border-radius: 14px;
   background: var(--c-surface);
   color: var(--c-text);
   box-shadow: var(--c-shadow);
+  overflow: hidden;
 }
-.profile-menu-heading {
+.settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.settings-dialog::backdrop {
+  background: var(--c-scrim);
+}
+.settings-dialog-top {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 10px 12px 18px;
-  margin-bottom: 8px;
+  padding: 12px 12px 12px 20px;
   border-bottom: 1px solid var(--c-line);
+  flex: none;
 }
-.profile-menu-avatar {
+.settings-dialog-top h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.settings-dialog-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.settings-dialog-avatar {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--c-raised);
-  font-size: 14px;
+  font-size: 13px;
 }
-.profile-menu-heading strong {
-  font-size: 18px;
-  font-weight: 600;
-}
-.profile-menu-heading small {
+.settings-dialog-profile strong {
   display: block;
-  margin-top: 3px;
+  font-size: 13px;
+}
+.settings-dialog-profile small {
+  display: block;
   color: var(--c-muted);
-  font-size: 14px;
+  font-size: 12px;
 }
-.profile-menu-item {
+.settings-dialog-body {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-  min-height: 50px;
-  padding: 9px 14px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font-size: 17px;
-  text-align: left;
+  flex: 1 1 auto;
+  min-height: 0;
 }
-.profile-menu-item:hover,
-.profile-menu-item.selected {
+.settings-dialog .settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  width: 168px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--c-line-soft);
+  overflow-y: auto;
+}
+.settings-dialog .settings-nav button {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--c-text);
+}
+.settings-dialog .settings-nav button.active {
   background: var(--c-selected);
   color: var(--c-accent);
-}
-.profile-menu-count {
-  margin-left: auto;
-  min-width: 32px;
-  padding: 3px 8px;
-  border-radius: 18px;
-  background: var(--c-amber-badge);
-  color: var(--c-on-amber);
-  text-align: center;
-  font-size: 15px;
-}
-.profile-menu-divider {
-  height: 1px;
-  background: var(--c-line);
-  margin: 8px 0;
-}
-
-/* Recent chats popover anchored under the chat tool group; it holds the existing list unchanged. */
-.home-history {
-  position: fixed;
-  z-index: 50;
-  width: 380px;
-  max-width: calc(100vw - 32px);
-  display: flex;
-  flex-direction: column;
-  padding: 14px 12px 12px;
-  border: 1px solid var(--c-line);
-  border-radius: 18px;
-  background: var(--c-surface);
-  color: var(--c-text);
-  box-shadow: var(--c-shadow);
-  backdrop-filter: blur(24px);
-}
-.home-history::before {
-  content: "";
-  position: absolute;
-  top: -7px;
-  left: var(--history-arrow, 40px);
-  width: 12px;
-  height: 12px;
-  transform: rotate(45deg);
-  background: var(--c-surface);
-  border-top: 1px solid var(--c-line);
-  border-left: 1px solid var(--c-line);
-}
-.history-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 8px 10px;
-}
-.history-heading h2 {
-  margin: 0;
-  font-size: 15px;
   font-weight: 600;
 }
-.history-results {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
+.settings-dialog .settings-nav button:focus-visible {
+  outline-offset: -2px;
 }
-.history-results .sessions {
-  min-height: 60px;
-  max-height: 60vh;
+.settings-dialog-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 24px 24px;
+  scroll-padding-block: 8px;
 }
-
-/* Narrow main windows (down to the 900 point minimum) stack the page switch under the tools, as the prototype does. */
-@media (max-width: 1100px) {
-  .home-header {
-    height: 142px;
-    align-items: flex-start;
-    padding-top: 20px;
+@media (max-width: 760px) {
+  .settings-dialog-top h2,
+  .settings-dialog-profile {
+    display: none;
   }
-  .home-nav {
-    top: 83px;
+  .settings-dialog-top {
+    justify-content: flex-end;
   }
-}
-@media (max-width: 1000px) {
-  .home-header {
-    padding: 20px 28px 0;
+  .settings-dialog-body {
+    flex-direction: column;
   }
-  .home-nav button {
-    min-width: 88px;
-    padding: 8px 12px;
-    gap: 7px;
-    font-size: 14px;
+  .settings-dialog .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--c-line-soft);
   }
-  .home-history-actions,
-  .home-account {
-    gap: 12px;
+  .settings-dialog .settings-nav button {
+    width: auto;
   }
 }
 
@@ -531,75 +776,6 @@ p {
   border-bottom: 1px solid var(--c-line);
 }
 
-/* 待处理 and 运行记录 use the prototype's compact header: no tool group, page switch centred, a bottom rule. */
-.home-header.home-header-compact {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  height: 80px;
-  padding: 0 36px;
-  gap: 16px;
-  border-bottom: 1px solid var(--c-line);
-}
-.home-header-compact .home-nav {
-  position: static;
-  grid-column: 2;
-  transform: none;
-}
-.home-header-compact .home-account {
-  grid-column: 3;
-  justify-content: flex-end;
-}
-
-/* Main-window settings use the prototype's horizontal category strip; the panel keeps its compact wrap. */
-.app:not(.panel-app) .settings-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.app:not(.panel-app) .settings-nav {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--c-line);
-}
-.app:not(.panel-app) .settings-nav button {
-  width: auto;
-  flex: 0 0 auto;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
-  padding: 10px 14px;
-  font-size: 14px;
-  color: var(--c-muted);
-  white-space: nowrap;
-}
-.app:not(.panel-app) .settings-nav button.active {
-  color: var(--c-accent);
-  background: transparent;
-  border-bottom-color: var(--c-accent);
-  font-weight: 600;
-}
-.app:not(.panel-app) .settings-nav button:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: -2px;
-}
-
-/* Conversation title row inside the chat page, replacing the old top toolbar (centred as in the prototype). */
-.home-chat-title {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  padding: 0 24px 8px;
-  flex-shrink: 0;
-}
-.home-chat-title .conversation-title {
-  color: var(--c-text);
-  font-size: 15px;
-  max-width: 75%;
-}
-
 .shell {
   display: flex;
   flex-direction: column;
@@ -667,10 +843,18 @@ p {
   font-size: 11px;
   color: var(--c-muted);
 }
+/* The page area is the width the pages adapt to (the centre in the main window, the whole panel in the
+   panel), and it keeps a keyboard ring clear of its edges when focus scrolls it. The enlarged project view
+   is fixed to the window, so it must not be contained. */
 .viewport {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  container-type: inline-size;
+  scroll-padding-block: 8px;
+}
+.viewport:has(.project-work-grid[data-full="true"]) {
+  container-type: normal;
 }
 .chat-layout {
   height: 100%;
@@ -683,6 +867,7 @@ p {
   overflow: auto;
   min-height: 0;
   padding: 0 30px;
+  scroll-padding-block: 8px;
 }
 .welcome {
   max-width: 660px;
@@ -712,6 +897,24 @@ p {
   font-size: 14px;
   color: var(--c-muted);
   margin-bottom: 28px;
+}
+/* On short main windows (the 900 × 680 minimum) the landing page tightens its vertical spacing so the four
+   suggestions stay fully visible above the composer instead of running under its top edge. */
+@media (max-height: 760px) {
+  .four-column .welcome {
+    margin: 20px auto 16px;
+  }
+  .four-column .large-mark {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 14px;
+  }
+  .four-column .welcome p {
+    margin-bottom: 18px;
+  }
+  .four-column .start-conversation {
+    margin-top: 14px;
+  }
 }
 .suggestions {
   display: grid;
@@ -1125,13 +1328,12 @@ select {
   font-size: 11px;
   color: var(--c-text);
 }
-@media (max-width: 1000px) {
+@container (max-width: 1000px) {
   .page {
     padding: 28px;
   }
-  .welcome {
-    margin-top: 35px;
-  }
+}
+@media (max-width: 1000px) {
   .settings-layout {
     gap: 20px;
     grid-template-columns: 115px minmax(0, 1fr);
@@ -1584,6 +1786,10 @@ select {
   border-radius: 10px;
   overflow: hidden;
   margin: 16px 0;
+}
+/* The list clips its rows to its rounded corners, so a row's keyboard ring is drawn inside the row. */
+.provider-list :focus-visible {
+  outline-offset: -2px;
 }
 .provider-row {
   width: 100%;

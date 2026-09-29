@@ -34,8 +34,8 @@ async function start() {
   page = await app.firstWindow();
   await expect(
     page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
 }
 async function snapshot() {
@@ -203,8 +203,8 @@ test("effort: both surfaces share one level control, the choice lives on the con
   await expect(api).toBeVisible();
   await goTo(page, "聊天");
   await page
-    .locator(".home-header")
-    .getByRole("button", { name: "新建对话", exact: true })
+    .locator("#main-sidebar")
+    .getByRole("button", { name: "新建聊天", exact: true })
     .click();
   const level = page.getByRole("combobox", { name: "推理强度" });
   await expect(level).toBeEnabled();
@@ -345,8 +345,8 @@ test("effort: sessions receive the fixed level on both local executors, an insta
     await goTo(page, "聊天");
     // Codex: the chosen level is thread configuration and the read-back matches.
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await picker.selectOption(`${codexId}::synthetic-model`);
     await level.selectOption("xhigh");
@@ -362,8 +362,8 @@ test("effort: sessions receive the fixed level on both local executors, an insta
     // Codex: a read-back that differs from the request stops the turn before any answer.
     codex.update({ effortReadback: "low" });
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await picker.selectOption(`${codexId}::synthetic-model`);
     await level.selectOption("high");
@@ -378,8 +378,8 @@ test("effort: sessions receive the fixed level on both local executors, an insta
     codex.update({ effortReadback: null });
     // Claude Code: --effort is passed, then an installation without the flag refuses the turn.
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await picker.selectOption(`${claudeId}::claude-synthetic[1m]`);
     await level.selectOption("max");
@@ -398,8 +398,8 @@ test("effort: sessions receive the fixed level on both local executors, an insta
     claude.update({ effortFlag: false });
     const beforeRefusal = claudeCalls().length;
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await picker.selectOption(`${claudeId}::claude-synthetic[1m]`);
     await level.selectOption("high");
@@ -418,8 +418,8 @@ test("effort: sessions receive the fixed level on both local executors, an insta
     await page.screenshot({ path: info.outputPath("claude-flag-missing.png") });
     // API: the request body has no level field and the snapshot records none.
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await picker.selectOption(`${apiId}::api-model`);
     await expect(level).toBeDisabled();
@@ -547,8 +547,8 @@ test("walkthrough: a conversation with API history can be sent to a local execut
     });
     await goTo(page, "聊天");
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     const input = page.getByRole("textbox", { name: "输入草稿" });
     await input.fill("先问 API");

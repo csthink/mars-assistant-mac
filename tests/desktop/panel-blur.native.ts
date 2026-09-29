@@ -46,8 +46,8 @@ test("native: Tray panel activates across applications and hides on external foc
     const main = await product.firstWindow();
     await expect(
       main
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await product.evaluate(({ app, BrowserWindow }) => {
       app.focus({ steal: true });

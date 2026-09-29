@@ -57,6 +57,7 @@ export function useOrganization({
   rename,
   notice,
   filter = "",
+  highlightCurrent = true,
 }: {
   page: string;
   snapshot: Snapshot | undefined;
@@ -66,8 +67,10 @@ export function useOrganization({
   select: (id: string) => Promise<boolean>;
   rename: (id: string) => void;
   notice: (message: string) => void;
-  /** Title-only filter for the recent list (the popover's in-list search); never a global search. */
+  /** Title-only filter for the recent list (the sidebar's in-list search); never a global search. */
   filter?: string;
+  /** Mark the current conversation's row; off while the centre shows another object. */
+  highlightCurrent?: boolean;
 }) {
   const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
   const [archive, setArchive] = useState(false);
@@ -217,7 +220,7 @@ export function useOrganization({
     return (
       <div
         key={c.id}
-        className={`session-line ${currentId === c.id ? "active" : ""}`}
+        className={`session-line ${highlightCurrent && currentId === c.id ? "active" : ""}`}
         onContextMenu={(e) => {
           e.preventDefault();
           openMenu(c, e.clientX, e.clientY);
@@ -226,7 +229,9 @@ export function useOrganization({
         <button
           className={`session ${c.unread ? "unread" : ""}`}
           aria-label={`对话 ${c.id.slice(0, 8)}`}
-          aria-current={currentId === c.id ? "true" : undefined}
+          aria-current={
+            highlightCurrent && currentId === c.id ? "true" : undefined
+          }
           title={`${c.title} · ${date(c.updatedAt)} · ${c.id.slice(0, 8)}`}
           onClick={() => {
             void select(c.id);

@@ -40,8 +40,8 @@ test("background: initial and subsequent windows stay isolated while input, scre
   try {
     const page = await app.firstWindow();
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await expect(
       page.getByRole("textbox", { name: "输入草稿" }),

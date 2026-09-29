@@ -41,8 +41,8 @@ test("organization: single-line ordering, pin, unread and archive persist with e
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const list = await recent(page);
     await expect(list.locator(".session")).toHaveCount(2);
@@ -74,7 +74,6 @@ test("organization: single-line ordering, pin, unread and archive persist with e
     await expect(archive).toContainText(ids[0].slice(0, 8));
     await archive.getByRole("button", { name: "取消归档并打开" }).click();
     await expect(archive).toHaveCount(0);
-    await expect(page.locator("section#home-history")).toHaveCount(0);
     await recent(page);
     await expect(list.locator(".session")).toHaveCount(2);
     await page.screenshot({ path: info.outputPath("organized-sidebar.png") });
@@ -92,8 +91,8 @@ test("organization: deletion confirmation, search exclusion, restoration and sep
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const remove = async () => {
       await recent(page);
@@ -127,6 +126,8 @@ test("organization: deletion confirmation, search exclusion, restoration and sep
     await remove();
     await dialog.getByRole("button", { name: "确认删除", exact: true }).click();
     await closeRecent(page);
+    await goTo(page, "设置");
+    await page.getByRole("button", { name: "最近删除", exact: true }).click();
     await page.getByRole("button", { name: "永久删除…", exact: true }).click();
     const permanent = page.getByRole("dialog", {
       name: "永久删除对话",
@@ -159,8 +160,8 @@ test("organization: copy exports saved messages only, archives are searchable an
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await recent(page);
     await page
@@ -220,8 +221,8 @@ test("organization: deep links queue on cold start and open existing identity wi
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const selected = async () =>
       page.evaluate(async () => {
@@ -259,8 +260,8 @@ test("appearance: light dark and automatic synchronize across windows and preser
     await page.emulateMedia({ colorScheme: null });
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const input = page.getByRole("textbox", { name: "输入草稿" });
     await input.fill("外观切换保留草稿");
@@ -327,8 +328,8 @@ test("appearance: light dark and automatic synchronize across windows and preser
     page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await expect
       .poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
@@ -353,8 +354,8 @@ test("appearance: a new data root starts light, and a choice the business servic
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await goTo(page, "设置");
@@ -407,8 +408,8 @@ test("organization: header title edits synchronize across surfaces and keep iden
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const heading = page.getByRole("button", {
       name: "修改对话名称",
@@ -486,9 +487,9 @@ test("organization: header title edits synchronize across surfaces and keep iden
       expect(menu).not.toBeNull();
       expect(box!.x + box!.width).toBeLessThanOrEqual(menu!.x);
       expect(menu!.x - box!.x - box!.width).toBeLessThanOrEqual(8);
-      // feature-t28: the main window's title row moved under the shell header (UI-01, CHAT-02);
-      // the panel keeps its compact toolbar with the create button beside the title.
-      const header = p.locator(p === page ? ".home-header" : ".topbar");
+      // The main window's title sits in the centre title row; the panel keeps its compact toolbar with
+      // the create button beside the title.
+      const header = p.locator(p === page ? ".center-header" : ".topbar");
       if (p === panel) {
         const create = await header
           .getByRole("button", { name: "新建对话", exact: true })
@@ -497,8 +498,9 @@ test("organization: header title edits synchronize across surfaces and keep iden
         expect(box!.x - create!.x - create!.width).toBeLessThanOrEqual(8);
         expect((await header.boundingBox())!.height).toBe(44);
       } else {
-        const shell = (await header.boundingBox())!;
-        expect(box!.y).toBeGreaterThanOrEqual(shell.y + shell.height);
+        const row = (await header.boundingBox())!;
+        expect(box!.y).toBeGreaterThanOrEqual(row.y);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(row.y + row.height);
       }
       await expect(header).not.toContainText("本地数据");
       const menuButton = p.getByRole("button", {
@@ -556,8 +558,8 @@ test("organization: header title edits synchronize across surfaces and keep iden
       reopened.getByRole("textbox", { name: "输入草稿" }),
     ).toHaveValue("改名时保留这段草稿");
     await reopened
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     // feature-t28: an empty conversation shows the welcome instead of a title row (prototype P1);
     // its name is still 新对话 in the recent list and can be renamed from the row menu.
@@ -589,8 +591,8 @@ test("organization: deletion reminder expires, undo remains safe and navigation 
   try {
     const page = await app.firstWindow();
     const create = page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true });
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true });
     await expect(create).toBeEnabled();
     await page.clock.install();
     const toast = page.locator(".organization-undo");
@@ -626,9 +628,9 @@ test("organization: deletion reminder expires, undo remains safe and navigation 
     await expect(toast).toHaveCount(0);
     await expectSessionCount(page, 2);
     await remove(ids[0]);
-    await goTo(page, "工作台");
+    await goTo(page, "项目");
     await expect(toast).toHaveCount(0);
-    // feature-t28: the shell keeps the chat tool group (new, recent, search) on 工作台 and 设置 (UI-01).
+    // The sidebar keeps new chat and search beside every object in the centre.
     await expect(create).toHaveCount(1);
     await page.screenshot({
       path: info.outputPath("workbench-header.png"),
@@ -642,15 +644,17 @@ test("organization: deletion reminder expires, undo remains safe and navigation 
     await expect(toast).toHaveCount(0);
     await openConversation(page, `对话 ${ids[1].slice(0, 8)}`);
     await expect(toast).toHaveCount(0);
-    for (const [name, shown] of [
-      ["工作台", 1],
-      ["待处理", 0],
-      ["运行记录", 0],
-      ["设置", 1],
+    for (const name of [
+      "项目",
+      "控件",
+      "待处理",
+      "运行记录",
+      "设置",
     ] as const) {
       await goTo(page, name);
-      await expect(create).toHaveCount(shown);
+      await expect(create).toHaveCount(1);
     }
+    await goTo(page, "聊天");
     const ready = app.waitForEvent("window");
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
@@ -682,7 +686,9 @@ test("organization: dialogs restore pointer focus without rings and preserve key
   });
   try {
     const page = await app.firstWindow();
-    const search = page.getByRole("button", { name: "全局搜索", exact: true });
+    const search = page
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "搜索", exact: true });
     const heading = page.getByRole("button", {
       name: "修改对话名称",
       exact: true,
@@ -721,7 +727,7 @@ test("organization: dialogs restore pointer focus without rings and preserve key
     await expect(heading).toHaveText("焦点恢复后的名称");
     await page.screenshot({
       path: info.outputPath("pointer-return.png"),
-      clip: (await page.locator(".home-header").boundingBox())!,
+      clip: (await page.locator(".center-header").boundingBox())!,
       scale: "css",
     });
     // Shift+Tab away and Tab back establishes real keyboard navigation.
@@ -738,7 +744,7 @@ test("organization: dialogs restore pointer focus without rings and preserve key
     }
     await page.screenshot({
       path: info.outputPath("keyboard-return.png"),
-      clip: (await page.locator(".home-header").boundingBox())!,
+      clip: (await page.locator(".center-header").boundingBox())!,
       scale: "css",
     });
     const menu = page.getByRole("button", {

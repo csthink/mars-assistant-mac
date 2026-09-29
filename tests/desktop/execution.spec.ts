@@ -111,8 +111,8 @@ async function launch() {
   const window = await application.firstWindow();
   await expect(
     window
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true }),
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   return { application, window };
 }
@@ -843,7 +843,7 @@ test("stop unconfirmed in the client: after the extension cancels an Implementer
       { projectId, instanceId: running.instanceId, scopeRef: running.scopeRef },
     );
     expect(bound.ok, JSON.stringify(bound)).toBe(true);
-    await goTo(page, "工作台");
+    await goTo(page, "项目");
     await page
       .locator(".project-open")
       .filter({ hasText: "停止事实项目" })

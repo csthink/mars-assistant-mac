@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { goTo } from "./shell";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { launchLocal, closeLocal } from "./local-client";
@@ -27,8 +28,8 @@ export async function journeyFixture(options: { reader?: boolean } = {}) {
   try {
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({
@@ -112,10 +113,7 @@ export async function journeyFixture(options: { reader?: boolean } = {}) {
       { projectId, target },
     );
     expect(bound.ok, JSON.stringify(bound)).toBe(true);
-    await page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
+    await goTo(page, "项目");
     await page
       .locator(".project-open")
       .filter({ hasText: "合成任务旅程" })

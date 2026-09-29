@@ -284,7 +284,7 @@ test("real codex: settings test, material consent, native failure recovery, unkn
     async function newConversation() {
       await goTo(page, "聊天");
       await page
-        .getByRole("button", { name: "新建对话", exact: true })
+        .getByRole("button", { name: /^新建(聊天|对话)$/ })
         .first()
         .click();
     }

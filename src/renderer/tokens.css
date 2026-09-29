@@ -10,6 +10,8 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --c-canvas: #f8f7f4; /* page background */
+  --c-sidebar: #ffffff; /* rail and sidebar */
+  --c-panel: #ffffff; /* right column */
   --c-surface: #ffffff; /* cards, header area, menus, dialogs, input areas */
   --c-raised: #f3f2ee; /* tint inside a card: code, tags, output rows */
   --c-line: #e3e2dc; /* neutral borders */
@@ -47,6 +49,8 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --c-canvas: #111311;
+  --c-sidebar: #161816;
+  --c-panel: #181a18;
   --c-surface: #1b1e1b;
   --c-raised: #232723;
   --c-line: #2e322e;

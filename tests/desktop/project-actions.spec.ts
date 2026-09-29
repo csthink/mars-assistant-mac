@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { goTo } from "./shell";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { journeyFixture } from "./project-action-fixture";
@@ -747,11 +748,7 @@ test("project actions: after an action succeeds its object shows 同步中 with 
     await note.scrollIntoViewIfNeeded();
     await f.page.screenshot({ path: info.outputPath("awaiting-light.png") });
     // The global pending entry shows the same item as 同步中 with its processing closed.
-    await f.page.getByRole("button", { name: /^我，个人空间/ }).click();
-    await f.page
-      .locator("section#profile-menu")
-      .getByRole("menuitem", { name: /^待处理/ })
-      .click();
+    await goTo(f.page, "待处理");
     const row = f.page
       .locator(".project-pending-item[data-status=pending]")
       .filter({ hasText: "冻结定义" });
@@ -763,11 +760,10 @@ test("project actions: after an action succeeds its object shows 同步中 with 
     await f.page.screenshot({
       path: info.outputPath("awaiting-pending-light.png"),
     });
-    await f.page
-      .getByRole("navigation", { name: "主要页面" })
-      .getByRole("button", { name: "工作台", exact: true })
-      .click();
-    // The events arrive: the true state, with no timer involved. Returning to 工作台 mounts the project
+    await goTo(f.page, "项目");
+    // 全部项目 opens the project list; the project row reopens its detail, as returning to it did before.
+    await f.page.locator(".project-open").first().click();
+    // The events arrive: the true state, with no timer involved. Returning to the project mounts the project
     // detail again and it shows no note until its first read, although the change still awaits its events;
     // the next action becoming available is what shows that they have arrived.
     await expect(button("开始实施")).toBeEnabled({ timeout: 20_000 });

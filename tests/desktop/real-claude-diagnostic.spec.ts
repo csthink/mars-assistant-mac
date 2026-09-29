@@ -101,8 +101,8 @@ test("real claude diagnostic: one selected-material product turn", async () => {
       });
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await openProvider(page, "Claude Code");
     const section = page.getByRole("region", {
@@ -239,8 +239,8 @@ test("real claude diagnostic: one selected-material product turn", async () => {
     );
     await goTo(page, "聊天");
     await page
-      .locator(".home-header")
-      .getByRole("button", { name: "新建对话", exact: true })
+      .locator("#main-sidebar")
+      .getByRole("button", { name: "新建聊天", exact: true })
       .click();
     await app.evaluate(
       ({ dialog }, file) => {

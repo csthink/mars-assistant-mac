@@ -15,8 +15,8 @@ test("host-service: validated IPC, durable commit, stale revision rejection and 
     const page = await app.firstWindow();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const outcome = await page.evaluate(async () => {
       const id = crypto.randomUUID();
@@ -72,8 +72,8 @@ test("host-service: validated IPC, durable commit, stale revision rejection and 
     await page.getByRole("button", { name: "重新连接", exact: true }).click();
     await expect(
       page
-        .locator(".home-header")
-        .getByRole("button", { name: "新建对话", exact: true }),
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     const recovered = await page.evaluate(async (id) => {
       const reply = await window.desktop.command({ type: "snapshot" });
