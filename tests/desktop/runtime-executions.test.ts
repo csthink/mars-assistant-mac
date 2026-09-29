@@ -183,7 +183,7 @@ test("schema 23 迁移：schema 22 数据库的执行、待处理与事件行原
   const seed = new Store(dir);
   // Later schemas add project organization, interface preferences and the conversation order; the 22 → 23
   // execution migration still runs first.
-  assert.equal(schemaVersion, 27);
+  assert.equal(schemaVersion, 28);
   seed.close();
   const legacy = new DatabaseSync(join(dir, "state.sqlite"));
   restorePreExecutionFixture(legacy);
