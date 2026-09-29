@@ -70,6 +70,13 @@ import {
   type Surface,
 } from "../shared/protocol";
 import { StoreError } from "./errors";
+import {
+  migrateConversationOrder,
+  movePinned,
+  newConversation,
+  pinnedOrder,
+  unusedCondition,
+} from "./conversation-order";
 import { backupBeforeUpgrade } from "./backup";
 import {
   applyExtraction,
@@ -120,7 +127,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 26;
+export const schemaVersion = 27;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -193,6 +200,8 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
           "ALTER TABLE settings ADD COLUMN interface_preferences TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(interface_preferences));",
         );
     },
+    // Version 27: conversation creation times from now on and the manual order of the pinned section.
+    26: migrateConversationOrder,
     17: `ALTER TABLE connection_models ADD COLUMN codex_json TEXT;
       UPDATE connection_models SET codex_json=(SELECT codex_json FROM connections WHERE connections.id=connection_models.connection_id)
       WHERE connection_id IN (SELECT id FROM connections WHERE provider='codex')
@@ -464,7 +473,7 @@ export class Store {
       conversations: (
         this.db
           .prepare(
-            `SELECT c.id, c.title, c.title_revision AS titleRevision, c.organization_revision AS organizationRevision, c.pinned_at AS pinnedAt, c.unread, c.archived_at AS archivedAt, c.deleted_at AS deletedAt, c.retain_until AS retainUntil, c.draft, c.revision, c.updated_at AS updatedAt,
+            `SELECT c.id, c.title, CASE WHEN c.manual_title IS NOT NULL THEN 'manual' WHEN c.auto_title IS NOT NULL THEN 'first-message' ELSE 'default' END AS titleSource, c.created_at AS createdAt, c.creation_order AS creationOrder, (CASE WHEN ${unusedCondition} THEN 1 ELSE 0 END) AS unused, c.title_revision AS titleRevision, c.organization_revision AS organizationRevision, c.pinned_at AS pinnedAt, c.unread, c.archived_at AS archivedAt, c.deleted_at AS deletedAt, c.retain_until AS retainUntil, c.draft, c.revision, c.updated_at AS updatedAt,
              COALESCE((SELECT substr(replace(content, char(10), ' '), 1, 80) FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS preview,
              (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) AS messageCount,
              c.connection_id AS connectionId, c.model_id AS modelId, c.effort,
@@ -483,11 +492,13 @@ export class Store {
       ).map((row) => ({
         ...row,
         unread: Boolean(row.unread),
+        unused: Boolean(row.unused),
         grantedConnections: JSON.parse(row.grantedConnections) as string[],
         grantedProviders: JSON.parse(
           row.grantedProviders,
         ) as Conversation["grantedProviders"],
       })),
+      pinnedOrder: pinnedOrder(this.db),
       connections: (
         this.db
           .prepare(
@@ -727,6 +738,14 @@ export class Store {
     }
     if (command.type === "organizeConversation") {
       organizeConversation(this.db, command, new Date().toISOString());
+      return;
+    }
+    if (command.type === "movePinned") {
+      movePinned(this.db, command);
+      return;
+    }
+    if (command.type === "newConversation") {
+      newConversation(this.db, command.id, surface, new Date().toISOString());
       return;
     }
     const target =

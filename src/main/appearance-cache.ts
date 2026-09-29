@@ -56,6 +56,10 @@ export function writeInterfaceCache(
     JSON.stringify({
       sidebarCollapsed: preferences.sidebarCollapsed,
       rightPanelWidth: preferences.rightPanelWidth,
+      pinnedSort: preferences.pinnedSort,
+      pinnedFolded: preferences.pinnedFolded,
+      projectsFolded: preferences.projectsFolded,
+      recentFolded: preferences.recentFolded,
     }),
     { mode: 0o600 },
   );

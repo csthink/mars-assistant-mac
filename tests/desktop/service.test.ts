@@ -313,7 +313,14 @@ test("版本 1 与版本 2 数据库顺序迁移到当前版本并保留数据�
           defaultModelId: null,
           telemetryEnabled: false,
           appearance: "light",
-          interface: { sidebarCollapsed: false, rightPanelWidth: null },
+          interface: {
+            sidebarCollapsed: false,
+            rightPanelWidth: null,
+            pinnedSort: "pinned",
+            pinnedFolded: false,
+            projectsFolded: false,
+            recentFolded: false,
+          },
           codex: { enabled: true, path: null, revision: 0 },
           claude: { enabled: true, path: null, revision: 0 },
         });

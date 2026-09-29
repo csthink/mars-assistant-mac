@@ -97,8 +97,11 @@ test("shell: the rail, the sidebar and the settings dialog replace the top navig
     ).toHaveCount(0);
     await expect(page.locator("section#profile-menu")).toHaveCount(0);
     await expect(page.locator("section#home-history")).toHaveCount(0);
+    // The former recent-chats popover button; the recent section's fold toggle has the same name.
     await expect(
-      page.getByRole("button", { name: "最近聊天", exact: true }),
+      page
+        .getByRole("button", { name: "最近聊天", exact: true })
+        .and(page.locator(":not(.section-toggle)")),
     ).toHaveCount(0);
     await expect(page.getByRole("tablist", { name: "工作台内容" })).toHaveCount(
       0,
@@ -431,7 +434,7 @@ test("shell: the sidebar's recent list filters by title only, keeps the archived
     await toggle.click();
     await expect(history.locator("#history-query-row")).toBeHidden();
     await expect(rows).toHaveCount(2);
-    // The archived entry keeps the archive behaviour; unarchive returns the row.
+    // The archived entry opens the archived page in the centre; unarchive returns the row.
     await history
       .locator(".session-line")
       .first()
@@ -439,12 +442,15 @@ test("shell: the sidebar's recent list filters by title only, keeps the archived
       .click();
     await page.getByRole("menuitem", { name: /^归档/ }).click();
     await expect(rows).toHaveCount(1);
-    await history
-      .getByRole("button", { name: "已归档 1", exact: true })
-      .click();
-    const archive = page.getByRole("dialog", { name: "已归档对话" });
+    const entry = history.getByRole("button", {
+      name: "已归档 1",
+      exact: true,
+    });
+    await entry.click();
+    await expect(entry).toHaveAttribute("aria-current", "page");
+    const archive = page.getByRole("list", { name: "已归档对话" });
     await expect(archive).toBeVisible();
-    await archive.getByRole("button", { name: "取消归档并打开" }).click();
+    await archive.getByRole("button", { name: "取消归档" }).click();
     await expect(archive).toHaveCount(0);
     await expect(rows).toHaveCount(2);
   } finally {
@@ -568,12 +574,13 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
       const first = rail(page).getByRole("button", { name: /^主页/ });
       await first.focus();
       const order: string[] = [await focused(page)];
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 24; i++) {
         await page.keyboard.press("Tab");
         order.push(await focused(page));
         if (order.at(-1) === "打开右栏") break;
       }
-      expect(order.slice(0, 10)).toEqual([
+      // Each sidebar section starts with its fold toggle; the project section's menu follows its toggle.
+      expect(order.slice(0, 13)).toEqual([
         "主页",
         "控件",
         "待处理",
@@ -582,11 +589,14 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
         "折叠侧栏",
         "新建聊天",
         "搜索⌘K",
+        "项目",
+        "项目区操作",
         "全部项目 · 0",
+        "最近聊天",
         "搜索最近聊天",
       ]);
       expect(order.at(-1)).toBe("打开右栏");
-      const rows = order.slice(10, -1);
+      const rows = order.slice(13, -1);
       expect(rows.filter((name) => name.startsWith("对话 ")).length).toBe(2);
       expect(rows.at(-1)).toBe("已归档 0");
       // Every shell control shows a visible ring when reached by keyboard.

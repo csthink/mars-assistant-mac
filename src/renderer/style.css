@@ -58,6 +58,7 @@ select:focus-visible {
     .field,
     .codex-path-settings,
     .rename-dialog,
+    .rename-inline,
     .project-form-dialog,
     .project-action-field,
     .widget-config-field,
@@ -421,6 +422,199 @@ p {
   font-weight: 600;
   color: var(--c-muted);
 }
+/* A section header: the title and its chevron fold the section; tools sit at the end of the row. */
+.section-heading {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+}
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 26px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: 6px;
+}
+.section-toggle:hover .section-title {
+  color: var(--c-text);
+}
+.section-chevron {
+  display: inline-flex;
+  color: var(--c-muted);
+}
+.section-chevron svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+  transition: transform 120ms ease;
+}
+.section-toggle[aria-expanded="false"] .section-chevron svg {
+  transform: rotate(-90deg);
+}
+.section-tools {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.section-tools .icon-button {
+  width: 28px;
+  height: 28px;
+}
+/* The sort button shows while the header is hovered or focused, and while its menu is open. */
+.section-more {
+  opacity: 0;
+}
+.section-head:hover .section-more,
+.section-head:focus-within .section-more,
+.section-more[aria-expanded="true"] {
+  opacity: 1;
+}
+.conversation-menu.section-menu {
+  width: 200px;
+}
+.menu-heading {
+  padding: 4px 10px 6px;
+  color: var(--c-muted);
+  font-size: 11px;
+}
+.conversation-menu .menu-check {
+  display: inline-flex;
+  width: 14px;
+  flex: none;
+  color: var(--c-accent);
+}
+.conversation-menu .menu-check svg {
+  width: 14px;
+  height: 14px;
+}
+.section-menu button {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.menu-label {
+  flex: 1 1 auto;
+}
+/* The pinned rows flow with the sidebar's scroll area like the recent list (no empty minimum height). */
+.pinned-section .sessions {
+  min-height: 0;
+  padding: 2px 0;
+  overflow: visible;
+}
+.pinned-section .session svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--c-muted);
+}
+.pinned-section .session-line.active .session svg {
+  color: var(--c-accent);
+}
+/* Manual order of the pinned section: a grip while hovered and a line where the row will land. */
+.pinned-section .session-line {
+  position: relative;
+}
+.drag-grip {
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  display: inline-flex;
+  transform: translateY(-50%);
+  color: var(--c-muted);
+  opacity: 0;
+  cursor: grab;
+}
+.drag-grip svg {
+  width: 10px;
+  height: 14px;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.session-line:hover .drag-grip {
+  opacity: 1;
+}
+.session-line.dragging {
+  opacity: 0.45;
+}
+.session-line.drop-before {
+  box-shadow: 0 -2px 0 var(--c-accent);
+}
+.session-line.drop-after {
+  box-shadow: 0 2px 0 var(--c-accent);
+}
+/* Renaming in place: the row or the centre title becomes a field. */
+.rename-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.session-rename {
+  padding: 3px 4px 3px 6px;
+}
+.rename-input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--c-accent);
+  border-radius: 6px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 12px;
+}
+/* The title row sizes to its content, so the field states its own width: 360 points, less only without room. */
+.center-rename {
+  flex: 0 1 360px;
+  width: 360px;
+  min-width: 0;
+}
+.center-rename .rename-input {
+  height: 30px;
+  font-size: 14px;
+  font-weight: 560;
+}
+.rename-error {
+  color: var(--c-red);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.center-rename .rename-error {
+  position: absolute;
+  top: calc(100% - 6px);
+  left: 20px;
+  right: 20px;
+  z-index: 5;
+  padding: 6px 10px;
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+  background: var(--c-raised);
+  box-shadow: var(--c-shadow-sm);
+}
+.title-source,
+.center-count,
+.archived-tag {
+  flex: none;
+  color: var(--c-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.archived-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--c-raised);
+  font-size: 11px;
+}
+.center-header {
+  position: relative;
+}
 .recent-chats .history-search {
   margin: 4px 0 8px;
 }
@@ -432,6 +626,12 @@ p {
 .recent-chats .archived-entry {
   width: 100%;
   border-radius: 8px;
+}
+/* The archived entry is current while the archived page is in the centre. */
+.recent-chats .archived-entry[aria-current="page"] {
+  background: var(--c-selected);
+  color: var(--c-text);
+  font-weight: 600;
 }
 
 /* Centre: the current object; its own width drives the pages' narrow layouts. */
@@ -3160,4 +3360,159 @@ input.setting-switch:disabled {
   color: var(--c-muted);
   background: var(--c-raised);
   vertical-align: 1px;
+}
+
+/* The archived conversations as a centre page, and the notice at the top of an archived conversation. */
+.archived-page {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 20px 24px 32px;
+}
+.archived-page > .quiet {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.archived-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--c-line);
+}
+.archived-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--c-line);
+}
+.archived-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--c-text);
+}
+.archived-open:hover {
+  background: var(--c-hover);
+}
+.archived-open svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--c-muted);
+}
+.archived-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.archived-text b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 560;
+}
+.archived-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-muted);
+  font-size: 11px;
+}
+.archived-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 20px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  background: var(--c-raised);
+  color: var(--c-muted);
+  font-size: 12px;
+}
+.archived-banner svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.archived-banner span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The right column's files and turn events of a conversation. */
+.right-list,
+.right-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.right-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--c-text);
+}
+.right-row:hover {
+  background: var(--c-hover);
+}
+.right-row svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--c-muted);
+}
+.right-row span,
+.right-timeline span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.right-row b,
+.right-timeline b {
+  font-size: 13px;
+  font-weight: 560;
+  overflow-wrap: anywhere;
+}
+.right-row small,
+.right-timeline small {
+  color: var(--c-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.right-row code {
+  font-size: 11px;
+}
+.right-timeline li {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--c-line-soft);
+}
+.right-timeline time {
+  color: var(--c-muted);
+  font-size: 11px;
+}
+.right-note {
+  margin: 12px 0 0;
+  color: var(--c-muted);
+  font-size: 11px;
+  line-height: 1.6;
 }

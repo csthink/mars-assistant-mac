@@ -1,10 +1,26 @@
-import { openModal } from "./modal-focus";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { openModal, refocus } from "./modal-focus";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import type {
   Conversation,
   ConversationAction,
+  PinnedSort,
   Snapshot,
 } from "../shared/protocol";
+import {
+  dateGroupLabels,
+  nextMidnight,
+  pinnedRows,
+  recentGroups,
+  sameNameCounts,
+} from "./conversation-lists";
+import { InlineRename } from "./conversation-title";
+import { Icon } from "./icons";
 function Modal({
   title,
   children,
@@ -47,6 +63,42 @@ function date(value: string) {
     hour12: false,
   });
 }
+/** Last activity: the time of day for today, otherwise the date. */
+export function activityTime(value: string) {
+  return new Date(value).toLocaleDateString() ===
+    new Date().toLocaleDateString()
+    ? new Date(value).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : new Date(value).toLocaleDateString("zh-CN", {
+        month: "numeric",
+        day: "numeric",
+      });
+}
+/** Where a conversation menu was opened: a sidebar row (pinned or recent), the centre title or the panel. */
+export type MenuOrigin = "pinned" | "recent" | "center" | "panel";
+/** Where renaming starts: a menu (by its origin) or the ⌥⌘R shortcut on the current conversation. */
+export type RenameOrigin = MenuOrigin | "shortcut";
+/** Inline renaming in progress in the main window: the row in the sidebar or the centre title. */
+export interface Renaming {
+  id: string;
+  where: "sidebar" | "center";
+}
+/** The current date, moving on at each local midnight so the date groups follow the calendar. */
+function useToday() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setNow(new Date()),
+      Math.max(1000, nextMidnight(now) - Date.now() + 1000),
+    );
+    return () => clearTimeout(timer);
+  }, [now]);
+  return now;
+}
+const short = (id: string) => id.slice(0, 8);
 export function useOrganization({
   page,
   snapshot,
@@ -58,6 +110,10 @@ export function useOrganization({
   notice,
   filter = "",
   highlightCurrent = true,
+  pinnedSort = "pinned",
+  renaming,
+  onRenameDone,
+  onArchived,
 }: {
   page: string;
   snapshot: Snapshot | undefined;
@@ -65,14 +121,29 @@ export function useOrganization({
   currentId: string | undefined;
   dirty: (id: string) => boolean;
   select: (id: string) => Promise<boolean>;
-  rename: (id: string) => void;
+  /** Starts renaming; keyboard tells whether the entry was reached by keyboard (its focus ring comes back). */
+  rename: (id: string, origin: RenameOrigin, keyboard: boolean) => void;
   notice: (message: string) => void;
   /** Title-only filter for the recent list (the sidebar's in-list search); never a global search. */
   filter?: string;
   /** Mark the current conversation's row; off while the centre shows another object. */
   highlightCurrent?: boolean;
+  /** Order of the pinned section in the main window. */
+  pinnedSort?: PinnedSort;
+  /** Inline renaming of a sidebar row in the main window. */
+  renaming?: Renaming;
+  onRenameDone?: () => void;
+  /** Opens the archived page in the main window's centre (the panel keeps the archived dialog). */
+  onArchived?: () => void;
 }) {
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
+  const [menu, setMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+    origin: MenuOrigin;
+    trigger: HTMLElement | null;
+    keyboard: boolean;
+  }>();
   const [archive, setArchive] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [confirm, setConfirm] = useState<{
@@ -81,12 +152,18 @@ export function useOrganization({
   }>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState<{
+    id: string;
+    over?: string;
+    after?: boolean;
+  }>();
   const [undo, setUndo] = useState<{
     id: string;
     page: string;
     currentId: string | undefined;
     revision: number;
   }>();
+  const now = useToday();
   useEffect(() => {
     if (!undo) return;
     const timer = setTimeout(() => setUndo(undefined), 5000);
@@ -101,18 +178,67 @@ export function useOrganization({
     )
       setUndo(undefined);
   }, [page, currentId, snapshot?.revision, undo]);
+  // A menu closes when the page scrolls or the window changes size (it would no longer sit at its entry).
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: Event) => {
+      if (
+        event.type === "scroll" &&
+        (event.target as Element | null)?.closest?.(".conversation-menu")
+      )
+        return;
+      setMenu(undefined);
+    };
+    window.addEventListener("resize", close);
+    document.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      document.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
   const target = snapshot?.conversations.find(
     (c) => c.id === menu?.id && !c.deletedAt,
   );
-  function openMenu(c: Conversation, x: number, y: number) {
+  function openMenu(
+    c: Conversation,
+    x: number,
+    y: number,
+    origin: MenuOrigin = "panel",
+    trigger: HTMLElement | null = null,
+    keyboard = false,
+  ) {
     if (!connected) return;
     setError("");
     setCopyOpen(false);
     setMenu({
       id: c.id,
       x: Math.max(8, Math.min(x, innerWidth - 248)),
-      y: Math.max(8, Math.min(y, innerHeight - 330)),
+      y: Math.max(8, Math.min(y, innerHeight - 380)),
+      origin,
+      trigger,
+      keyboard,
     });
+  }
+  /** Closes the menu and gives focus back to its entry, with a ring only when it was opened by keyboard. */
+  function closeMenu() {
+    const entry = menu?.trigger;
+    const keyboard = menu?.keyboard ?? false;
+    setMenu(undefined);
+    if (entry?.isConnected)
+      requestAnimationFrame(() => refocus(entry, keyboard));
+  }
+  /** After a row moves between the pinned section and the recent list, focus follows it to its menu button. */
+  function followRow(id: string, keyboard: boolean) {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        refocus(
+          document.querySelector<HTMLElement>(
+            `#main-sidebar [aria-label="对话菜单 ${short(id)}"]`,
+          ),
+          keyboard,
+        ),
+      ),
+    );
   }
   async function act(
     c: Conversation,
@@ -131,6 +257,7 @@ export function useOrganization({
       setError("");
       return false;
     }
+    const opened = menu;
     setBusy(true);
     setError("");
     try {
@@ -148,6 +275,14 @@ export function useOrganization({
       }
       setMenu(undefined);
       setConfirm(undefined);
+      if (
+        (action === "pin" || action === "unpin") &&
+        opened &&
+        (opened.origin === "pinned" || opened.origin === "recent")
+      )
+        followRow(c.id, opened.keyboard);
+      else if (opened?.trigger?.isConnected)
+        requestAnimationFrame(() => refocus(opened.trigger, opened.keyboard));
       if (action === "delete") {
         setUndo({
           id: c.id,
@@ -168,6 +303,30 @@ export function useOrganization({
       setBusy(false);
     }
   }
+  /** Moves a pinned conversation before another pinned one (null: to the end) in the manual order. */
+  async function move(c: Conversation, before: string | null) {
+    if (busy || !connected) return false;
+    setBusy(true);
+    try {
+      const reply = await window.desktop.command({
+        type: "movePinned",
+        kind: "conversation",
+        id: c.id,
+        before: before ? { kind: "conversation", id: before } : null,
+        revision: c.organizationRevision,
+      });
+      if (!reply.ok) {
+        notice(`顺序未改变：${reply.message}`);
+        return false;
+      }
+      return true;
+    } catch {
+      notice("顺序未改变，请核对连接后重试。");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
   async function copy(c: Conversation, kind: "link" | "markdown") {
     const reply = await window.desktop.copyConversation(c.id, kind);
     if (reply.ok) {
@@ -180,6 +339,17 @@ export function useOrganization({
       if (e.isComposing || document.querySelector("dialog[open]") || !connected)
         return;
       if (e.key === "Escape") {
+        if (menu) {
+          e.preventDefault();
+          closeMenu();
+        }
+        return;
+      }
+      if (
+        menu &&
+        e.key === "Tab" &&
+        document.activeElement?.closest(".conversation-menu")
+      ) {
         setMenu(undefined);
         return;
       }
@@ -189,7 +359,7 @@ export function useOrganization({
       if (!c) return;
       if (e.metaKey && e.altKey && e.code === "KeyR") {
         e.preventDefault();
-        rename(c.id);
+        rename(c.id, "shortcut", true);
       } else if (e.metaKey && e.altKey && e.code === "KeyP") {
         e.preventDefault();
         void act(c, c.pinnedAt ? "unpin" : "pin");
@@ -207,63 +377,120 @@ export function useOrganization({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
-  const recent = (snapshot?.conversations ?? []).filter(
-    (c) => !c.archivedAt && !c.deletedAt,
+  const conversations = snapshot?.conversations ?? [];
+  const recent = conversations.filter((c) => !c.archivedAt && !c.deletedAt);
+  const archived = conversations.filter((c) => c.archivedAt && !c.deletedAt);
+  const deleted = conversations.filter((c) => c.deletedAt);
+  const counts = sameNameCounts(conversations);
+  const pinned = pinnedRows(
+    conversations,
+    pinnedSort,
+    snapshot?.pinnedOrder ?? [],
   );
-  const archived = (snapshot?.conversations ?? []).filter(
-    (c) => c.archivedAt && !c.deletedAt,
-  );
-  const deleted = (snapshot?.conversations ?? []).filter((c) => c.deletedAt);
-  const counts = new Map<string, number>();
-  for (const c of recent) counts.set(c.title, (counts.get(c.title) ?? 0) + 1);
-  function item(c: Conversation) {
+  const manual = pinnedSort === "manual";
+  function dropOn(c: Conversation, event: DragEvent) {
+    if (!drag || drag.id === c.id) return;
+    event.preventDefault();
+    const box = event.currentTarget.getBoundingClientRect();
+    const after = event.clientY > box.top + box.height / 2;
+    setDrag({ ...drag, over: c.id, after });
+  }
+  async function drop() {
+    if (!drag?.over) return setDrag(undefined);
+    const moving = pinned.find((c) => c.id === drag.id);
+    const ids = pinned.map((c) => c.id).filter((id) => id !== drag.id);
+    const index = ids.indexOf(drag.over) + (drag.after ? 1 : 0);
+    setDrag(undefined);
+    if (moving) await move(moving, ids[index] ?? null);
+  }
+  function item(c: Conversation, section: "pinned" | "recent") {
+    const current = highlightCurrent && currentId === c.id;
+    const editing =
+      renaming?.where === "sidebar" && renaming.id === c.id && !!onRenameDone;
+    const draggable = section === "pinned" && manual && !editing;
     return (
       <div
         key={c.id}
-        className={`session-line ${highlightCurrent && currentId === c.id ? "active" : ""}`}
+        className={`session-line ${current ? "active" : ""} ${drag?.over === c.id ? (drag.after ? "drop-after" : "drop-before") : ""} ${drag?.id === c.id ? "dragging" : ""}`}
+        data-conversation={c.id}
+        draggable={draggable || undefined}
+        onDragStart={
+          draggable
+            ? (event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", c.id);
+                setDrag({ id: c.id });
+              }
+            : undefined
+        }
+        onDragOver={draggable ? (event) => dropOn(c, event) : undefined}
+        onDrop={
+          draggable
+            ? (event) => {
+                event.preventDefault();
+                void drop();
+              }
+            : undefined
+        }
+        onDragEnd={draggable ? () => setDrag(undefined) : undefined}
         onContextMenu={(e) => {
           e.preventDefault();
-          openMenu(c, e.clientX, e.clientY);
+          openMenu(
+            c,
+            e.clientX,
+            e.clientY,
+            section,
+            e.currentTarget.querySelector<HTMLElement>(".session-more"),
+          );
         }}
       >
-        <button
-          className={`session ${c.unread ? "unread" : ""}`}
-          aria-label={`对话 ${c.id.slice(0, 8)}`}
-          aria-current={
-            highlightCurrent && currentId === c.id ? "true" : undefined
-          }
-          title={`${c.title} · ${date(c.updatedAt)} · ${c.id.slice(0, 8)}`}
-          onClick={() => {
-            void select(c.id);
-          }}
-        >
-          {c.unread && <span className="unread-dot" aria-label="未读" />}
-          <span className="session-name">{c.title}</span>
-          {(counts.get(c.title) ?? 0) > 1 && (
-            <small className="same-name">同名 {counts.get(c.title)}</small>
-          )}
-          <time dateTime={c.updatedAt}>
-            {new Date(c.updatedAt).toLocaleDateString() ===
-            new Date().toLocaleDateString()
-              ? new Date(c.updatedAt).toLocaleTimeString("zh-CN", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: false,
-                })
-              : new Date(c.updatedAt).toLocaleDateString("zh-CN", {
-                  month: "numeric",
-                  day: "numeric",
-                })}
-          </time>
-          {dirty(c.id) && <span className="unsaved">未保存</span>}
-        </button>
+        {draggable && (
+          <span className="drag-grip" aria-hidden="true" title="拖动调整顺序">
+            <Icon name="grip" />
+          </span>
+        )}
+        {editing ? (
+          <InlineRename
+            conversation={c}
+            className="session-rename"
+            onClose={onRenameDone!}
+          />
+        ) : (
+          <button
+            className={`session ${c.unread ? "unread" : ""}`}
+            aria-label={`对话 ${short(c.id)}`}
+            aria-current={current ? "true" : undefined}
+            title={`${c.title} · ${date(c.updatedAt)} · ${short(c.id)}`}
+            onClick={() => {
+              void select(c.id);
+            }}
+          >
+            {section === "pinned" && <Icon name="chat" />}
+            {c.unread && <span className="unread-dot" aria-label="未读" />}
+            <span className="session-name">{c.title}</span>
+            {(counts.get(c.title) ?? 0) > 1 && (
+              <small className="same-name">同名 {counts.get(c.title)}</small>
+            )}
+            <time dateTime={c.updatedAt}>{activityTime(c.updatedAt)}</time>
+            {dirty(c.id) && <span className="unsaved">未保存</span>}
+          </button>
+        )}
         <button
           className="session-more"
-          aria-label={`对话菜单 ${c.id.slice(0, 8)}`}
+          aria-label={`对话菜单 ${short(c.id)}`}
+          aria-haspopup="menu"
+          aria-expanded={menu?.id === c.id && menu.origin === section}
           disabled={!connected}
           onClick={(e) => {
             const box = e.currentTarget.getBoundingClientRect();
-            openMenu(c, box.right, box.bottom);
+            openMenu(
+              c,
+              box.right,
+              box.bottom,
+              section,
+              e.currentTarget,
+              e.detail === 0,
+            );
           }}
         >
           ⋯
@@ -271,22 +498,25 @@ export function useOrganization({
       </div>
     );
   }
-  const needle = filter.trim().toLowerCase();
-  const shown = needle
-    ? recent.filter((c) => c.title.toLowerCase().includes(needle))
-    : recent;
+  const groups = recentGroups(conversations, now, filter);
+  const needle = filter.trim();
   const list = (
     <>
       <div className="sessions" aria-label="最近对话">
-        {shown.some((c) => c.pinnedAt) && (
-          <>
-            <div className="session-group">置顶</div>
-            {shown.filter((c) => c.pinnedAt).map(item)}
-            <div className="session-group">最近</div>
-          </>
-        )}
-        {shown.filter((c) => !c.pinnedAt).map(item)}
-        {!shown.length && (
+        {groups.map(({ group, items }) => (
+          <div
+            key={group}
+            className="session-date-group"
+            role="group"
+            aria-label={dateGroupLabels[group]}
+          >
+            <div className="session-group" aria-hidden="true">
+              {dateGroupLabels[group]}
+            </div>
+            {items.map((c) => item(c, "recent"))}
+          </div>
+        ))}
+        {!groups.length && (
           <p className="session-empty" role={needle ? "status" : undefined}>
             {needle ? "没有匹配的对话" : "新的想法，从一段对话开始。"}
           </p>
@@ -294,15 +524,22 @@ export function useOrganization({
       </div>
       <button
         className="archived-entry"
+        aria-current={page === "archived" ? "page" : undefined}
         onClick={() => {
-          setArchive(true);
           setError("");
+          if (onArchived) onArchived();
+          else setArchive(true);
         }}
       >
         已归档 <span>{archived.length}</span>
       </button>
     </>
   );
+  const pinnedList = pinned.length ? (
+    <div className="sessions" aria-label="已置顶对话">
+      {pinned.map((c) => item(c, "pinned"))}
+    </div>
+  ) : null;
   const trash = (
     <>
       <p>至少保留30天。到期后由你选择清理或延长，不会自动永久删除。</p>
@@ -313,7 +550,7 @@ export function useOrganization({
             <li key={c.id}>
               <strong>{c.title}</strong>
               <small>
-                {c.id.slice(0, 8)} ·{" "}
+                {short(c.id)} ·{" "}
                 {Date.parse(c.retainUntil!) < Date.now()
                   ? "已到期，可延长或清理"
                   : `保留至 ${date(c.retainUntil!)}`}
@@ -351,6 +588,11 @@ export function useOrganization({
       <p>暂无已删除控件。</p>
     </>
   );
+  // Up and down are the keyboard way to reorder the pinned section in manual order.
+  const pinnedIndex =
+    menu?.origin === "pinned" && manual && target
+      ? pinned.findIndex((c) => c.id === target.id)
+      : -1;
   const overlays = (
     <>
       {menu && target && (
@@ -391,9 +633,11 @@ export function useOrganization({
             <button
               role="menuitem"
               autoFocus
-              onClick={() => {
-                rename(target.id);
+              onClick={(e) => {
+                const keyboard = e.detail === 0;
+                const origin = menu.origin;
                 setMenu(undefined);
+                rename(target.id, origin, keyboard);
               }}
             >
               重命名 <kbd>⌥⌘R</kbd>
@@ -469,6 +713,35 @@ export function useOrganization({
             >
               删除对话…
             </button>
+            {pinnedIndex >= 0 && (
+              <>
+                <hr />
+                <button
+                  role="menuitem"
+                  disabled={busy || pinnedIndex === 0}
+                  onClick={async (e) => {
+                    const keyboard = e.detail === 0;
+                    setMenu(undefined);
+                    if (await move(target, pinned[pinnedIndex - 1].id))
+                      followRow(target.id, keyboard);
+                  }}
+                >
+                  上移
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={busy || pinnedIndex === pinned.length - 1}
+                  onClick={async (e) => {
+                    const keyboard = e.detail === 0;
+                    setMenu(undefined);
+                    if (await move(target, pinned[pinnedIndex + 2]?.id ?? null))
+                      followRow(target.id, keyboard);
+                  }}
+                >
+                  下移
+                </button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -480,7 +753,7 @@ export function useOrganization({
                 <li key={c.id}>
                   <strong>{c.title}</strong>
                   <small>
-                    {date(c.updatedAt)} · {c.id.slice(0, 8)}
+                    {date(c.updatedAt)} · {short(c.id)}
                   </small>
                   <div className="row">
                     <button
@@ -573,5 +846,15 @@ export function useOrganization({
         )}
     </>
   );
-  return { list, trash, overlays, openMenu };
+  return {
+    list,
+    pinned: pinnedList,
+    trash,
+    overlays,
+    openMenu,
+    act,
+    archived,
+    counts,
+    recentCount: recent.length,
+  };
 }

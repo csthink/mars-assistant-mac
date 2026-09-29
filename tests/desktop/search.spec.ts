@@ -45,14 +45,17 @@ test("search: rename preserves manual titles, duplicate identity and failed inpu
     ).toBeEnabled();
     await expect((await recent(page)).getByText(/同名 2/)).toHaveCount(2);
     await closeRecent(page);
+    // Renaming happens in place on the centre title.
+    const field = page
+      .locator(".center-header")
+      .getByRole("textbox", { name: /^重命名对话/ });
     await page.getByRole("button", { name: "修改对话名称" }).click();
-    const dialog = page.getByRole("dialog", { name: "重命名对话" });
-    await dialog.getByLabel("对话标题", { exact: true }).fill("我的离线资料");
-    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await field.fill("我的离线资料");
+    await field.press("Escape");
     await expect((await recent(page)).getByText("我的离线资料")).toHaveCount(0);
     await closeRecent(page);
     await page.getByRole("button", { name: "修改对话名称" }).click();
-    await dialog.getByLabel("对话标题", { exact: true }).fill("保留我的输入");
+    await field.fill("保留我的输入");
     await page.evaluate(async (id) => {
       const r = await window.desktop.command({
         type: "renameConversation",
@@ -62,14 +65,15 @@ test("search: rename preserves manual titles, duplicate identity and failed inpu
       });
       if (!r.ok) throw new Error(r.message);
     }, ids[1]);
-    await dialog.getByRole("button", { name: "保存标题", exact: true }).click();
-    await expect(dialog.getByRole("alert")).toContainText("另一入口");
-    await expect(dialog.getByLabel("对话标题", { exact: true })).toHaveValue(
-      "保留我的输入",
-    );
+    await field.press("Enter");
+    // A failed save keeps the field and the typed text, says why and shows the saved name.
+    const alert = page.locator(".center-header").getByRole("alert");
+    await expect(alert).toContainText("另一入口");
+    await expect(alert).toContainText("另一入口保存的标题");
+    await expect(field).toHaveValue("保留我的输入");
     await page.screenshot({ path: info.outputPath("rename-conflict.png") });
-    await dialog.getByRole("button", { name: "保存标题", exact: true }).click();
-    await expect(dialog).toHaveCount(0);
+    await field.press("Enter");
+    await expect(field).toHaveCount(0);
     await expect(
       (await recent(page)).getByText("保留我的输入", { exact: true }),
     ).toBeVisible();
@@ -418,11 +422,11 @@ test("search: recent conversations keep creation order after renaming the oldest
     await check();
     await openConversation(page, labels[1]);
     await page.getByRole("button", { name: "修改对话名称" }).click();
-    const rename = page.getByRole("dialog", { name: "重命名对话" });
-    await rename
-      .getByLabel("对话标题", { exact: true })
-      .fill("最早创建的改名对话");
-    await rename.getByRole("button", { name: "保存标题", exact: true }).click();
+    const rename = page
+      .locator(".center-header")
+      .getByRole("textbox", { name: /^重命名对话/ });
+    await rename.fill("最早创建的改名对话");
+    await rename.press("Enter");
     await expect(rename).toHaveCount(0);
     await check();
     await page.reload();

@@ -17,6 +17,13 @@ function open() {
   mkdirSync(".test-data/disposable", { recursive: true });
   return mkdtempSync(resolve(".test-data/disposable/interface-preferences-"));
 }
+/** The keys added for the sidebar sections, at their defaults. */
+const sections = {
+  pinnedSort: "pinned",
+  pinnedFolded: false,
+  projectsFolded: false,
+  recentFolded: false,
+} as const;
 const set = (key: string, value: unknown) => ({
   type: "setInterfacePreference",
   key,
@@ -30,6 +37,7 @@ test("interface preferences: a new data root reads the defaults, and each key is
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: false,
       rightPanelWidth: null,
+      ...sections,
     });
     assert.deepEqual(
       store.snapshot().settings.interface,
@@ -42,11 +50,13 @@ test("interface preferences: a new data root reads the defaults, and each key is
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: true,
       rightPanelWidth: null,
+      ...sections,
     });
     assert.ok(store.execute(set("rightPanelWidth", 520), "panel").ok);
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: true,
       rightPanelWidth: 520,
+      ...sections,
     });
     assert.ok(store.execute(set("rightPanelWidth", null), "main").ok);
     assert.equal(store.snapshot().settings.interface.rightPanelWidth, null);
@@ -59,6 +69,7 @@ test("interface preferences: a new data root reads the defaults, and each key is
     assert.deepEqual(reopened.snapshot().settings.interface, {
       sidebarCollapsed: true,
       rightPanelWidth: null,
+      ...sections,
     });
   } finally {
     reopened.close();
@@ -112,11 +123,13 @@ test("interface preferences: a stored value that is not a valid preference objec
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: false,
       rightPanelWidth: null,
+      ...sections,
     });
     write('{"sidebarCollapsed":true,"rightPanelWidth":"wide"}');
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: true,
       rightPanelWidth: null,
+      ...sections,
     });
     write("[1,2]");
     assert.deepEqual(
@@ -127,6 +140,7 @@ test("interface preferences: a stored value that is not a valid preference objec
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: false,
       rightPanelWidth: 600,
+      ...sections,
     });
     // Text that is not JSON never reaches the column.
     assert.throws(() => write("{not json"));
@@ -137,6 +151,7 @@ test("interface preferences: a stored value that is not a valid preference objec
     assert.deepEqual(store.snapshot().settings.interface, {
       sidebarCollapsed: true,
       rightPanelWidth: 700,
+      ...sections,
     });
   } finally {
     store.close();
@@ -157,14 +172,13 @@ test("interface preferences: schema 25 data upgrades to 26 with the defaults and
   legacy.close();
   const migrated = new Store(dir);
   try {
-    assert.equal(schemaVersion, 26);
     assert.equal(
       (
         migrated.db.prepare("PRAGMA user_version").get() as {
           user_version: number;
         }
       ).user_version,
-      26,
+      schemaVersion,
     );
     assert.equal(migrated.snapshot().settings.appearance, "dark");
     assert.deepEqual(
@@ -196,19 +210,29 @@ test("interface preferences: the shell cache reads back what it wrote, replaces 
   const dir = open();
   const path = join(dir, "interface");
   assert.equal(readInterfaceCache(path), undefined);
-  writeInterfaceCache(path, { sidebarCollapsed: true, rightPanelWidth: 512 });
+  writeInterfaceCache(path, {
+    sidebarCollapsed: true,
+    rightPanelWidth: 512,
+    ...sections,
+  });
   assert.deepEqual(readInterfaceCache(path), {
     sidebarCollapsed: true,
     rightPanelWidth: 512,
+    ...sections,
   });
-  writeInterfaceCache(path, { sidebarCollapsed: false, rightPanelWidth: null });
+  writeInterfaceCache(path, {
+    sidebarCollapsed: false,
+    rightPanelWidth: null,
+    ...sections,
+  });
   assert.deepEqual(readInterfaceCache(path), {
     sidebarCollapsed: false,
     rightPanelWidth: null,
+    ...sections,
   });
   assert.equal(
     readFileSync(path, "utf8"),
-    '{"sidebarCollapsed":false,"rightPanelWidth":null}',
+    '{"sidebarCollapsed":false,"rightPanelWidth":null,"pinnedSort":"pinned","pinnedFolded":false,"projectsFolded":false,"recentFolded":false}',
   );
   for (const damaged of [
     "{",
@@ -216,8 +240,65 @@ test("interface preferences: the shell cache reads back what it wrote, replaces 
     '{"sidebarCollapsed":"yes","rightPanelWidth":null}',
     '{"sidebarCollapsed":true,"rightPanelWidth":10}',
     '{"sidebarCollapsed":true}',
+    // A cache written before the section keys existed is unknown until the snapshot arrives.
+    '{"sidebarCollapsed":true,"rightPanelWidth":null}',
   ]) {
     writeFileSync(path, damaged);
     assert.equal(readInterfaceCache(path), undefined, damaged);
+  }
+});
+
+test("interface preferences: the pinned sort and the folded sections are saved key by key, refuse values outside their range and read missing or bad values as the defaults", () => {
+  const dir = open();
+  const store = new Store(dir);
+  try {
+    assert.deepEqual(
+      { ...store.snapshot().settings.interface },
+      { sidebarCollapsed: false, rightPanelWidth: null, ...sections },
+    );
+    assert.ok(store.execute(set("pinnedSort", "manual"), "main").ok);
+    assert.ok(store.execute(set("pinnedFolded", true), "main").ok);
+    assert.ok(store.execute(set("recentFolded", true), "panel").ok);
+    assert.ok(store.execute(set("projectsFolded", true), "main").ok);
+    assert.deepEqual(store.snapshot().settings.interface, {
+      sidebarCollapsed: false,
+      rightPanelWidth: null,
+      pinnedSort: "manual",
+      pinnedFolded: true,
+      projectsFolded: true,
+      recentFolded: true,
+    });
+    const before = store.snapshot();
+    for (const command of [
+      set("pinnedSort", "name"),
+      set("pinnedSort", null),
+      set("pinnedFolded", "true"),
+      set("projectsFolded", 0),
+      set("recentFolded", null),
+      set("recentSort", "updated"),
+    ]) {
+      assert.equal(validCommand(command), false, JSON.stringify(command));
+      assert.equal(store.execute(command, "main").ok, false);
+    }
+    assert.deepEqual(store.snapshot().settings, before.settings);
+    store.db
+      .prepare("UPDATE settings SET interface_preferences=? WHERE id=1")
+      .run('{"pinnedSort":"name","pinnedFolded":"yes","recentFolded":true}');
+    assert.deepEqual(store.snapshot().settings.interface, {
+      sidebarCollapsed: false,
+      rightPanelWidth: null,
+      pinnedSort: "pinned",
+      pinnedFolded: false,
+      projectsFolded: false,
+      recentFolded: true,
+    });
+  } finally {
+    store.close();
+  }
+  const reopened = new Store(dir);
+  try {
+    assert.equal(reopened.snapshot().settings.interface.recentFolded, true);
+  } finally {
+    reopened.close();
   }
 });

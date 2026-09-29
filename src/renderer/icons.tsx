@@ -1,5 +1,7 @@
 const icons: Record<string, string> = {
   folder: "M3 7V5h7l2 3h9v12H3Z",
+  chevronDown: "m6 9 6 6 6-6",
+  grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",
   archive: "M3 3h18v5H3ZM5 8v13h14V8M9 12h6",
   spark: "m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z",
   chat: "M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3V6a2 2 0 0 1 1-2Z",

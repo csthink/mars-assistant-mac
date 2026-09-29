@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type { Command } from "../shared/protocol";
 import { StoreError } from "./errors";
+import { dropPinnedOrder } from "./conversation-order";
 
 export const conversationActionLabels = {
   pin: "置顶",
@@ -84,7 +85,8 @@ export function readConversation(db: DatabaseSync, id: string, now: string) {
 export function unarchiveOnSubmit(db: DatabaseSync, id: string, now: string) {
   const changed = db
     .prepare(
-      "UPDATE conversations SET archived_at=NULL,organization_revision=organization_revision+1 WHERE id=? AND archived_at IS NOT NULL",
+      // Leaving the archive never pins again: a pin kept from before the archive is cleared as well.
+      "UPDATE conversations SET archived_at=NULL,pinned_at=NULL,organization_revision=organization_revision+1 WHERE id=? AND archived_at IS NOT NULL",
     )
     .run(id);
   if (changed.changes) recordAction(db, id, "unarchive", now);
@@ -137,6 +139,7 @@ export function organizeConversation(
       break;
     case "unpin":
       update("pinned_at=NULL");
+      dropPinnedOrder(db, id);
       break;
     case "unread":
       update("unread=1");
@@ -144,22 +147,27 @@ export function organizeConversation(
     case "read":
       update("unread=0");
       break;
+    // Archiving or deleting leaves the pinned section; leaving the archive or the trash never pins again.
     case "archive":
-      update("archived_at=?", now);
+      update("archived_at=?,pinned_at=NULL", now);
+      dropPinnedOrder(db, id);
       break;
     case "unarchive":
-      update("archived_at=NULL");
+      update("archived_at=NULL,pinned_at=NULL");
       break;
     case "delete": {
       const until = new Date(Date.parse(now) + 30 * 86400000).toISOString();
-      update("deleted_at=?,retain_until=?", now, until);
+      update("deleted_at=?,retain_until=?,pinned_at=NULL", now, until);
+      dropPinnedOrder(db, id);
       db.prepare(
         "UPDATE selections SET conversation_id=NULL WHERE conversation_id=?",
       ).run(id);
       break;
     }
     case "restore":
-      update("deleted_at=NULL,retain_until=NULL,archived_at=NULL");
+      update(
+        "deleted_at=NULL,retain_until=NULL,archived_at=NULL,pinned_at=NULL",
+      );
       break;
     case "extend":
       update(
