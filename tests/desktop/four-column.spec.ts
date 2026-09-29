@@ -354,6 +354,10 @@ test("widths: at 900 × 680 and the standard width the columns follow the width 
           })
           .click();
         await expect(page.locator(".bubble.user")).toBeVisible();
+        // The floating sidebar folds and focus moves to the centre title two frames later; the keys below must
+        // not race that move, so wait for it before focusing the divider.
+        await expect(sidebar).toHaveCount(0);
+        await expect(page.locator("[data-center-title]")).toBeFocused();
       } else expect(opened.sidebar).toBe("expanded");
       // Widening: keys, the widen button, double click and dragging all stay within the limits.
       const separator = page.getByRole("separator", { name: "调整右栏宽度" });
