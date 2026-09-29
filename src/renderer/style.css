@@ -569,8 +569,11 @@ p {
   font: inherit;
   font-size: 12px;
 }
+/* The title row sizes to its content, so the field states its own width: 360 points, less only without room. */
 .center-rename {
   flex: 0 1 360px;
+  width: 360px;
+  min-width: 0;
 }
 .center-rename .rename-input {
   height: 30px;

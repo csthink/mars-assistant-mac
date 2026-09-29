@@ -728,6 +728,11 @@ test("inline rename: the sidebar row and the centre title rename in place; Enter
     const start = await revision();
     await title.click();
     await expect(field(centre)).toBeFocused();
+    // The centre field is 360 points wide (narrower only when the title row has no room), not the width of the
+    // shortest title.
+    expect((await field(centre).boundingBox())!.width).toBeGreaterThanOrEqual(
+      359,
+    );
     await field(centre).fill("   ");
     await field(centre).press("Enter");
     await expect(field(centre)).toHaveCount(0);
