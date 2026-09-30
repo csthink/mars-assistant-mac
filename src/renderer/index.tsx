@@ -2,24 +2,16 @@ import "./tokens.css";
 import { taskRoute, clearTaskRoute } from "./task-route";
 import { ProjectColumnsContext } from "./project-columns";
 import { refocusWhenReady } from "./modal-focus";
-import {
-  RecordFilters,
-  initialRecordQuery,
-  matchesRecord,
-  recordScope,
-} from "./record-query";
-import {
-  ProjectPendingList,
-  ProjectRunLog,
-  useProjectProjections,
-} from "./project-pending";
+import { useProjectProjections } from "./project-pending";
+import { PendingPage } from "./pending-page";
+import { RecordsPage } from "./record-page";
+import "./record-pages.css";
 import { WidgetWorkspace } from "./widgets";
 import { Projects } from "./projects";
 import { useProjectSidebar } from "./project-sidebar";
 import {
   PermissionSettings,
   TrustBoundaryNotice,
-  ToolPending,
   ToolHistory,
 } from "./capabilities";
 import { createRoot } from "react-dom/client";
@@ -27,13 +19,11 @@ import { useEffect, useRef, useState } from "react";
 import { useBusiness } from "./state";
 import { ConnectionSettings } from "./connections";
 import { Transcript, activeTurn } from "./chat";
-import { pendingLabels, PendingList, ResolvedStops, RunLog } from "./records";
-import { stopConfirmed, stopUnconfirmed } from "./host-execution-fact";
+import { stopUnconfirmed } from "./host-execution-fact";
 import type { HostExecutionRecord } from "../shared/runtime-execution";
 import { AttachmentPreviewPanel, DraftAttachments } from "./attachments";
 import {
   attachmentsPerTurn,
-  eventLabels,
   presets,
   stateLabels,
   type Attachment,
@@ -124,97 +114,19 @@ function App() {
   const model = useBusiness();
   const { snapshot, status } = model;
   const projectProjections = useProjectProjections(snapshot, status.connected);
-  const [pendingQuery, setPendingQuery] = useState(initialRecordQuery),
-    [runQuery, setRunQuery] = useState({
-      ...initialRecordQuery,
-      order: "newest",
-    });
-  const hostPending = (snapshot?.pendingItems ?? [])
-    .filter((item) => {
-      const execution = snapshot?.runtimeExecutions.find(
-        (r) => r.executionRef === item.executionRef,
-      );
-      return matchesRecord(pendingQuery, {
-        text: [
-          item.kind,
-          pendingLabels[item.kind],
-          item.conversationId,
-          snapshot?.conversations.find((c) => c.id === item.conversationId)
-            ?.title,
-          execution?.domainNodeRef,
-        ].join(" "),
-        scope: recordScope(
-          snapshot!,
-          item.conversationId,
-          execution?.instanceId,
-          execution?.scopeRef,
-        ),
-        type: `host:${item.kind}`,
-        blocking: item.kind === "stop_unconfirmed",
-      });
-    })
-    .sort((a, b) =>
-      pendingQuery.order === "blocking" &&
-      (a.kind === "stop_unconfirmed") !== (b.kind === "stop_unconfirmed")
-        ? Number(b.kind === "stop_unconfirmed") -
-          Number(a.kind === "stop_unconfirmed")
-        : pendingQuery.order === "newest"
-          ? b.createdAt.localeCompare(a.createdAt)
-          : a.createdAt.localeCompare(b.createdAt),
-    );
-  const queriedTools = (snapshot?.toolOperations ?? []).filter((o) =>
-    matchesRecord(pendingQuery, {
-      text: [o.conversationTitle, o.attachmentName, o.purpose].join(" "),
-      scope: recordScope(snapshot!, o.conversationId),
-      type: "host:tool-authorization",
-      blocking: true,
-    }),
-  );
-  const queriedStops = (snapshot?.runtimeExecutions ?? []).filter((r) =>
-    matchesRecord(pendingQuery, {
-      text: [r.executionRef, r.domainNodeRef, "停止未确认"].join(" "),
-      scope: recordScope(snapshot!, null, r.instanceId, r.scopeRef),
-      type: "host:stop_unconfirmed",
-      blocking: false,
-    }),
-  );
-  const queriedEvents = (snapshot?.events ?? [])
-    .filter((e) => {
-      const execution = snapshot?.runtimeExecutions.find(
-        (r) => r.executionRef === e.payload.executionRef,
-      );
-      return (
-        matchesRecord(runQuery, {
-          text: `${eventLabels[e.kind]} ${JSON.stringify(e)}`,
-          scope: recordScope(
-            snapshot!,
-            snapshot!.turns.find((t) => t.executionId === e.executionId)
-              ?.conversationId ??
-              (typeof e.payload.conversationId === "string"
-                ? e.payload.conversationId
-                : null),
-            execution?.instanceId,
-            execution?.scopeRef,
-          ),
-          type: `host:${e.kind}`,
-        }) &&
-        (runQuery.days === "all" ||
-          Date.parse(e.at) >= Date.now() - Number(runQuery.days) * 86400000)
-      );
-    })
-    .sort((a, b) =>
-      runQuery.order === "oldest"
-        ? a.at.localeCompare(b.at)
-        : b.at.localeCompare(a.at),
-    );
+  const [pendingScopeId, setPendingScopeId] = useState<string>("all");
+  const [recordScopeId, setRecordScopeId] = useState<string>("all");
 
-  const domainPendingCount = projectProjections.reduce(
-    (n, e) =>
-      n +
-      (e.view?.projection?.pendingItems.filter((i) => i.status === "pending")
-        .length ?? 0),
-    0,
-  );
+  const domainPendingCount = new Set(
+    projectProjections.flatMap((entry) =>
+      (entry.view?.projection?.pendingItems ?? [])
+        .filter((item) => item.status === "pending")
+        .map(
+          (item) =>
+            `${entry.project.runtime?.instanceId}|${item.scopeRef}|${item.itemRef}`,
+        ),
+    ),
+  ).size;
   /** Global unresolved items: the rail badge and the pending page read the same count. */
   const unresolvedCount =
     domainPendingCount +
@@ -344,7 +256,9 @@ function App() {
     requestAnimationFrame(() => requestAnimationFrame(() => target()?.focus()));
   // The right column belongs to the conversation and the new-conversation page in this version.
   const rightAvailable =
-    !panel && (view === "chat" || (view === "projects" && projectAvailable));
+    !panel &&
+    (view === "chat" ||
+      (["projects", "pending", "records"].includes(view) && projectAvailable));
   const effectiveRight = rightOpen && rightAvailable;
   const layout = columnLayout({
     width,
@@ -359,7 +273,9 @@ function App() {
   useEffect(() => {
     if (!effectiveRight && takeover) setTakeover(false);
   }, [effectiveRight, takeover]);
-  function go(target: MainView) {
+  function go(target: MainView, scope = "all") {
+    if (target === "pending") setPendingScopeId(scope);
+    if (target === "records") setRecordScopeId(scope);
     if (panel) {
       setPage(
         target === "chat"
@@ -1436,116 +1352,26 @@ function App() {
           />
         </div>
         {snapshot && (
-          <RecordFilters
-            query={pendingQuery}
-            change={setPendingQuery}
+          <PendingPage
+            scope={pendingScopeId}
             snapshot={snapshot}
-            pending
-            types={[
-              ...projectProjections.flatMap((e) =>
-                (e.view?.projection?.pendingItems ?? []).map(
-                  (i): [string, string] => [
-                    `runtime:${i.capability.id}:${i.typeId}`,
-                    i.typeLabel,
-                  ],
-                ),
-              ),
-              ...snapshot.pendingItems.map((i): [string, string] => [
-                `host:${i.kind}`,
-                i.kind === "stop_unconfirmed"
-                  ? "停止未确认"
-                  : i.kind === "failed_turn"
-                    ? "回合失败"
-                    : "回合被中断",
-              ]),
-              ...(snapshot.runtimeExecutions.some(stopConfirmed)
-                ? [["host:stop_unconfirmed", "停止未确认"] as [string, string]]
-                : []),
-              ...(snapshot.toolOperations.length
-                ? [
-                    ["host:tool-authorization", "资料读取授权"] as [
-                      string,
-                      string,
-                    ],
-                  ]
-                : []),
-            ]}
-          />
-        )}
-        <p className="quiet">
-          全部未解决：
-          {unresolvedCount} · 阻塞：
-          {projectProjections.reduce(
-            (n, e) =>
-              n +
-              (e.view?.projection?.pendingItems.filter(
-                (i) => i.status === "pending" && i.blocking,
-              ).length ?? 0),
-            0,
-          ) +
-            heldStops.length +
-            (snapshot?.toolOperations.filter(
-              (o) => o.state === "pending" || o.state === "unknown",
-            ).length ?? 0)}
-        </p>
-        {projectProjections.length > 0 && (
-          <ProjectPendingList
             entries={projectProjections}
+            connected={status.connected}
+            busy={pendingBusy}
+            onRetry={(item) => resolvePending(item.id, "retry")}
+            onDismiss={(item) => resolvePending(item.id, "dismiss")}
+            onRecheck={(record) => {
+              void recheckExecution(record);
+            }}
+            onOpen={(conversationId) => {
+              void model.select(conversationId);
+              go("chat");
+            }}
+            onProject={openProjectSource}
             refresh={() => void model.reload()}
-            onOpen={openProjectSource}
-            query={pendingQuery}
-          />
-        )}
-        {pendingQuery.tab === "pending" && (
-          <>
-            <ToolPending
-              operations={queriedTools}
-              connected={status.connected}
-              onOpen={(conversationId) => {
-                void model.select(conversationId);
-                go("chat");
-              }}
-            />
-            {hostPending.length && snapshot ? (
-              <PendingList
-                items={hostPending}
-                executions={snapshot.runtimeExecutions}
-                connections={snapshot.connections}
-                busy={!status.connected || pendingBusy}
-                onRetry={(item) => {
-                  void resolvePending(item.id, "retry");
-                }}
-                onDismiss={(item) => {
-                  void resolvePending(item.id, "dismiss");
-                }}
-                onRecheck={(record) => {
-                  void recheckExecution(record);
-                }}
-                onOpen={(conversationId) => {
-                  void model.select(conversationId);
-                  go("chat");
-                }}
-              />
-            ) : projectProjections.length >
-              0 ? null : snapshot?.toolOperations.some(
-                (o) => o.state === "pending" || o.state === "unknown",
-              ) ? null : snapshot?.runtimeExecutions.some(stopConfirmed) ? (
-              <p className="quiet pending-empty-line">
-                没有待处理事项。失败或中断的回合、授权与恢复事项会出现在这里。
-              </p>
-            ) : (
-              emptyPage(
-                "没有待处理事项",
-                "失败或中断的回合、授权与恢复事项会出现在这里。",
-                "inbox",
-              )
-            )}
-          </>
-        )}
-        {snapshot && pendingQuery.tab === "processed" && (
-          <ResolvedStops
-            executions={queriedStops}
-            connections={snapshot.connections}
+            onRecords={(scope) => {
+              go("records", scope);
+            }}
           />
         )}
       </div>
@@ -1568,42 +1394,16 @@ function App() {
           />
         </div>
         {snapshot && (
-          <RecordFilters
-            query={runQuery}
-            change={setRunQuery}
+          <RecordsPage
             snapshot={snapshot}
-            types={[
-              ...Object.entries(eventLabels).map(
-                ([id, label]): [string, string] => [`host:${id}`, label],
-              ),
-              ["runtime:trace", "Runtime 记录"],
-            ]}
+            entries={projectProjections}
+            scope={recordScopeId}
+            onProject={openProjectSource}
+            onConversation={(conversationId) => {
+              void model.select(conversationId);
+              go("chat");
+            }}
           />
-        )}
-        <ProjectRunLog
-          entries={projectProjections}
-          onOpen={openProjectSource}
-          query={runQuery}
-        />
-        {snapshot?.events.length ? (
-          <RunLog
-            events={queriedEvents}
-            executions={snapshot.runtimeExecutions}
-            connections={snapshot.connections}
-          />
-        ) : projectProjections.some((e) =>
-            e.view?.projection?.objects.some(
-              (o) =>
-                o.view.kind === "trace" &&
-                Array.isArray(o.view.entries) &&
-                o.view.entries.length > 0,
-            ),
-          ) ? null : (
-          emptyPage(
-            "还没有运行记录",
-            "当前尚未执行模型或控件任务。历史事件将在执行后保留。",
-            "list",
-          )
         )}
       </div>
     );
@@ -1944,6 +1744,12 @@ function App() {
     <ProjectColumnsContext.Provider
       value={{
         host: projectPanelHost,
+        openPending: (scope) => {
+          go("pending", scope);
+        },
+        openRecords: (scope) => {
+          go("records", scope);
+        },
         open: effectiveRight,
         layout,
         panelRef: rightPanel,
@@ -2187,7 +1993,10 @@ function App() {
         <div
           ref={setProjectPanelHost}
           className="project-panel-host"
-          hidden={view !== "projects" || (!effectiveRight && !projectFull)}
+          hidden={
+            !["projects", "pending", "records"].includes(view) ||
+            (!effectiveRight && !projectFull)
+          }
         />
       </div>
     </ProjectColumnsContext.Provider>

@@ -707,6 +707,8 @@ export interface Snapshot {
   activeTurns: Turn[];
   /** Open pending items, newest first. */
   pendingItems: PendingItem[];
+  /** Resolved Host items are read from persistent storage; the active count remains pendingItems. */
+  resolvedPendingItems?: PendingItem[];
   /** Most recent run events, newest first, bounded. */
   events: RunEvent[];
   /** Runtime Host installations and their primary instances (feature-t29). */

@@ -620,6 +620,20 @@ export function ProjectDetail({
       onClose={columns.close}
       browser={
         <div className="project-object-browser" hidden={layout.full}>
+          <div className="row">
+            <button
+              className="button"
+              onClick={() => columns.openPending?.(project.id)}
+            >
+              在待处理中处理
+            </button>
+            <button
+              className="button"
+              onClick={() => columns.openRecords?.(project.id)}
+            >
+              在记录中查看
+            </button>
+          </div>
           <nav className="project-object-tabs" aria-label="Runtime 内容">
             {objects.map((object) => (
               <button

@@ -167,6 +167,7 @@ export function RecordFilters({
                 value={q.days}
                 onChange={(e) => set({ days: e.target.value })}
               >
+                <option value="today">今天</option>
                 <option value="7">最近 7 天</option>
                 <option value="30">最近 30 天</option>
                 <option value="all">全部保留记录</option>
