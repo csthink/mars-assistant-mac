@@ -441,7 +441,13 @@ function App() {
         return;
       const inside = sidebarRef.current?.contains(document.activeElement);
       setOverlay(false);
-      if (inside) focusSoon(() => railSidebarButton.current);
+      if (inside)
+        focusSoon(() =>
+          document.activeElement === document.body ||
+          sidebarRef.current?.contains(document.activeElement)
+            ? railSidebarButton.current
+            : null,
+        );
     };
     document.addEventListener("pointerdown", press, true);
     return () => document.removeEventListener("pointerdown", press, true);

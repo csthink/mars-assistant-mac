@@ -1191,7 +1191,12 @@ async function projectGeometry(page: Page) {
       const last = list.lastElementChild!.getBoundingClientRect();
       const below = [...document.querySelectorAll("*")].filter((e) => {
         const r = e.getBoundingClientRect();
-        return r.width > 0 && r.left < last.right && r.right > last.left;
+        // A row divider spans the list. A nearby control's outline is not a divider.
+        return (
+          r.width >= last.width - 2 &&
+          r.left <= last.left + 1 &&
+          r.right >= last.right - 1
+        );
       });
       for (const e of below) {
         const style = getComputedStyle(e),

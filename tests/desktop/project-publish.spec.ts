@@ -19,6 +19,7 @@ test("project publish: authorization refusal, lost Publish reply, merge readback
       lost?: boolean;
     } = {},
   ) {
+    await f.waitForPublishedProjection();
     await pane.getByRole("button", { name: label, exact: true }).click();
     const dialog = f.page.getByRole("dialog", {
       name: "核对项目操作",
@@ -62,6 +63,7 @@ test("project publish: authorization refusal, lost Publish reply, merge readback
     if (!list.ok || !list.operations?.[0]) throw Error(JSON.stringify(list));
     const operation = list.operations[0];
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
     return operation;
   }
   try {
@@ -78,6 +80,16 @@ test("project publish: authorization refusal, lost Publish reply, merge readback
     await act("执行验证");
     await act("调整评审额度", { human: true, limit: 2 });
     await act("提交变更评审");
+    // Exercise the reply-before-projection ordering even when the action is rejected.
+    writeFileSync(
+      join(
+        f.target.runtimeRoot,
+        "instances",
+        f.target.instanceId.replace(/[^A-Za-z0-9._-]/g, "_"),
+        "fault.json",
+      ),
+      JSON.stringify({ delayEvents: 0.01, eventGap: 0.02 }),
+    );
     const refused = await act("授权发布", { human: true, reject: true });
     expect(refused.resultCode).toBe("HUMAN_REJECTED");
     await expect(

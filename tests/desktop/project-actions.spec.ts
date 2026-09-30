@@ -627,6 +627,8 @@ test("project actions: one capability, several action schemas (OD-425): 补充�
       note: "已与设计稿逐项核对",
       tags: ["设计", "深色模式"],
     });
+    // The action reply can precede its projection events. Prepare once against the fully published version.
+    await f.waitForPublishedProjection();
     // The main process checks the entry's form: the root's fields never reach the Runtime.
     const before = listed.ok ? listed.operations!.length : -1;
     for (const [payload, reason] of [

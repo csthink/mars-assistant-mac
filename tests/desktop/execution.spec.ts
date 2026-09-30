@@ -850,6 +850,7 @@ test("stop unconfirmed in the client: after the extension cancels an Implementer
       .click();
     const projectFact = page.getByRole("region", { name: "Host 执行事实" });
     await expect(projectFact).toHaveCount(0);
+    await page.getByRole("button", { name: "打开右栏", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Runtime 内容" })
       .getByRole("button", { name: "Synthetic project", exact: true })
