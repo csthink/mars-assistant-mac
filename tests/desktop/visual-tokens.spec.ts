@@ -691,9 +691,9 @@ const projectPages: View[] = [
       [".sidebar .nav-item[aria-current=page]", "background-color", selected],
       [".sidebar .nav-item[aria-current=page] svg", "color", accent],
       [".projects-workspace", "color", text],
-      [".project-detail-card", "background-color", surface],
-      [".project-detail-card", "border-top-color", line],
-      [".project-detail-card h3", "color", text],
+      [".right-panel", "background-color", "var(--c-panel)"],
+      [".task-fixed-actions", "border-bottom-color", line],
+      [".task-fixed-actions h3", "color", text],
       [".project-source", "color", muted],
       [".project-object-tabs [aria-pressed=true]", "color", accent],
       [

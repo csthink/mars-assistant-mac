@@ -741,7 +741,9 @@ export function ProjectActionPanel({
   const history = operations.filter(
     (o) => o.request?.objectRef === object.objectRef,
   );
-  const shown = actions.filter((a) => a.objectRef === object.objectRef),
+  const shown = actions.filter(
+      (a) => a.objectRef === object.objectRef && a.scopeRef === object.scopeRef,
+    ),
     rowId = useId();
   const inFlight = useRef(false),
     request = useRef(0);
@@ -805,6 +807,9 @@ export function ProjectActionPanel({
   return (
     <section className="project-actions" aria-label="项目操作">
       <h4>可用操作</h4>
+      {!shown.length && (
+        <p className="project-form-hint">当前对象未提供可用操作。</p>
+      )}
       {awaiting && !unavailable && project.runtime && (
         <AwaitingNote
           awaiting={awaiting}
@@ -819,8 +824,10 @@ export function ProjectActionPanel({
           ...shown.filter((a) => a.enabled),
           ...shown.filter((a) => !a.enabled),
         ].map((a) => {
-          const reason =
-            !a.enabled && !awaiting
+          const stale = a.expectedRevision !== object.revision;
+          const reason = stale
+            ? "操作版本与当前投影不一致，请重新读取。"
+            : !a.enabled && !awaiting
               ? `${a.disabledReason ?? ""}${a.disabledCode ? `（${a.disabledCode}）` : ""}`
               : "";
           const reasonId = `${rowId}-${a.actionId}`;
@@ -828,7 +835,9 @@ export function ProjectActionPanel({
             <div key={a.actionId} className="project-action-row">
               <button
                 className="button"
-                disabled={busy || !!unavailable || !!awaiting || !a.enabled}
+                disabled={
+                  busy || !!unavailable || !!awaiting || !a.enabled || stale
+                }
                 aria-describedby={reason ? reasonId : undefined}
                 onClick={() => void prepare(a)}
               >

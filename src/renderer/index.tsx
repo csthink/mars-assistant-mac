@@ -1,4 +1,5 @@
 import "./tokens.css";
+import { taskRoute, clearTaskRoute } from "./task-route";
 import { ProjectColumnsContext } from "./project-columns";
 import { refocusWhenReady } from "./modal-focus";
 import {
@@ -260,7 +261,9 @@ function App() {
   // The menu bar panel keeps its four pages; the main window shows one object in the centre, settings as a
   // dialog and the right column beside it.
   const [page, setPage] = useState<Page>(panel ? "工作台" : "聊天");
-  const [view, setView] = useState<MainView>("chat");
+  const [view, setView] = useState<MainView>(() =>
+    !panel && taskRoute() ? "projects" : "chat",
+  );
   const [projectsKey, setProjectsKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => window.desktop.onOpenConversation(() => go("chat")), []);
@@ -369,6 +372,7 @@ function App() {
       );
       return;
     }
+    if (target !== "projects") clearTaskRoute();
     setSettingsOpen(false);
     if (overlay) {
       // Opening an object from the floating sidebar folds it and puts focus on the centre title.

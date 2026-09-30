@@ -1,8 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ProjectionObject } from "../shared/runtime-host";
 import { EvidenceReader, type EvidenceCache } from "./project-evidence";
-type Node = { id: string; label: string; stateLabel: string; kind?: string };
-type Edge = {
+export type GraphNode = {
+  id: string;
+  label: string;
+  stateLabel: string;
+  kind?: string;
+};
+export type GraphEdge = {
   id: string;
   source: string;
   target: string;
@@ -28,7 +33,7 @@ const NODE_W = 220,
  * rows as slots per row; 适应内容 picks the slot count that gives the largest scale for the canvas it has, so a
  * narrow canvas takes fewer, longer columns.
  */
-function layout(nodes: Node[], edges: Edge[], slots?: number) {
+function layout(nodes: GraphNode[], edges: GraphEdge[], slots?: number) {
   const positions = new Map<string, { x: number; y: number }>(),
     levels = new Map<string, number>();
   const incoming = new Map(nodes.map((n) => [n.id, 0])),
@@ -87,7 +92,7 @@ function layout(nodes: Node[], edges: Edge[], slots?: number) {
 /** Width and height of a laid-out graph, with room for the loops of edges back up their own slot. */
 function extent(
   positions: Map<string, { x: number; y: number }>,
-  edges: Edge[],
+  edges: GraphEdge[],
 ) {
   const loops = edges.some((e) => {
     const a = positions.get(e.source),
@@ -165,16 +170,20 @@ function route(a: { x: number; y: number }, b: { x: number; y: number }) {
     },
   };
 }
-function Graph({
+export function Graph({
   object,
   projectId,
+  onSelect,
+  inspector = true,
 }: {
   object: ProjectionObject;
   projectId: string;
+  onSelect?: (id: string) => void;
+  inspector?: boolean;
 }) {
-  const nodes = object.view.nodes as Node[],
-    edges = object.view.edges as Edge[];
-  const key = `project-graph:${projectId}:${object.objectRef}`,
+  const nodes = object.view.nodes as GraphNode[],
+    edges = object.view.edges as GraphEdge[];
+  const key = `project-graph:${projectId}:${object.scopeRef}:${object.objectRef}`,
     marker = useId().replaceAll(":", "");
   const initial = () => {
     try {
@@ -216,10 +225,11 @@ function Graph({
     } | null>(null);
   const { positions, levels } = layout(nodes, edges, view.slots);
   const selected = nodes.find((n) => n.id === view.node);
+  const titleSize = Math.max(14, Math.min(24, 10.25 / view.zoom));
   /** Fits the whole graph: every slot count is tried and the one with the largest scale for this canvas wins. */
   function fit() {
     const box = svg.current?.getBoundingClientRect();
-    if (!box || !positions.size) return;
+    if (!box || box.width <= 0 || box.height <= 0 || !positions.size) return;
     let best = { slots: 1, zoom: 0, width: 0, height: 0 };
     for (let slots = 1; slots <= Math.max(1, levels); slots++) {
       const size = extent(layout(nodes, edges, slots).positions, edges),
@@ -235,7 +245,12 @@ function Graph({
       y: (box.height - best.height * best.zoom) / 2,
     }));
   }
+  function choose(id: string) {
+    setView((v) => ({ ...v, node: id }));
+    onSelect?.(id);
+  }
   function locate(id: string) {
+    onSelect?.(id);
     const p = positions.get(id),
       box = svg.current?.getBoundingClientRect();
     if (p && box)
@@ -248,8 +263,21 @@ function Graph({
       }));
   }
   useEffect(() => {
-    if (!sessionStorage.getItem(key)) fit();
+    if (sessionStorage.getItem(key)) return;
+    const canvas = svg.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      if (canvas.getBoundingClientRect().width > 0) {
+        fit();
+        observer.disconnect();
+      }
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
   }, [key]);
+  useEffect(() => {
+    onSelect?.(view.node);
+  }, [view.node, onSelect]);
   useEffect(() => {
     sessionStorage.setItem(key, JSON.stringify(view));
   }, [key, view]);
@@ -290,7 +318,9 @@ function Graph({
         <select
           aria-label="检查节点"
           value={selected?.id ?? ""}
-          onChange={(e) => locate(e.target.value)}
+          onChange={(e) =>
+            e.target.value ? locate(e.target.value) : choose("")
+          }
         >
           <option value="">选择节点</option>
           {nodes.map((n) => (
@@ -327,7 +357,10 @@ function Graph({
           }
         }}
         onPointerDown={(e) => {
-          if (e.button !== 0 || (e.target as Element).closest("[data-node]"))
+          if (
+            e.button !== 0 ||
+            (e.target as Element).closest("[data-node], [data-edge]")
+          )
             return;
           drag.current = {
             x: e.clientX,
@@ -373,7 +406,22 @@ function Graph({
             if (!a || !b) return null;
             const { path, label } = route(a, b);
             return (
-              <g key={e.id} className="project-graph-edge">
+              <g
+                key={e.id}
+                className="project-graph-edge"
+                data-edge={e.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`检查条件 ${e.label}`}
+                aria-pressed={view.node === `edge:${e.id}`}
+                onClick={() => choose(`edge:${e.id}`)}
+                onKeyDown={(event) => {
+                  if (["Enter", " "].includes(event.key)) {
+                    event.preventDefault();
+                    choose(`edge:${e.id}`);
+                  }
+                }}
+              >
                 <path d={path} markerEnd={`url(#${marker})`} />
                 <text x={label.x} y={label.y} textAnchor={label.anchor}>
                   {e.label.slice(0, 28)}
@@ -396,17 +444,17 @@ function Graph({
                 aria-label={`检查节点 ${n.label}`}
                 aria-pressed={selected?.id === n.id}
                 className="project-graph-node"
-                onClick={() => setView((v) => ({ ...v, node: n.id }))}
+                onClick={() => choose(n.id)}
                 onKeyDown={(e) => {
                   if (["Enter", " "].includes(e.key)) {
                     e.preventDefault();
-                    setView((v) => ({ ...v, node: n.id }));
+                    choose(n.id);
                   }
                 }}
               >
                 <rect width={NODE_W} height={NODE_H} rx="12" />
-                <text x="14" y="25">
-                  {n.label.slice(0, 18)}
+                <text x="14" y="25" style={{ fontSize: titleSize }}>
+                  {n.label.slice(0, Math.floor((NODE_W - 28) / titleSize))}
                 </text>
                 <text className="project-node-state" x="14" y="47">
                   {n.stateLabel.slice(0, 24)}
@@ -419,7 +467,7 @@ function Graph({
           })}
         </g>
       </svg>
-      {selected && (
+      {selected && inspector && (
         <section className="project-node-detail" aria-label="节点详情">
           <h4>{selected.label}</h4>
           <p>{selected.stateLabel}</p>
@@ -455,7 +503,7 @@ function Trace({
     sections = [
       ...new Set(entries.flatMap((e) => (e.section ? [e.section] : []))),
     ],
-    key = `project-run:${projectId}:${object.objectRef}`;
+    key = `project-trace-section:${projectId}:${object.scopeRef}:${object.objectRef}`;
   const [selection, setSelection] = useState(
     () => sessionStorage.getItem(key) ?? "",
   );
@@ -463,16 +511,16 @@ function Trace({
   return (
     <section aria-label="Trace 日志">
       <label>
-        运行
+        日志分组
         <select
-          aria-label="选择运行"
+          aria-label="筛选日志分组"
           value={chosen}
           onChange={(e) => {
             setSelection(e.target.value);
             sessionStorage.setItem(key, e.target.value);
           }}
         >
-          <option value="">全部运行</option>
+          <option value="">全部分组</option>
           {sections.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -497,7 +545,7 @@ function Trace({
             </li>
           ))}
       </ol>
-      {!entries.length && <p>该运行尚无 Trace 记录。</p>}
+      {!entries.length && <p>该来源尚无 Trace 记录。</p>}
     </section>
   );
 }

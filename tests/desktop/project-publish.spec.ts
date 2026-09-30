@@ -116,8 +116,10 @@ test("project publish: authorization refusal, lost Publish reply, merge readback
     // Re-enter through the persisted project and query the same operation after a renderer reload.
     await f.page.reload();
     await goTo(f.page, "项目");
-    // 全部项目 opens the project list; the project row reopens its detail, as returning to it did before.
-    await f.page.locator(".project-open").first().click();
+    // The task route restores the same task after reload; the original operation is still queryable.
+    await expect(
+      f.page.getByRole("region", { name: "任务详情", exact: true }),
+    ).toBeVisible();
     const row = pane.getByRole("article", {
       name: `操作 ${lost.operationId}`,
       exact: true,
@@ -162,7 +164,7 @@ test("project publish: authorization refusal, lost Publish reply, merge readback
     ).toBe("PUBLISHED");
     await expect(
       f.page
-        .locator(".project-domain-content > .project-section-heading")
+        .locator(".task-fixed-actions > .project-section-heading")
         .getByText("已关闭", { exact: true }),
     ).toBeVisible();
     await expect(
