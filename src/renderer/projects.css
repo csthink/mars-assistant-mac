@@ -230,6 +230,53 @@
 .project-menu button:focus-visible {
   background: var(--c-accent-soft);
 }
+.project-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.project-menu hr {
+  margin: 5px 4px;
+  border: 0;
+  border-top: 1px solid var(--c-line);
+}
+.project-side-line {
+  position: relative;
+}
+.project-side-line .project-side-open svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--c-muted);
+}
+.project-side-line .project-side-more,
+.project-side-line .project-new-chat {
+  opacity: 0;
+}
+.project-side-line:hover .project-side-more,
+.project-side-line:hover .project-new-chat,
+.project-side-line:focus-within .project-side-more,
+.project-side-line:focus-within .project-new-chat {
+  opacity: 1;
+}
+.project-side-line .project-new-chat svg {
+  width: 13px;
+  height: 13px;
+}
+.project-sidebar-notice {
+  position: fixed;
+  z-index: 900;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  background: var(--c-surface);
+  box-shadow: var(--c-shadow);
+}
 .project-detail-heading {
   display: flex;
   align-items: center;
@@ -417,17 +464,35 @@
 .project-folder-choice > .button {
   flex-shrink: 0;
 }
+.project-form-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+.project-form-status .project-error {
+  flex: 1;
+  margin: 0;
+}
+.project-folder-retry {
+  flex-shrink: 0;
+}
 .project-form-hint {
   font-size: 13px;
   line-height: 1.6;
   color: var(--c-muted);
   margin: 0;
 }
+.project-form-footer-hint {
+  flex-shrink: 0;
+  padding: 8px 4px 0;
+}
 .project-form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 24px;
+  margin-top: 12px;
   padding-top: 18px;
   border-top: 1px solid var(--c-line);
 }

@@ -273,12 +273,15 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
     expect(box.x + box.width).toBeLessThanOrEqual(900);
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.y + box.height).toBeLessThanOrEqual(680);
-    await f.page
-      .getByRole("button", { name: "还原内容区", exact: true })
-      .hover();
-    await expect(
-      f.page.getByRole("button", { name: "还原内容区", exact: true }),
-    ).toHaveCSS("opacity", "1");
+    // Background windows ignore native mouse events; keyboard focus is the stable reveal path.
+    const restore = f.page.getByRole("button", {
+      name: "还原内容区",
+      exact: true,
+    });
+    await f.page.keyboard.press("Tab");
+    await restore.focus();
+    await expect(restore).toBeFocused();
+    await expect(restore).toHaveCSS("opacity", "1");
     const send = f.page
       .getByRole("region", { name: "项目对话", exact: true })
       .getByRole("button", { name: "发送", exact: true });

@@ -6,7 +6,7 @@ import { ProjectWorkspace } from "./project-work";
 import { validProjectRequest } from "../shared/project-work";
 import { ProjectAccess } from "./project-access";
 import { validProjectAccessRequest } from "../shared/project-access";
-import { ProjectFolders } from "./projects";
+import { ProjectFolders, folderFailure } from "./projects";
 import { validProjectCreateInput } from "../shared/projects";
 import { WidgetHost } from "./widget-host";
 import { PanelOutsideClicks, type MouseMonitor } from "./panel-outside";
@@ -2079,6 +2079,8 @@ if (!instance) {
       return projectAccess.request(input);
     });
     const projectFolders = new ProjectFolders();
+    // Background integration tests inject deterministic filesystem/Git outcomes without renderer access.
+    app.emit("csthink:project-folders", projectFolders);
     const projectOwners = new Set<number>();
     ipcMain.handle("project:pick-folder", async (event) => {
       const entry = sender(event);
@@ -2092,6 +2094,7 @@ if (!instance) {
           projectOwners.delete(owner);
         });
       }
+      const picker = projectFolders.beginPicker(owner);
       const chosen = await dialog.showOpenDialog(entry.window, {
         title: "选择项目文件夹",
         buttonLabel: "选择文件夹",
@@ -2102,14 +2105,39 @@ if (!instance) {
       try {
         return {
           ok: true,
-          ...(await projectFolders.select(owner, chosen.filePaths[0])),
+          ...(await projectFolders.select(owner, chosen.filePaths[0], picker)),
         };
-      } catch {
+      } catch (error) {
+        const failure = folderFailure(error);
         return {
           ok: false,
-          message: "无法读取文件夹或核对 Git 信息，请检查权限后重新选择。",
+          code: failure.code,
+          message: failure.message,
+          selectedPath: projectFolders.selectedPath(owner),
         };
       }
+    });
+    ipcMain.handle("project:retry-folder", async (event) => {
+      sender(event);
+      if (!status.connected || quitting)
+        return { ok: false, code: "UNAVAILABLE", message: "业务服务未连接。" };
+      const owner = event.sender.id;
+      try {
+        return { ok: true, ...(await projectFolders.retry(owner)) };
+      } catch (error) {
+        const failure = folderFailure(error);
+        return {
+          ok: false,
+          code: failure.code,
+          message: failure.message,
+          selectedPath: projectFolders.selectedPath(owner),
+        };
+      }
+    });
+    ipcMain.handle("project:cancel-folder", (event) => {
+      sender(event);
+      projectFolders.cancel(event.sender.id);
+      return { ok: true };
     });
     ipcMain.handle("project:create", async (event, input: unknown) => {
       sender(event);
@@ -2135,13 +2163,12 @@ if (!instance) {
             }),
         );
       } catch (error) {
+        const failure = folderFailure(error);
         return {
           ok: false,
           code: "CONFLICT",
-          message:
-            error instanceof Error
-              ? error.message
-              : "项目未保存，请重新选择文件夹。",
+          folderCode: failure.code,
+          message: failure.message,
         };
       }
     });

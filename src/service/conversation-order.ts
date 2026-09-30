@@ -42,35 +42,43 @@ export function pinnedOrder(db: DatabaseSync): PinnedRef[] {
   return (
     db
       .prepare(
-        `SELECT kind, id FROM pinned_order WHERE kind='conversation' AND id IN (${pinnedConversations}) ORDER BY position`,
+        `SELECT kind, id FROM pinned_order WHERE
+          (kind='conversation' AND id IN (${pinnedConversations})) OR
+          (kind='project' AND id IN (SELECT id FROM projects WHERE pinned_at IS NOT NULL AND archived_at IS NULL))
+          ORDER BY position`,
       )
-      .all() as { kind: "conversation"; id: string }[]
+      .all() as unknown as PinnedRef[]
   ).map((row) => ({ kind: row.kind, id: row.id }));
 }
 
 /** Removes a conversation from the manual order (unpinned, archived, deleted or purged). */
-export function dropPinnedOrder(db: DatabaseSync, id: string) {
-  db.prepare("DELETE FROM pinned_order WHERE kind='conversation' AND id=?").run(
-    id,
-  );
+export function dropPinnedOrder(
+  db: DatabaseSync,
+  kind: PinnedRef["kind"],
+  id: string,
+) {
+  db.prepare("DELETE FROM pinned_order WHERE kind=? AND id=?").run(kind, id);
 }
 
 /**
  * The manual display order: objects missing from the saved order first, newest pin first, then the saved
  * order. The same rule the sidebar applies, so a move always starts from what the person sees.
  */
-function displayedOrder(db: DatabaseSync): string[] {
-  const saved = pinnedOrder(db).map((ref) => ref.id);
-  const known = new Set(saved);
+function displayedOrder(db: DatabaseSync): PinnedRef[] {
+  const saved = pinnedOrder(db);
+  const key = (ref: PinnedRef) => `${ref.kind}:${ref.id}`;
+  const known = new Set(saved.map(key));
   const missing = (
     db
       .prepare(
-        `SELECT id FROM conversations WHERE id IN (${pinnedConversations}) ORDER BY pinned_at DESC, creation_order DESC`,
+        `SELECT kind,id FROM (
+          SELECT 'conversation' AS kind,id,pinned_at AS pinnedAt FROM conversations WHERE id IN (${pinnedConversations})
+          UNION ALL
+          SELECT 'project' AS kind,id,pinned_at AS pinnedAt FROM projects WHERE pinned_at IS NOT NULL AND archived_at IS NULL
+        ) ORDER BY pinnedAt DESC,kind,id`,
       )
-      .all() as { id: string }[]
-  )
-    .map((row) => row.id)
-    .filter((id) => !known.has(id));
+      .all() as unknown as PinnedRef[]
+  ).filter((ref) => !known.has(key(ref)));
   return [...missing, ...saved];
 }
 
@@ -84,7 +92,9 @@ export function movePinned(
 ) {
   const row = db
     .prepare(
-      "SELECT organization_revision AS revision, pinned_at AS pinnedAt, archived_at AS archivedAt, deleted_at AS deletedAt, purged_at AS purgedAt FROM conversations WHERE id=?",
+      command.kind === "conversation"
+        ? "SELECT organization_revision AS revision, pinned_at AS pinnedAt, archived_at AS archivedAt, deleted_at AS deletedAt, purged_at AS purgedAt FROM conversations WHERE id=?"
+        : "SELECT revision,pinned_at AS pinnedAt,archived_at AS archivedAt,NULL AS deletedAt,NULL AS purgedAt FROM projects WHERE id=?",
     )
     .get(command.id) as
     | {
@@ -96,32 +106,36 @@ export function movePinned(
       }
     | undefined;
   if (!row || row.purgedAt || row.deletedAt)
-    throw new StoreError("NOT_FOUND", "对话不存在或已删除，顺序未改变。");
+    throw new StoreError("NOT_FOUND", "对象不存在或已删除，顺序未改变。");
   if (row.revision !== command.revision)
     throw new StoreError(
       "CONFLICT",
-      "另一入口已更新对话，请核对最新状态后重试。顺序未改变。",
+      "另一入口已更新对象，请核对最新状态后重试。顺序未改变。",
     );
   if (!row.pinnedAt || row.archivedAt)
-    throw new StoreError("CONFLICT", "对话已不在已置顶中，顺序未改变。");
-  const order = displayedOrder(db).filter((id) => id !== command.id);
+    throw new StoreError("CONFLICT", "对象已不在已置顶中，顺序未改变。");
+  const order = displayedOrder(db).filter(
+    (ref) => ref.id !== command.id || ref.kind !== command.kind,
+  );
   let index = order.length;
   if (command.before) {
-    index = order.indexOf(command.before.id);
+    index = order.findIndex(
+      (ref) =>
+        ref.id === command.before!.id && ref.kind === command.before!.kind,
+    );
     if (index < 0)
-      throw new StoreError(
-        "CONFLICT",
-        "目标位置的对话已不在已置顶中，顺序未改变。",
-      );
+      throw new StoreError("CONFLICT", "目标对象已不在已置顶中，顺序未改变。");
   }
-  order.splice(index, 0, command.id);
-  db.exec("DELETE FROM pinned_order WHERE kind='conversation'");
+  order.splice(index, 0, { kind: command.kind, id: command.id });
+  db.exec("DELETE FROM pinned_order");
   const insert = db.prepare(
-    "INSERT INTO pinned_order(kind,id,position) VALUES('conversation',?,?)",
+    "INSERT INTO pinned_order(kind,id,position) VALUES(?,?,?)",
   );
-  order.forEach((id, position) => insert.run(id, position));
+  order.forEach((ref, position) => insert.run(ref.kind, ref.id, position));
   db.prepare(
-    "UPDATE conversations SET organization_revision=organization_revision+1 WHERE id=?",
+    command.kind === "conversation"
+      ? "UPDATE conversations SET organization_revision=organization_revision+1 WHERE id=?"
+      : "UPDATE projects SET revision=revision+1 WHERE id=?",
   ).run(command.id);
 }
 

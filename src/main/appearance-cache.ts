@@ -57,6 +57,7 @@ export function writeInterfaceCache(
       sidebarCollapsed: preferences.sidebarCollapsed,
       rightPanelWidth: preferences.rightPanelWidth,
       pinnedSort: preferences.pinnedSort,
+      projectSort: preferences.projectSort,
       pinnedFolded: preferences.pinnedFolded,
       projectsFolded: preferences.projectsFolded,
       recentFolded: preferences.recentFolded,

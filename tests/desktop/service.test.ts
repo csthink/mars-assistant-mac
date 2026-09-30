@@ -317,6 +317,7 @@ test("版本 1 与版本 2 数据库顺序迁移到当前版本并保留数据�
             sidebarCollapsed: false,
             rightPanelWidth: null,
             pinnedSort: "pinned",
+            projectSort: "updated",
             pinnedFolded: false,
             projectsFolded: false,
             recentFolded: false,

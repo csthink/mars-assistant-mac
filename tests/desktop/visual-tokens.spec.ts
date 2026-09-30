@@ -1798,8 +1798,8 @@ test("existing page defects: a user bubble sits at the right in the main window 
     }
     await goTo(page, "项目");
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     const dialog = page.locator(".project-form-dialog");
     await expect(dialog).toBeVisible();
@@ -1910,7 +1910,10 @@ test("form fields: a focused field in dialogs, settings, project settings and wi
       await goTo(page, "项目");
       if (await page.getByRole("button", { name: "返回项目列表" }).isVisible())
         await page.getByRole("button", { name: "返回项目列表" }).click();
-      await page.getByRole("button", { name: "新建项目", exact: true }).click();
+      await page
+        .locator(".project-controls")
+        .getByRole("button", { name: "新建项目", exact: true })
+        .click();
       await expect(page.locator(".project-form-dialog")).toBeVisible();
       await fields("new project", [
         ".project-form-dialog input",

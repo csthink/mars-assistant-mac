@@ -10,7 +10,7 @@ import {
 } from "react";
 import { Icon } from "./icons";
 import { COLUMN, type ColumnLayout } from "./column-layout";
-import type { PinnedSort } from "../shared/protocol";
+import type { PinnedSort, ProjectSort } from "../shared/protocol";
 
 /**
  * The main window's navigation shell: the rail (always present), the sidebar (folded, expanded or floated over
@@ -368,10 +368,14 @@ export function Sidebar({
   busy,
   view,
   projectCount,
+  projects,
+  projectSort,
+  onProjectSort,
   onFold,
   onNew,
   onSearch,
   onProjects,
+  onCreateProject,
   pinned,
   pinnedSort,
   onPinnedSort,
@@ -386,10 +390,14 @@ export function Sidebar({
   busy: boolean;
   view: MainView;
   projectCount: number;
+  projects: ReactNode;
+  projectSort: ProjectSort;
+  onProjectSort: (sort: ProjectSort) => void;
   onFold: () => void;
   onNew: () => void;
   onSearch: () => void;
   onProjects: () => void;
+  onCreateProject: () => void;
   /** Rows of the pinned section; null when nothing is pinned, and then the section is not shown. */
   pinned: ReactNode;
   pinnedSort: PinnedSort;
@@ -474,15 +482,40 @@ export function Sidebar({
             folded={folded.projects}
             onToggle={() => onFoldSection("projects")}
             tools={
-              <SectionMenu
-                label="项目区操作"
-                extra={[
-                  { name: `全部项目 · ${projectCount}`, run: onProjects },
-                ]}
-              />
+              <>
+                <button
+                  className="icon-button section-create"
+                  aria-label="新建项目"
+                  title="新建项目"
+                  disabled={!connected || busy}
+                  onClick={onCreateProject}
+                >
+                  <Icon name="plus" />
+                </button>
+                <SectionMenu
+                  label="项目区操作"
+                  heading="排序"
+                  options={(
+                    [
+                      ["updated", "最近更新"],
+                      ["name", "名称"],
+                      ["manual", "手动排序"],
+                    ] as [ProjectSort, string][]
+                  ).map(([id, name]) => ({
+                    id,
+                    name,
+                    checked: projectSort === id,
+                    choose: () => onProjectSort(id),
+                  }))}
+                  extra={[
+                    { name: `全部项目 · ${projectCount}`, run: onProjects },
+                  ]}
+                />
+              </>
             }
           />
           <div id="side-projects-body" hidden={folded.projects}>
+            {projects}
             <button
               className="nav-item"
               aria-current={view === "projects" ? "page" : undefined}

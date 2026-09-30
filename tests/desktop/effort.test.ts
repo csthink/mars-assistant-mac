@@ -450,8 +450,8 @@ test("effort: schema 20 data upgrades to 21 behind a verified backup and keeps c
       schemaVersion,
     );
     // The current schema version; later versions add project organization (25), interface preferences (26)
-    // and conversation creation times with the pinned order (27).
-    assert.equal(schemaVersion, 27);
+    // conversation creation times with the pinned order (27), and project organization (28).
+    assert.equal(schemaVersion, 28);
     const backups = readdirSync(parent).filter((name) =>
       name.startsWith("data-schema-20-backup-"),
     );

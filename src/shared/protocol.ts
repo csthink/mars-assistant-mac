@@ -125,9 +125,9 @@ export interface Conversation {
   /** Providers the user has confirmed may receive this conversation's history. */
   grantedProviders: Provider[];
 }
-/** An object in the pinned section; projects join in a later version. */
+/** An object in the mixed pinned section. */
 export interface PinnedRef {
-  kind: "conversation";
+  kind: "conversation" | "project";
   id: string;
 }
 export const conversationActions = [
@@ -338,6 +338,8 @@ export interface InterfacePreferences {
   rightPanelWidth: number | null;
   /** How the pinned section orders its rows: pin time (newest first), last update, or the manual order. */
   pinnedSort: PinnedSort;
+  /** Sidebar project rows only; independent of the project list page and manual positions. */
+  projectSort: ProjectSort;
   /** Folded section headers of the sidebar: only the header row stays. */
   pinnedFolded: boolean;
   projectsFolded: boolean;
@@ -345,10 +347,13 @@ export interface InterfacePreferences {
 }
 export const pinnedSorts = ["pinned", "updated", "manual"] as const;
 export type PinnedSort = (typeof pinnedSorts)[number];
+export const projectSorts = ["updated", "name", "manual"] as const;
+export type ProjectSort = (typeof projectSorts)[number];
 export const defaultInterfacePreferences: InterfacePreferences = {
   sidebarCollapsed: false,
   rightPanelWidth: null,
   pinnedSort: "pinned",
+  projectSort: "updated",
   pinnedFolded: false,
   projectsFolded: false,
   recentFolded: false,
@@ -367,6 +372,7 @@ export function validInterfacePreference(key: unknown, value: unknown) {
   )
     return typeof value === "boolean";
   if (key === "pinnedSort") return pinnedSorts.includes(value as PinnedSort);
+  if (key === "projectSort") return projectSorts.includes(value as ProjectSort);
   if (key === "rightPanelWidth")
     return (
       value === null ||
@@ -760,12 +766,17 @@ export type Command =
       value: PinnedSort;
     }
   | {
+      type: "setInterfacePreference";
+      key: "projectSort";
+      value: ProjectSort;
+    }
+  | {
       /** Moves a pinned object before another one (null: to the end) in the manual order. */
       type: "movePinned";
-      kind: "conversation";
+      kind: PinnedRef["kind"];
       id: string;
       before: PinnedRef | null;
-      /** The moved conversation's organization revision. */
+      /** The moved object's organization revision. */
       revision: number;
     }
   | { type: "newConversation"; id: string }
@@ -1001,6 +1012,8 @@ export interface DesktopBridge {
   /** Project repository governance access: register the folder, open the scope, authorize after review. */
   projectAccess: (request: ProjectAccessRequest) => Promise<ProjectAccessReply>;
   pickProjectFolder: () => Promise<ProjectFolderReply>;
+  retryProjectFolder: () => Promise<ProjectFolderReply>;
+  cancelProjectFolder: () => Promise<{ ok: true }>;
   createProject: (input: ProjectCreateInput) => Promise<Reply>;
   widgetEnabled: boolean;
   widgetControl: (command: WidgetControl) => Promise<WidgetUIReply>;
@@ -1175,16 +1188,16 @@ export function validCommand(value: unknown): value is Command {
     const before = c.before as Record<string, unknown> | null;
     return (
       keys === "before,id,kind,revision,type" &&
-      c.kind === "conversation" &&
+      (c.kind === "conversation" || c.kind === "project") &&
       validId(c.id) &&
       (before === null ||
         (!!before &&
           typeof before === "object" &&
           !Array.isArray(before) &&
           Object.keys(before).sort().join(",") === "id,kind" &&
-          before.kind === "conversation" &&
+          (before.kind === "conversation" || before.kind === "project") &&
           validId(before.id) &&
-          before.id !== c.id)) &&
+          (before.id !== c.id || before.kind !== c.kind))) &&
       Number.isSafeInteger(c.revision) &&
       Number(c.revision) >= 0
     );

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { goTo } from "./shell";
 import { launchLocal } from "./local-client";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 async function launch() {
@@ -35,8 +35,8 @@ test("projects: create, edit, archive and undo preserve project identity and ren
   const { app, page, data } = await launch();
   try {
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     const dialog = page.getByRole("dialog", { name: "新建项目", exact: true });
     await dialog.getByRole("textbox", { name: /项目名称/ }).fill("个人作品集");
@@ -169,8 +169,8 @@ test("projects: cancelled picker, empty name and expired edit retain input witho
   const { app, page, folder } = await launch();
   try {
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     const dialog = page.getByRole("dialog", { name: "新建项目", exact: true });
     await dialog.getByRole("textbox", { name: /项目名称/ }).fill("保留输入");
@@ -194,8 +194,8 @@ test("projects: cancelled picker, empty name and expired edit retain input witho
       }),
     ).toBe(0);
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = async () => ({
@@ -243,6 +243,211 @@ test("projects: cancelled picker, empty name and expired edit retain input witho
   }
 });
 
+test("projects: new project guidance stays fully visible above actions at the minimum window size", async () => {
+  const { app, page } = await launch();
+  try {
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.getTitle() === "csthink-assistant")!
+        .setSize(900, 680),
+    );
+    await expect.poll(() => page.evaluate(() => window.innerHeight)).toBe(680);
+    await page
+      .locator(".project-controls")
+      .getByRole("button", { name: "新建项目", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "新建项目", exact: true });
+    await expect(dialog.locator(".project-form-footer-hint")).toHaveText(
+      "选择文件夹后读取 Git 信息。创建项目不会修改文件夹或开始执行。",
+    );
+    await expect(dialog.locator(".project-form-footer-hint")).toBeInViewport({
+      ratio: 1,
+    });
+    await expect(dialog.getByRole("button", { name: "取消" })).toBeInViewport({
+      ratio: 1,
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("projects: checking can be cancelled; missing folder retry and save recheck keep form input", async () => {
+  const { app, page, data } = await launch();
+  const missing = join(resolve(data, ".."), "chosen-later");
+  try {
+    await app.evaluate(({ dialog }) => {
+      (
+        globalThis as unknown as {
+          finishProjectPicker?: (value: {
+            canceled: boolean;
+            filePaths: string[];
+          }) => void;
+        }
+      ).finishProjectPicker = undefined;
+      dialog.showOpenDialog = () =>
+        new Promise((resolve) => {
+          (
+            globalThis as unknown as { finishProjectPicker: typeof resolve }
+          ).finishProjectPicker = resolve;
+        });
+    });
+    await page
+      .locator(".project-controls")
+      .getByRole("button", { name: "新建项目", exact: true })
+      .click();
+    let form = page.getByRole("dialog", { name: "新建项目", exact: true });
+    await form.getByRole("textbox", { name: /项目名称/ }).fill("保留名称");
+    await form.getByRole("textbox", { name: /项目目标/ }).fill("保留目标");
+    await form.getByRole("button", { name: "选择文件夹" }).click();
+    await expect(form.getByRole("button", { name: "取消" })).toBeEnabled();
+    await expect(form.getByRole("button", { name: "重新选择" })).toBeEnabled();
+    await form.getByRole("button", { name: "取消" }).click();
+    await expect(form).toHaveCount(0);
+    await app.evaluate(() => {
+      (
+        globalThis as unknown as {
+          finishProjectPicker: (value: {
+            canceled: boolean;
+            filePaths: string[];
+          }) => void;
+        }
+      ).finishProjectPicker({ canceled: false, filePaths: ["/private/tmp"] });
+    });
+    expect(
+      await page.evaluate(async () => {
+        const r = await window.desktop.command({ type: "snapshot" });
+        return r.ok ? r.snapshot.projects.length : -1;
+      }),
+    ).toBe(0);
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      });
+    }, missing);
+    await page
+      .locator(".project-controls")
+      .getByRole("button", { name: "新建项目", exact: true })
+      .click();
+    form = page.getByRole("dialog", { name: "新建项目", exact: true });
+    await form.getByRole("textbox", { name: /项目名称/ }).fill("保留名称");
+    await form.getByRole("textbox", { name: /项目目标/ }).fill("保留目标");
+    await form.getByRole("button", { name: "选择文件夹" }).click();
+    await expect(form.getByRole("alert")).toContainText("文件夹已不存在");
+    await expect(form.getByRole("button", { name: "重试检查" })).toBeEnabled();
+    await expect(form).toContainText(missing);
+    mkdirSync(missing);
+    await form.getByRole("button", { name: "重试检查" }).click();
+    await expect(form).toContainText(missing);
+    await expect(form.getByRole("button", { name: "创建项目" })).toBeEnabled();
+    renameSync(missing, `${missing}-moved`);
+    mkdirSync(missing);
+    await form.getByRole("button", { name: "创建项目" }).click();
+    await expect(form.getByRole("alert")).toContainText("身份发生变化");
+    await expect(form.getByRole("textbox", { name: /项目名称/ })).toHaveValue(
+      "保留名称",
+    );
+    await expect(form.getByRole("textbox", { name: /项目目标/ })).toHaveValue(
+      "保留目标",
+    );
+    expect(
+      await page.evaluate(async () => {
+        const r = await window.desktop.command({ type: "snapshot" });
+        return r.ok ? r.snapshot.projects.length : -1;
+      }),
+    ).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("projects: timeout recovery stays visible and actionable at minimum size in both appearances", async () => {
+  const { app, page, folder } = await launch();
+  try {
+    await app.evaluate(({ BrowserWindow, dialog }, path) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => window.getTitle() === "csthink-assistant")!
+        .setSize(900, 680);
+      (
+        globalThis as unknown as { projectPickerCalls: number }
+      ).projectPickerCalls = 0;
+      dialog.showOpenDialog = async () => {
+        (globalThis as unknown as { projectPickerCalls: number })
+          .projectPickerCalls++;
+        return { canceled: false, filePaths: [path] };
+      };
+      const folders = (
+        globalThis as unknown as { projectFolders: { inspect: unknown } }
+      ).projectFolders;
+      folders.inspect = async () => {
+        throw Object.assign(
+          new Error("文件夹检查超时（10 秒），请重试检查或重新选择。"),
+          { code: "TIMEOUT" },
+        );
+      };
+    }, folder);
+    await expect.poll(() => page.evaluate(() => window.innerHeight)).toBe(680);
+    for (const appearance of ["light", "dark"] as const) {
+      expect(
+        (
+          await page.evaluate(
+            (value) =>
+              window.desktop.command({
+                type: "setAppearance",
+                appearance: value,
+              }),
+            appearance,
+          )
+        ).ok,
+      ).toBe(true);
+      await page
+        .locator(".project-controls")
+        .getByRole("button", { name: "新建项目", exact: true })
+        .click();
+      const form = page.getByRole("dialog", { name: "新建项目", exact: true });
+      await form.getByRole("textbox", { name: /项目名称/ }).fill("保留名称");
+      await form.getByRole("textbox", { name: /项目目标/ }).fill("保留目标");
+      await form.getByRole("button", { name: "选择文件夹" }).click();
+      const alert = form.getByRole("alert");
+      const retry = form.getByRole("button", { name: "重试检查" });
+      const reselect = form.getByRole("button", { name: "重新选择" });
+      const cancel = form.getByRole("button", { name: "取消" });
+      await expect(alert).toContainText("检查超时");
+      for (const control of [alert, retry, reselect, cancel])
+        await expect(control).toBeInViewport({ ratio: 1 });
+      for (const button of [retry, reselect, cancel])
+        await expect(button).toBeEnabled();
+      await retry.click();
+      await expect(alert).toContainText("检查超时");
+      const before = await app.evaluate(
+        () =>
+          (globalThis as unknown as { projectPickerCalls: number })
+            .projectPickerCalls,
+      );
+      await reselect.click();
+      await expect
+        .poll(() =>
+          app.evaluate(
+            () =>
+              (globalThis as unknown as { projectPickerCalls: number })
+                .projectPickerCalls,
+          ),
+        )
+        .toBe(before + 1);
+      await expect(form.getByRole("textbox", { name: /项目名称/ })).toHaveValue(
+        "保留名称",
+      );
+      await expect(form.getByRole("textbox", { name: /项目目标/ })).toHaveValue(
+        "保留目标",
+      );
+      await cancel.click();
+      await expect(form).toHaveCount(0);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test("projects: plain folders and multiple Git remotes display their verified source without credentials", async ({}, info) => {
   const { app, page, folder } = await launch();
   try {
@@ -271,8 +476,8 @@ test("projects: plain folders and multiple Git remotes display their verified so
         });
       }, path);
       await page
+        .locator(".project-controls")
         .getByRole("button", { name: "新建项目", exact: true })
-        .first()
         .click();
       const form = page.getByRole("dialog", { name: "新建项目", exact: true });
       await form.getByRole("textbox", { name: /项目名称/ }).fill(name);

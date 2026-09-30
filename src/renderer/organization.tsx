@@ -9,13 +9,15 @@ import {
 import type {
   Conversation,
   ConversationAction,
+  PinnedRef,
   PinnedSort,
   Snapshot,
 } from "../shared/protocol";
+import type { Project } from "../shared/projects";
+import { pinnedObjects, type PinnedObject } from "./project-lists";
 import {
   dateGroupLabels,
   nextMidnight,
-  pinnedRows,
   recentGroups,
   sameNameCounts,
 } from "./conversation-lists";
@@ -99,6 +101,20 @@ function useToday() {
   return now;
 }
 const short = (id: string) => id.slice(0, 8);
+const pinnedRef = (row: PinnedObject): PinnedRef => ({
+  kind: row.kind,
+  id: row.value.id,
+});
+const pinnedKey = (ref: PinnedRef) => `${ref.kind}:${ref.id}`;
+export interface PinnedProjectDrag {
+  draggable: boolean;
+  over?: "before" | "after";
+  dragging: boolean;
+  onDragStart: (event: DragEvent) => void;
+  onDragOver: (event: DragEvent) => void;
+  onDrop: (event: DragEvent) => void;
+  onDragEnd: () => void;
+}
 export function useOrganization({
   page,
   snapshot,
@@ -111,6 +127,7 @@ export function useOrganization({
   filter = "",
   highlightCurrent = true,
   pinnedSort = "pinned",
+  renderPinnedProject,
   renaming,
   onRenameDone,
   onArchived,
@@ -130,6 +147,10 @@ export function useOrganization({
   highlightCurrent?: boolean;
   /** Order of the pinned section in the main window. */
   pinnedSort?: PinnedSort;
+  renderPinnedProject?: (
+    project: Project,
+    drag: PinnedProjectDrag,
+  ) => ReactNode;
   /** Inline renaming of a sidebar row in the main window. */
   renaming?: Renaming;
   onRenameDone?: () => void;
@@ -153,8 +174,8 @@ export function useOrganization({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{
-    id: string;
-    over?: string;
+    ref: PinnedRef;
+    over?: PinnedRef;
     after?: boolean;
   }>();
   const [undo, setUndo] = useState<{
@@ -303,17 +324,20 @@ export function useOrganization({
       setBusy(false);
     }
   }
-  /** Moves a pinned conversation before another pinned one (null: to the end) in the manual order. */
-  async function move(c: Conversation, before: string | null) {
+  /** Moves one pinned object in the shared manual order. */
+  async function move(row: PinnedObject, before: PinnedRef | null) {
     if (busy || !connected) return false;
     setBusy(true);
     try {
       const reply = await window.desktop.command({
         type: "movePinned",
-        kind: "conversation",
-        id: c.id,
-        before: before ? { kind: "conversation", id: before } : null,
-        revision: c.organizationRevision,
+        kind: row.kind,
+        id: row.value.id,
+        before,
+        revision:
+          row.kind === "conversation"
+            ? row.value.organizationRevision
+            : row.value.revision,
       });
       if (!reply.ok) {
         notice(`顺序未改变：${reply.message}`);
@@ -382,36 +406,45 @@ export function useOrganization({
   const archived = conversations.filter((c) => c.archivedAt && !c.deletedAt);
   const deleted = conversations.filter((c) => c.deletedAt);
   const counts = sameNameCounts(conversations);
-  const pinned = pinnedRows(
+  const pinned = pinnedObjects(
     conversations,
+    snapshot?.projects ?? [],
     pinnedSort,
     snapshot?.pinnedOrder ?? [],
   );
   const manual = pinnedSort === "manual";
-  function dropOn(c: Conversation, event: DragEvent) {
-    if (!drag || drag.id === c.id) return;
+  function dropOn(ref: PinnedRef, event: DragEvent) {
+    if (!drag || pinnedKey(drag.ref) === pinnedKey(ref)) return;
     event.preventDefault();
     const box = event.currentTarget.getBoundingClientRect();
     const after = event.clientY > box.top + box.height / 2;
-    setDrag({ ...drag, over: c.id, after });
+    setDrag({ ...drag, over: ref, after });
   }
   async function drop() {
     if (!drag?.over) return setDrag(undefined);
-    const moving = pinned.find((c) => c.id === drag.id);
-    const ids = pinned.map((c) => c.id).filter((id) => id !== drag.id);
-    const index = ids.indexOf(drag.over) + (drag.after ? 1 : 0);
+    const moving = pinned.find(
+      (row) => pinnedKey(pinnedRef(row)) === pinnedKey(drag.ref),
+    );
+    const rows = pinned.filter(
+      (row) => pinnedKey(pinnedRef(row)) !== pinnedKey(drag.ref),
+    );
+    const index =
+      rows.findIndex(
+        (row) => pinnedKey(pinnedRef(row)) === pinnedKey(drag.over!),
+      ) + (drag.after ? 1 : 0);
     setDrag(undefined);
-    if (moving) await move(moving, ids[index] ?? null);
+    if (moving) await move(moving, rows[index] ? pinnedRef(rows[index]) : null);
   }
   function item(c: Conversation, section: "pinned" | "recent") {
     const current = highlightCurrent && currentId === c.id;
     const editing =
       renaming?.where === "sidebar" && renaming.id === c.id && !!onRenameDone;
     const draggable = section === "pinned" && manual && !editing;
+    const ref: PinnedRef = { kind: "conversation", id: c.id };
     return (
       <div
         key={c.id}
-        className={`session-line ${current ? "active" : ""} ${drag?.over === c.id ? (drag.after ? "drop-after" : "drop-before") : ""} ${drag?.id === c.id ? "dragging" : ""}`}
+        className={`session-line ${current ? "active" : ""} ${drag?.over && pinnedKey(drag.over) === pinnedKey(ref) ? (drag.after ? "drop-after" : "drop-before") : ""} ${drag && pinnedKey(drag.ref) === pinnedKey(ref) ? "dragging" : ""}`}
         data-conversation={c.id}
         draggable={draggable || undefined}
         onDragStart={
@@ -419,11 +452,11 @@ export function useOrganization({
             ? (event) => {
                 event.dataTransfer.effectAllowed = "move";
                 event.dataTransfer.setData("text/plain", c.id);
-                setDrag({ id: c.id });
+                setDrag({ ref });
               }
             : undefined
         }
-        onDragOver={draggable ? (event) => dropOn(c, event) : undefined}
+        onDragOver={draggable ? (event) => dropOn(ref, event) : undefined}
         onDrop={
           draggable
             ? (event) => {
@@ -536,8 +569,32 @@ export function useOrganization({
     </>
   );
   const pinnedList = pinned.length ? (
-    <div className="sessions" aria-label="已置顶对话">
-      {pinned.map((c) => item(c, "pinned"))}
+    <div className="sessions" aria-label="已置顶对象">
+      {pinned.map((row) => {
+        if (row.kind === "conversation") return item(row.value, "pinned");
+        const ref = pinnedRef(row);
+        return renderPinnedProject?.(row.value, {
+          draggable: manual,
+          over:
+            drag?.over && pinnedKey(drag.over) === pinnedKey(ref)
+              ? drag.after
+                ? "after"
+                : "before"
+              : undefined,
+          dragging: !!drag && pinnedKey(drag.ref) === pinnedKey(ref),
+          onDragStart: (event) => {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", pinnedKey(ref));
+            setDrag({ ref });
+          },
+          onDragOver: (event) => dropOn(ref, event),
+          onDrop: (event) => {
+            event.preventDefault();
+            void drop();
+          },
+          onDragEnd: () => setDrag(undefined),
+        });
+      })}
     </div>
   ) : null;
   const trash = (
@@ -591,7 +648,9 @@ export function useOrganization({
   // Up and down are the keyboard way to reorder the pinned section in manual order.
   const pinnedIndex =
     menu?.origin === "pinned" && manual && target
-      ? pinned.findIndex((c) => c.id === target.id)
+      ? pinned.findIndex(
+          (row) => row.kind === "conversation" && row.value.id === target.id,
+        )
       : -1;
   const overlays = (
     <>
@@ -722,7 +781,12 @@ export function useOrganization({
                   onClick={async (e) => {
                     const keyboard = e.detail === 0;
                     setMenu(undefined);
-                    if (await move(target, pinned[pinnedIndex - 1].id))
+                    if (
+                      await move(
+                        { kind: "conversation", value: target },
+                        pinnedRef(pinned[pinnedIndex - 1]),
+                      )
+                    )
                       followRow(target.id, keyboard);
                   }}
                 >
@@ -734,7 +798,14 @@ export function useOrganization({
                   onClick={async (e) => {
                     const keyboard = e.detail === 0;
                     setMenu(undefined);
-                    if (await move(target, pinned[pinnedIndex + 2]?.id ?? null))
+                    if (
+                      await move(
+                        { kind: "conversation", value: target },
+                        pinned[pinnedIndex + 2]
+                          ? pinnedRef(pinned[pinnedIndex + 2])
+                          : null,
+                      )
+                    )
                       followRow(target.id, keyboard);
                   }}
                 >
