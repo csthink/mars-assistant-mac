@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { closeLocal, launchLocal } from "./local-client";
@@ -558,7 +558,7 @@ test("native widget view: the widget's native view hides while the settings dial
   }
 });
 
-test("preferences: the folded sidebar and the right column width survive a restart from the first frame, while the right column itself starts folded", async () => {
+test("preferences: the folded sidebar and the right column width survive a restart from the first frame, while the right column itself starts folded", async ({}, info) => {
   const { root, ids } = seed();
   let { app, page } = await launch(root);
   try {
@@ -571,10 +571,47 @@ test("preferences: the folded sidebar and the right column width survive a resta
     await requestSize(app, page, 1440, 900);
     await rightToggle(page).click();
     const separator = page.getByRole("separator", { name: "调整右栏宽度" });
+    // Opening the panel moves focus after two rendered frames. Finish that transition
+    // before placing focus on the separator; consecutive keys stay consecutive.
+    await expect(
+      page.getByRole("tab", { name: "文件", exact: true }),
+    ).toBeFocused();
     await separator.focus();
+    await separator.evaluate((node) => {
+      const events: unknown[] = [];
+      (window as unknown as { resizeEvents: unknown[] }).resizeEvents = events;
+      document.addEventListener(
+        "keydown",
+        (event) => {
+          events.push({
+            key: event.key,
+            trusted: event.isTrusted,
+            target: (event.target as Element).getAttribute("aria-label"),
+            focused: document.activeElement === node,
+            width: node.getAttribute("aria-valuenow"),
+            at: performance.now(),
+          });
+        },
+        true,
+      );
+    });
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowLeft");
-    await expect(separator).toHaveAttribute("aria-valuenow", "448");
+    try {
+      await expect(separator).toHaveAttribute("aria-valuenow", "448");
+    } finally {
+      const observed = await page.evaluate(async () => ({
+        events: (window as unknown as { resizeEvents: unknown[] }).resizeEvents,
+        width: document
+          .querySelector('[aria-label="调整右栏宽度"]')
+          ?.getAttribute("aria-valuenow"),
+        saved: await window.desktop.command({ type: "snapshot" }),
+      }));
+      writeFileSync(
+        info.outputPath("resize-events.json"),
+        JSON.stringify(observed, null, 2),
+      );
+    }
     await page.getByRole("button", { name: "折叠侧栏" }).click();
     await expect
       .poll(() =>
