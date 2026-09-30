@@ -67,6 +67,12 @@ export function ConnectionSettings({
   snapshot: Snapshot | undefined;
   status: Status;
 }) {
+  const [search, setSearch] = useState("");
+  const matches = (...values: unknown[]) =>
+    values
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase());
   const [selected, setSelected] = useState<string>();
   const [native, setNative] = useState<"codex" | "claude">();
   const [create, setCreate] = useState<Provider>();
@@ -149,7 +155,15 @@ export function ConnectionSettings({
             进入提供方可管理密钥、搜索模型、测试模型及检测图片能力。已配置模型会列在聊天输入区，停用项会标明原因。
           </p>
           <div className="connection-head">
-            <strong>模型提供方</strong>
+            <label className="provider-search">
+              搜索模型与 Agent
+              <input
+                aria-label="搜索模型与 Agent"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="名称、模型或地址"
+              />
+            </label>
             <button
               className="button"
               disabled={locked}
@@ -161,7 +175,8 @@ export function ConnectionSettings({
               添加自定义提供方
             </button>
           </div>
-          <section className="provider-list" aria-label="模型提供方">
+          <h3>本地 Agent</h3>
+          <section className="provider-list" aria-label="本地 Agent">
             {(["codex", "claude"] as const).map((provider) => {
               const name = provider === "codex" ? "Codex" : "Claude Code";
               const c = connections.find((item) => item.provider === provider);
@@ -169,6 +184,8 @@ export function ConnectionSettings({
                 provider === "codex"
                   ? snapshot?.settings.codex.enabled
                   : snapshot?.settings.claude.enabled;
+              if (!matches(name, c?.models.map((m) => m.model).join(" ")))
+                return null;
               return (
                 <div className="provider-row-shell" key={provider}>
                   <button
@@ -226,10 +243,22 @@ export function ConnectionSettings({
                 </div>
               );
             })}
+          </section>
+          <h3>模型提供方</h3>
+          <section className="provider-list" aria-label="模型提供方">
             {providers
               .filter((p) => p !== "custom")
               .map((provider) => {
                 const c = connections.find((c) => c.provider === provider);
+                if (
+                  !matches(
+                    presets[provider].label,
+                    c?.name,
+                    c?.baseUrl ?? presets[provider].baseUrl,
+                    c?.models.map((m) => m.model).join(" "),
+                  )
+                )
+                  return null;
                 return c ? (
                   <ProviderRow
                     key={c.id}
@@ -282,7 +311,15 @@ export function ConnectionSettings({
                 );
               })}
             {connections
-              .filter((c) => c.provider === "custom")
+              .filter(
+                (c) =>
+                  c.provider === "custom" &&
+                  matches(
+                    c.name,
+                    c.baseUrl,
+                    c.models.map((m) => m.model).join(" "),
+                  ),
+              )
               .map((c) => (
                 <ProviderRow
                   key={c.id}
@@ -296,6 +333,21 @@ export function ConnectionSettings({
                 />
               ))}
           </section>
+          {search.trim() &&
+            ![
+              "Codex",
+              "Claude Code",
+              ...providers
+                .filter((p) => p !== "custom")
+                .flatMap((p) => [presets[p].label, presets[p].baseUrl]),
+              ...connections.flatMap((c) => [
+                c.name,
+                c.baseUrl,
+                ...c.models.map((m) => m.model),
+              ]),
+            ].some((v) => matches(v)) && (
+              <p role="status">没有匹配的模型或 Agent</p>
+            )}
           <p className="form-note">
             每家预设厂商固定一个提供方。第二个账户或地址可添加为自定义提供方。
           </p>

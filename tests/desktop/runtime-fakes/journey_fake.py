@@ -113,6 +113,7 @@ class Journey(g.Runtime):
         return [project, task, quota, trace], actions, pending
 
     def m_resource_read(self, p):
+        if self.fault().get('missingEvidence'): raise g.DomainError('NOT_FOUND', '固定依据原件不可用', absence_proven=True)
         historical = self.state['evidenceHistory'].get(p['evidence']['digest'])
         if not historical: return super().m_resource_read(p)
         self.require_ready()

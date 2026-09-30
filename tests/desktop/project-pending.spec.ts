@@ -55,6 +55,19 @@ async function decide(
   reject = false,
   limit?: number,
 ) {
+  if (
+    human &&
+    (await f.page
+      .getByRole("region", { name: "事项列表", exact: true })
+      .count())
+  ) {
+    const item = f.page
+      .getByRole("region", { name: "事项列表", exact: true })
+      .getByRole("button")
+      .filter({ has: f.page.getByText(label, { exact: true }) });
+    await expect(item.first()).toBeVisible();
+    await item.first().click();
+  }
   await f.page
     .getByRole("button", {
       name: human ? `处理：${label}` : label,
@@ -149,7 +162,10 @@ test("project pending: global and project decisions share identities, filter wit
       path: info.outputPath("pending-controls-light.png"),
     });
     await decide(f, "接纳任务", true, true);
-    await expect(f.page.locator(selector)).toHaveCount(0);
+    await expect(f.page.locator(selector)).toHaveAttribute(
+      "data-status",
+      "processed",
+    );
     await f.page.getByRole("tab", { name: "已处理", exact: true }).click();
     await expect(
       f.page.getByRole("combobox", { name: "事项排序", exact: true }),
@@ -170,6 +186,7 @@ test("project pending: global and project decisions share identities, filter wit
       refused.processedAt!,
     );
     await f.page.getByRole("tab", { name: "待处理", exact: true }).click();
+    await f.page.locator(".record-row").first().click();
     await f.page
       .getByRole("button", { name: "打开原项目", exact: true })
       .click();
@@ -214,24 +231,36 @@ test("project pending: global and project decisions share identities, filter wit
     );
     expect(revised.status).toBe("succeeded");
     await f.page.getByRole("tab", { name: "已处理", exact: true }).click();
+    await f.page
+      .getByRole("combobox", { name: "每页数量", exact: true })
+      .selectOption("20");
+    await f.page
+      .locator(`.record-row[data-item-ref="${item.itemRef}"]`)
+      .click();
     await expect(rejected.locator("time")).toHaveAttribute(
       "datetime",
       refused.processedAt!,
     );
     await rejected.getByText("查看固定依据", { exact: true }).click();
-    await rejected
+    await f.page
+      .locator("#right-panel")
       .getByRole("button", { name: "读取依据 1", exact: true })
       .click();
-    await expect(rejected.locator("pre")).toContainText("candidate revision 1");
+    await expect(f.page.locator("#right-panel pre")).toContainText(
+      "candidate revision 1",
+    );
     await rejected.scrollIntoViewIfNeeded();
     await rejected.screenshot({
       path: info.outputPath("processed-fixed-source.png"),
     });
     await goTo(f.page, "运行记录");
     const log = f.page.getByRole("region", {
-      name: "项目运行记录",
+      name: "运行记录列表",
       exact: true,
     });
+    await f.page
+      .getByRole("combobox", { name: "每页数量", exact: true })
+      .selectOption("48");
     await expect(log).toContainText("人工拒绝本候选，任务未推进");
     await expect(log).toContainText("关闭任务已生效");
     await expect(
@@ -254,8 +283,14 @@ test("project pending: global and project decisions share identities, filter wit
       .getByRole("textbox", { name: "搜索运行记录", exact: true })
       .scrollIntoViewIfNeeded();
     await f.page.screenshot({ path: info.outputPath("records-dark-900.png") });
-    await log.getByText("查看执行过程", { exact: true }).click();
-    await expect(log).toContainText("关闭任务已生效");
+    await log.locator(".record-row").first().click();
+    await f.page
+      .locator("#right-panel")
+      .getByRole("button", { name: "查看执行过程", exact: true })
+      .click();
+    await expect(f.page.locator("#right-panel")).toContainText(
+      "Runtime 未提供稳定的运行关联",
+    );
 
     await f.page
       .getByRole("button", { name: "返回全部范围", exact: true })
@@ -381,6 +416,7 @@ test("project pending: two confirmations use one operation and stale, foreign, p
       f.page.getByRole("button", { name: "处理：冻结定义", exact: true }),
     ).toBeDisabled();
     await f.page.getByRole("tab", { name: "已处理", exact: true }).click();
+    await f.page.locator(".record-row").first().click();
     await expect(
       f.page.locator(".project-pending-item[data-status=processed]"),
     ).toHaveCount(1);
@@ -683,7 +719,7 @@ test("workbench appearance: in the dark appearance project, pending and run-reco
     );
     await expect(f.page.locator("html")).toHaveAttribute("data-theme", "dark");
     const open = f.page
-      .getByRole("region", { name: "项目待处理", exact: true })
+      .getByRole("region", { name: "事项详情", exact: true })
       .getByRole("button", { name: "打开原项目", exact: true })
       .first();
     await expectWorkbenchSurface(open);
@@ -696,27 +732,30 @@ test("workbench appearance: in the dark appearance project, pending and run-reco
       ".project-pending-item[data-status=processed]",
     );
     await processed.getByText("查看固定依据", { exact: true }).click();
-    const read = processed.getByRole("button", {
+    const read = f.page.locator("#right-panel").getByRole("button", {
       name: "读取依据 1",
       exact: true,
     });
     await expectWorkbenchSurface(read);
     await read.click();
-    await expect(processed.locator("pre")).toContainText("candidate revision");
+    await expect(f.page.locator("#right-panel pre")).toContainText(
+      "candidate revision",
+    );
     await processed.scrollIntoViewIfNeeded();
     await f.page.screenshot({
       path: info.outputPath("pending-processed-dark.png"),
     });
     await goTo(f.page, "运行记录");
+    await f.page.locator(".record-row").first().click();
     await expectWorkbenchSurface(
       f.page
-        .getByRole("region", { name: "项目运行记录", exact: true })
+        .locator("#right-panel")
         .getByRole("button", { name: "打开原项目", exact: true })
         .first(),
     );
     await f.page.screenshot({ path: info.outputPath("records-dark.png") });
     await f.page
-      .getByRole("region", { name: "项目运行记录", exact: true })
+      .locator("#right-panel")
       .getByRole("button", { name: "打开原项目", exact: true })
       .first()
       .click();
@@ -758,7 +797,7 @@ test("project pending: a decision that can no longer be opened keeps its reason 
   try {
     await goTo(f.page, "待处理");
     const list = f.page.getByRole("region", {
-      name: "项目待处理",
+      name: "事项详情",
       exact: true,
     });
     const handle = list.getByRole("button", {

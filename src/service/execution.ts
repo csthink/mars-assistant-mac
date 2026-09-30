@@ -731,7 +731,12 @@ export function executionSnapshot(
   conversationIds: string[],
 ): Pick<
   Snapshot,
-  "messages" | "turns" | "activeTurns" | "pendingItems" | "events"
+  | "messages"
+  | "turns"
+  | "activeTurns"
+  | "pendingItems"
+  | "resolvedPendingItems"
+  | "events"
 > {
   const ids = [...new Set(conversationIds)];
   const marks = ids.map(() => "?").join(",") || "NULL";
@@ -775,6 +780,13 @@ export function executionSnapshot(
        WHERE p.state='open' ORDER BY p.created_at DESC, p.rowid DESC`,
     )
     .all() as unknown as PendingItem[];
+  const resolvedPendingItems = db
+    .prepare(
+      `SELECT p.id, p.execution_id AS executionId, e.turn_id AS turnId, t.conversation_id AS conversationId, x.execution_ref AS executionRef, p.kind, p.state, p.created_at AS createdAt, p.resolved_at AS resolvedAt
+       FROM pending_items p JOIN executions e ON e.id = p.execution_id LEFT JOIN turns t ON t.id = e.turn_id LEFT JOIN runtime_executions x ON x.execution_id = e.id
+       WHERE p.state='resolved' ORDER BY p.resolved_at DESC, p.rowid DESC`,
+    )
+    .all() as unknown as PendingItem[];
   const events = (
     db
       .prepare(
@@ -789,7 +801,14 @@ export function executionSnapshot(
     connection: snapshot ? (JSON.parse(snapshot) as ConnectionSnapshot) : null,
     payload: JSON.parse(payload) as Record<string, unknown>,
   }));
-  return { messages, turns, activeTurns, pendingItems, events };
+  return {
+    messages,
+    turns,
+    activeTurns,
+    pendingItems,
+    resolvedPendingItems,
+    events,
+  };
 }
 
 /** Latest connection test and model list execution per connection. */

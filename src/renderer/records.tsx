@@ -77,7 +77,10 @@ function classificationText(value: unknown) {
       : undefined;
   return label ? ` · 退出分类 ${label}` : "";
 }
-function payloadSummary(event: RunEvent, executions: HostExecutionRecord[]) {
+export function payloadSummary(
+  event: RunEvent,
+  executions: HostExecutionRecord[],
+) {
   const payload = event.payload;
   const execution = executionSummary(event, executions);
   if (execution !== null) return execution;

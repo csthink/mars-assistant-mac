@@ -309,6 +309,20 @@ export function TaskFlow({
       onClose={columns.close}
       browser={
         <>
+          <div className="row">
+            <button
+              className="button"
+              onClick={() => columns.openPending?.(project.id)}
+            >
+              在待处理中处理
+            </button>
+            <button
+              className="button"
+              onClick={() => columns.openRecords?.(project.id)}
+            >
+              在记录中查看
+            </button>
+          </div>
           <nav
             className="project-object-tabs task-source-navigation"
             aria-label="Runtime 内容"

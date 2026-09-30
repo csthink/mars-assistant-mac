@@ -414,6 +414,16 @@ test("崩溃后重开：未结束执行标记已中断、追加事件、建立�
         true,
       );
     assert.equal(store.snapshot().pendingItems.length, 1);
+    const resolved = store.snapshot().resolvedPendingItems!;
+    assert.equal(resolved.length, 1);
+    assert.equal(resolved[0].id, item.id);
+    assert.equal(resolved[0].state, "resolved");
+    const eventBytes = events(store);
+    store.close();
+    store = new Store(dir);
+    assert.deepEqual(store.snapshot().resolvedPendingItems, resolved);
+    assert.deepEqual(events(store), eventBytes);
+
     assert.equal(
       events(store).filter((x) => x.kind === "pending_resolved").length,
       1,

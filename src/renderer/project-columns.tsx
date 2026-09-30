@@ -4,6 +4,8 @@ import type { ColumnLayout } from "./column-layout";
 /** Shared shell state. Project browsing does not issue domain commands. */
 export interface ProjectColumns {
   host: HTMLDivElement | null;
+  openPending?: (projectId: string) => void;
+  openRecords?: (projectId: string) => void;
   open: boolean;
   layout: ColumnLayout;
   panelRef: RefObject<HTMLElement | null>;

@@ -484,10 +484,12 @@ export function Confirmation({
   prepared,
   close,
   changed,
+  submitted,
 }: {
   prepared: PreparedProjectAction;
   close: () => void;
   changed: () => void;
+  submitted?: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
     inFlight = useRef(false);
@@ -544,6 +546,7 @@ export function Confirmation({
       });
       if (!r.ok) setError(r.message);
       else {
+        submitted?.();
         setResult(r.operation ?? null);
         setMessage(r.message ?? "");
       }

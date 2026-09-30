@@ -94,13 +94,15 @@ function stamp(value: string) {
     ? value
     : date.toLocaleString("zh-CN", { hour12: false });
 }
-function PendingRow({
+export function PendingRow({
   entry,
   item,
   onPrepared,
   onRefused,
   onOpen,
+  onEvidence,
 }: {
+  onEvidence?: (entry: ProjectProjection, item: ProjectionPendingItem) => void;
   entry: ProjectProjection;
   item: ProjectionPendingItem;
   onPrepared: (p: PreparedProjectAction) => void;
@@ -270,7 +272,12 @@ function PendingRow({
           <p className="project-form-hint">来源尚未提供可用处理动作。</p>
         )}
       </div>
-      {item.evidence.length > 0 && (
+      {item.evidence.length > 0 && onEvidence && (
+        <button className="button" onClick={() => onEvidence(entry, item)}>
+          查看固定依据
+        </button>
+      )}
+      {item.evidence.length > 0 && !onEvidence && (
         <details className="project-pending-evidence">
           <summary>查看固定依据</summary>
           {item.evidence.map((_, index) => (

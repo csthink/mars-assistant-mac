@@ -974,10 +974,16 @@ test("stop unconfirmed in the client: after the extension cancels an Implementer
     expect(alive(escapedPid)).toBe(false);
     await expect(item).toHaveCount(0);
     await page.getByRole("tab", { name: "已处理", exact: true }).click();
-    const done = page.getByRole("region", { name: "已处理" });
-    const doneItem = done
-      .locator(".pending-item")
-      .filter({ hasText: "停止未确认" });
+    await page
+      .locator(".record-row")
+      .filter({ hasText: "停止未确认" })
+      .first()
+      .click();
+    const done = page.getByRole("region", { name: "事项详情", exact: true });
+    const doneItem = done.getByRole("region", {
+      name: "Host 执行事实",
+      exact: true,
+    });
     await expect(doneItem).toHaveCount(1);
     await expect(doneItem).toContainText("已确认停止（进程自行退出）");
     await expect(
