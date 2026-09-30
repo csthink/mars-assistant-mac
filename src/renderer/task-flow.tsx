@@ -49,6 +49,18 @@ export function TaskFlow({
   );
   const actionsRef = useRef<HTMLElement>(null);
   const [full, setFull] = useState(false);
+  const [actionsOverflow, setActionsOverflow] = useState(false);
+  useEffect(() => {
+    const area = actionsRef.current;
+    if (!area) return;
+    const measure = () =>
+      setActionsOverflow(area.scrollHeight > area.clientHeight + 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    for (const child of area.children) observer.observe(child);
+    measure();
+    return () => observer.disconnect();
+  }, [object, view.projection]);
   const fullButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const shell = document.querySelector<HTMLElement>(".app");
@@ -292,6 +304,11 @@ export function TaskFlow({
             ))}
           </nav>
           {actions}
+          {actionsOverflow && (
+            <p className="task-actions-scroll-hint">
+              操作区可独立滚动，查看其余操作与记录。
+            </p>
+          )}
         </>
       }
     />

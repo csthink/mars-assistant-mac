@@ -119,6 +119,23 @@ test("task flow: canvas keyboard and pointer browsing keeps actions visible in b
           exact: true,
         });
         const box = await actions.boundingBox();
+        for (const button of await actions
+          .locator(".project-action-row > button")
+          .all()) {
+          await button.evaluate((element) =>
+            element.scrollIntoView({ block: "center", inline: "nearest" }),
+          );
+          const bounds = await button.boundingBox();
+          expect(bounds).not.toBeNull();
+          expect(bounds!.y).toBeGreaterThanOrEqual(box!.y);
+          expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+            box!.y + box!.height,
+          );
+          await expect(button).toBeInViewport({ ratio: 1 });
+        }
+        await actions.evaluate((area) => {
+          area.scrollTop = 0;
+        });
         await f.page
           .getByRole("combobox", { name: "检查节点", exact: true })
           .selectOption("stage:10");

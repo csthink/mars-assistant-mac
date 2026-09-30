@@ -1975,3 +1975,22 @@
 .viewport:has(.task-flow) {
   overflow: hidden;
 }
+
+.task-fixed-actions {
+  box-sizing: border-box;
+  scrollbar-gutter: stable;
+}
+.task-fixed-actions .project-actions {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.task-fixed-actions .project-actions > h4 {
+  margin: 0 0 8px;
+}
+.task-actions-scroll-hint {
+  margin: 0;
+  padding: 4px 14px;
+  font-size: 11px;
+  color: var(--c-muted);
+  border-bottom: 1px solid var(--c-line);
+}
