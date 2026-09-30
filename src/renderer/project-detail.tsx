@@ -404,24 +404,26 @@ export function ProjectDetail({
             </p>
           )}
         {selected && (
-          <button
-            className="button"
-            onClick={() => {
-              setTaskRef(selected.objectRef);
-              sessionStorage.setItem(
-                `project-task:${project.id}`,
-                selected.objectRef,
-              );
-              setObjectId(selected.objectRef);
-              sessionStorage.setItem(
-                `project-object:${project.id}`,
-                selected.objectRef,
-              );
-              columns?.setOpen(true);
-            }}
-          >
-            查看详情与流程
-          </button>
+          <div className="project-task-entry">
+            <button
+              className="button"
+              onClick={() => {
+                setTaskRef(selected.objectRef);
+                sessionStorage.setItem(
+                  `project-task:${project.id}`,
+                  selected.objectRef,
+                );
+                setObjectId(selected.objectRef);
+                sessionStorage.setItem(
+                  `project-object:${project.id}`,
+                  selected.objectRef,
+                );
+                columns?.setOpen(true);
+              }}
+            >
+              查看详情与流程
+            </button>
+          </div>
         )}
         <div className="project-section-heading">
           <h3>项目进度</h3>

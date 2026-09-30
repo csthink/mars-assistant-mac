@@ -14,6 +14,7 @@ import {
   type GraphEdge,
 } from "./project-views";
 import { ProjectActionPanel } from "./project-actions";
+import { ProjectPendingList } from "./project-pending";
 import { EvidenceReader, type EvidenceCache } from "./project-evidence";
 
 /** Domain identity comes only from the projection. Local selection never changes action identity. */
@@ -149,6 +150,26 @@ export function TaskFlow({
         snapshot={model.snapshot!}
         unavailable={unavailable}
         awaiting={view.awaiting.find((a) => a.objectRef === object.objectRef)}
+      />
+      <ProjectPendingList
+        entries={[
+          {
+            project,
+            unavailable,
+            view: {
+              ...view,
+              projection: {
+                ...view.projection!,
+                pendingItems: view.projection!.pendingItems.filter(
+                  (item) =>
+                    item.objectRef === object.objectRef &&
+                    item.scopeRef === object.scopeRef,
+                ),
+              },
+            },
+          },
+        ]}
+        refresh={() => void model.reload()}
       />
     </section>
   );

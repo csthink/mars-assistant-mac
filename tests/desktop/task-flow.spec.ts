@@ -122,8 +122,18 @@ test("task flow: canvas keyboard and pointer browsing keeps actions visible in b
           exact: true,
         });
         const box = await actions.boundingBox();
+        for (const summary of await actions
+          .locator(".project-pending-item details > summary")
+          .all()) {
+          if (
+            !(await summary.evaluate((element) =>
+              element.parentElement!.hasAttribute("open"),
+            ))
+          )
+            await summary.click();
+        }
         for (const button of await actions
-          .locator(".project-action-row > button")
+          .locator(".project-action-row > button, .project-pending-item button")
           .all()) {
           await button.evaluate((element) =>
             element.scrollIntoView({ block: "center", inline: "nearest" }),
@@ -136,6 +146,10 @@ test("task flow: canvas keyboard and pointer browsing keeps actions visible in b
           );
           await expect(button).toBeInViewport({ ratio: 1 });
         }
+        await expect(actions.locator(".project-pending-item")).toHaveCount(1);
+        expect(
+          (await f.page.locator(".right-body").boundingBox())!.height,
+        ).toBeGreaterThan(140);
         await actions.evaluate((area) => {
           area.scrollTop = 0;
         });

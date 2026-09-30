@@ -1994,3 +1994,9 @@
   color: var(--c-muted);
   border-bottom: 1px solid var(--c-line);
 }
+
+.project-task-entry {
+  border-top: 1px solid var(--c-line);
+  padding-top: 16px;
+  margin-top: 16px;
+}
