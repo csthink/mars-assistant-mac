@@ -295,6 +295,33 @@ test("search: 1000 conversations and 20000 messages render cold and warm first p
     const dialog = page.getByRole("dialog", { name: "搜索对话" }),
       input = dialog.getByRole("combobox");
     await expect(dialog.getByRole("option")).toHaveCount(40);
+    // Retain both the user-visible duration and the main-process search duration.
+    // The difference includes debounce, IPC queueing and the rendered frame.
+    await app.evaluate(({ ipcMain }) => {
+      const internal = ipcMain as unknown as {
+        _invokeHandlers: Map<
+          string,
+          (event: unknown, request: { query: string }) => Promise<unknown>
+        >;
+      };
+      const original = internal._invokeHandlers.get("business:search")!;
+      const measured = globalThis as typeof globalThis & {
+        searchIpcTimings?: { query: string; milliseconds: number }[];
+      };
+      measured.searchIpcTimings = [];
+      ipcMain.removeHandler("business:search");
+      ipcMain.handle("business:search", async (event, request) => {
+        const started = performance.now();
+        try {
+          return await original(event, request);
+        } finally {
+          measured.searchIpcTimings!.push({
+            query: request.query,
+            milliseconds: performance.now() - started,
+          });
+        }
+      });
+    });
     const queries = [
       "恢",
       "权限",
@@ -307,7 +334,13 @@ test("search: 1000 conversations and 20000 messages render cold and warm first p
       "CAFÉ",
       "工作台",
     ];
-    const samples: { mode: string; query: string; milliseconds: number }[] = [];
+    const samples: {
+      mode: string;
+      query: string;
+      milliseconds: number;
+      ipcMilliseconds: number;
+      outsideIpcMilliseconds: number;
+    }[] = [];
     for (const mode of ["cold-worker", "warm-worker"]) {
       for (let i = 0; i < 30; i++) {
         const query = queries[i % queries.length];
@@ -364,7 +397,21 @@ test("search: 1000 conversations and 20000 messages render cold and warm first p
             (window as unknown as { searchMeasurement: { elapsed: number } })
               .searchMeasurement.elapsed,
         );
-        samples.push({ mode, query, milliseconds });
+        const ipcTiming = await app.evaluate(() => {
+          const measured = globalThis as typeof globalThis & {
+            searchIpcTimings?: { query: string; milliseconds: number }[];
+          };
+          return measured.searchIpcTimings?.at(-1);
+        });
+        expect(ipcTiming?.query).toBe(query);
+        const ipcMilliseconds = ipcTiming!.milliseconds;
+        samples.push({
+          mode,
+          query,
+          milliseconds,
+          ipcMilliseconds,
+          outsideIpcMilliseconds: milliseconds - ipcMilliseconds,
+        });
       }
     }
     const percentile = (mode: string) => {
