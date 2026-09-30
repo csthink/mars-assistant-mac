@@ -1,5 +1,5 @@
-import { ProjectColumnsContext } from "./project-columns";
 import "./tokens.css";
+import { ProjectColumnsContext } from "./project-columns";
 import { refocusWhenReady } from "./modal-focus";
 import {
   RecordFilters,
