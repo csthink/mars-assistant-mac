@@ -844,7 +844,7 @@ const projectPages: View[] = [
     open: async (page) => {
       await goTo(page, "待处理");
       await expect(
-        page.getByRole("region", { name: "项目待处理", exact: true }),
+        page.getByRole("region", { name: "事项详情", exact: true }),
       ).toBeVisible();
     },
     probes: [

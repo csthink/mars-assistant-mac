@@ -173,6 +173,13 @@ async function requestRead() {
     page.getByRole("button", { name: "到待处理确认资料读取" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "到待处理确认资料读取" }).click();
+  // Returning to the list preserves its previous selection; choose the new pending request.
+  const request = page
+    .locator(".record-row")
+    .filter({ hasText: "资料读取：资料.txt" });
+  await expect(request).toHaveCount(1);
+  await request.click();
+  await expect(request).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("button", { name: "允许本次读取", exact: true }),
   ).toBeVisible();

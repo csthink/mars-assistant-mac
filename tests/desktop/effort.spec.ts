@@ -249,6 +249,21 @@ test("effort: both surfaces share one level control, the choice lives on the con
   await expect(
     page.locator(".event-connection").filter({ hasText: "推理 low" }).first(),
   ).toBeVisible();
+  const historic = (await snapshot()).events.find(
+    (event) =>
+      event.executionId === sent.executionId &&
+      event.connection?.effort === "low",
+  )!;
+  expect(historic).toBeDefined();
+  const historicRow = page
+    .locator(".record-row")
+    .filter({ hasText: historic.id });
+  await expect(historicRow).toContainText("Codex · synthetic-model · 推理 low");
+  await historicRow.click();
+  await expect(page.locator(".record-context")).toContainText(historic.id);
+  await expect(page.locator(".record-context")).toContainText(
+    "Codex · synthetic-model · 推理 low",
+  );
   await goTo(page, "聊天");
   // An unrecorded model keeps the control visible but disabled, and the choice does not travel.
   const picker = page.getByRole("combobox", { name: "本次连接" });
@@ -274,6 +289,14 @@ test("effort: both surfaces share one level control, the choice lives on the con
     "Codex · synthetic-model · 推理 low",
   );
   expect((await snapshot()).turns[0].connection.effort).toBe("low");
+  await goTo(page, "运行记录");
+  await page.locator(".record-row").filter({ hasText: historic.id }).click();
+  await expect(page.locator(".record-context")).toContainText(
+    "Codex · synthetic-model · 推理 low",
+  );
+  expect(
+    (await snapshot()).events.find((event) => event.id === historic.id),
+  ).toEqual(historic);
 });
 
 test("effort: sessions receive the fixed level on both local executors, an installation that stops offering it refuses instead of dropping it, a differing Codex read-back stops, and API requests carry no level", async ({}, info) => {

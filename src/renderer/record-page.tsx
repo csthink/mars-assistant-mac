@@ -249,7 +249,7 @@ export function RecordsPage({
                 {r.host && (
                   <span className="event-connection">
                     {r.host.connection
-                      ? `${r.host.connection.name} · ${r.host.connection.model}`
+                      ? `${r.host.connection.name} · ${r.host.connection.model}${r.host.connection.effort ? ` · 推理 ${r.host.connection.effort}` : ""}`
                       : typeof r.host.payload.agent === "string"
                         ? `${String(r.host.payload.agent).replace(/^agent:/, "")} · ${String(r.host.payload.model ?? "")}`
                         : "无连接"}
@@ -375,7 +375,7 @@ export function RecordsPage({
                   <h4>发生时快照</h4>
                   <p>
                     {row.host.connection
-                      ? `${row.host.connection.name} · ${row.host.connection.model}`
+                      ? `${row.host.connection.name} · ${row.host.connection.model}${row.host.connection.effort ? ` · 推理 ${row.host.connection.effort}` : ""}`
                       : "未使用模型连接"}
                   </p>
                   <details>
