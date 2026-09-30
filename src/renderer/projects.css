@@ -1159,107 +1159,6 @@
 .project-layout-controls select {
   width: auto;
 }
-.project-chat-slot[data-mode="float"] {
-  position: fixed;
-  z-index: 40;
-  right: 24px;
-  bottom: 24px;
-  width: min(430px, calc(100vw - 48px));
-  max-height: calc(100vh - 140px);
-  overflow: auto;
-  padding: 16px;
-  background: var(--c-surface);
-  border: 1px solid var(--c-line);
-  border-radius: 16px;
-  box-shadow: var(--c-shadow);
-}
-.project-chat-slot[data-mode="collapsed"] {
-  position: fixed;
-  z-index: 40;
-  right: 24px;
-  bottom: 24px;
-}
-.project-work-grid[data-chat="float"],
-.project-work-grid[data-chat="collapsed"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-.project-work-grid[data-full="true"] {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  height: 100dvh;
-  margin: 0;
-  padding: 18px;
-  overflow: hidden;
-  background: var(--c-canvas);
-  box-sizing: border-box;
-  align-items: stretch;
-}
-.project-work-grid[data-full="true"] > .project-runtime-pane {
-  height: 100%;
-  overflow: auto;
-}
-.project-work-grid[data-full="true"] .project-chat-slot[data-mode="docked"] {
-  height: 100%;
-  overflow: auto;
-  padding-top: 42px;
-  box-sizing: border-box;
-}
-.project-work-grid[data-full="true"] .project-chat-slot[data-mode="float"] {
-  max-height: calc(100dvh - 90px);
-  bottom: 18px;
-  right: 18px;
-}
-.project-work-grid[data-full="true"]
-  .project-runtime-pane
-  > [aria-label="执行角色"],
-.project-work-grid[data-full="true"] .project-object-tabs,
-.project-work-grid[data-full="true"]
-  [aria-label="项目进度"]
-  > .project-section-heading,
-.project-work-grid[data-full="true"] [aria-label="项目进度"] > .project-source,
-.project-work-grid[data-full="true"] .project-actions {
-  display: none;
-}
-.project-work-grid[data-full="true"]
-  .project-domain-content
-  > .project-section-heading {
-  padding-right: 80px;
-}
-.project-work-grid[data-full="true"] .project-detail-card {
-  padding: 16px;
-  border: 0;
-  box-shadow: none;
-}
-.project-restore {
-  position: fixed;
-  right: 18px;
-  top: 18px;
-  z-index: 1050;
-  opacity: 0;
-  transition: opacity 0.15s;
-  -webkit-app-region: no-drag;
-}
-.project-restore:hover,
-.project-restore:focus-visible {
-  opacity: 1;
-}
-@media (hover: none) {
-  .project-restore {
-    opacity: 1;
-  }
-}
-@container (max-width: 1000px) {
-  .project-diff {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-@media (max-width: 1000px) {
-  .project-work-grid[data-full="true"][data-chat="docked"] {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 40%);
-    gap: 12px;
-  }
-}
 .project-chat-settings {
   margin: 0 0 16px;
 }
@@ -1638,4 +1537,256 @@
   padding: 14px 24px 18px;
   border-top: 1px solid var(--c-line);
   background: var(--c-surface);
+}
+
+/* Project centre and right column share stable DOM in ordinary and enlarged views. */
+.project-panel-host {
+  display: contents;
+}
+.project-panel-host[hidden] {
+  display: none;
+}
+.projects-page[data-detail="true"] > .page-heading {
+  display: none;
+}
+.projects-page[data-detail="true"] {
+  padding: 20px;
+}
+.project-columns-content {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 14px 0;
+}
+.project-overview {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+.project-overview span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.project-overview .button {
+  flex-shrink: 0;
+}
+.project-columns-content > .project-chat-slot {
+  width: 100%;
+}
+.project-columns-content .project-detail-card {
+  margin: 0;
+  padding: 16px;
+}
+.project-folder-details {
+  font-size: 12px;
+}
+.project-folder-details summary {
+  cursor: pointer;
+}
+.project-object-browser {
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--c-line);
+  flex-shrink: 0;
+}
+.project-object-browser label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.project-object-browser select {
+  min-width: 0;
+  flex: 1;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  padding: 6px;
+  border-radius: 6px;
+}
+.project-object-browser .project-source {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.right-body .project-runtime-pane {
+  display: block;
+  margin: 0;
+}
+.right-body .project-runtime-pane .project-detail-card {
+  padding: 12px;
+  border: 0;
+  box-shadow: none;
+}
+.right-body .project-role-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.right-body .project-inline-controls {
+  flex-wrap: wrap;
+}
+.right-body .project-inline-controls > * {
+  min-width: 0;
+}
+.project-center-actions:empty {
+  display: none;
+}
+.project-enlarge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.app[data-project-full="true"] > :is(.rail, .sidebar) {
+  display: none;
+}
+.app[data-project-full="true"] > .center {
+  display: flex;
+  width: 100%;
+}
+.app[data-project-full="true"] .center .viewport {
+  overflow: hidden;
+}
+.app[data-project-full="true"] .projects-page {
+  padding: 0;
+}
+.app[data-project-full="true"]
+  :is(
+    .project-detail-heading,
+    .project-goal-full,
+    .project-folder-details,
+    .project-overview,
+    .project-center-actions
+  ) {
+  display: none;
+}
+.app[data-project-full="true"] .project-columns-content {
+  margin: 0;
+}
+.app[data-project-full="true"] #right-panel {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  width: auto !important;
+  border: 0;
+  background: var(--c-surface);
+}
+.app[data-project-full="true"]:has(.project-chat-slot[data-mode="docked"])
+  #right-panel {
+  left: 360px;
+}
+.app[data-project-full="true"] :is(.right-head, .project-object-browser) {
+  display: none;
+}
+.app[data-project-full="true"] .right-tabs {
+  padding-right: 132px;
+  min-height: 48px;
+  position: relative;
+}
+.project-restore {
+  position: absolute;
+  top: 7px;
+  right: 14px;
+  height: 34px;
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  opacity: 1;
+  white-space: nowrap;
+  z-index: 3;
+  -webkit-app-region: no-drag;
+}
+.project-restore kbd {
+  font: inherit;
+  color: var(--c-muted);
+}
+.project-columns-content[data-full="true"] .project-chat-slot {
+  position: fixed;
+  z-index: 110;
+  background: var(--c-canvas);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.project-columns-content[data-full="true"]
+  .project-chat-slot[data-mode="docked"] {
+  inset: 0 auto 0 0;
+  width: 360px;
+  border-right: 1px solid var(--c-line);
+}
+.project-columns-content[data-full="true"]
+  .project-chat-slot[data-mode="float"] {
+  right: 18px;
+  bottom: 18px;
+  width: 360px;
+  height: min(600px, calc(100dvh - 80px));
+  border: 1px solid var(--c-line);
+  border-radius: 14px;
+  box-shadow: var(--c-shadow);
+}
+.project-columns-content[data-full="true"]
+  .project-chat-slot[data-mode="collapsed"] {
+  right: 18px;
+  bottom: 18px;
+  border-radius: 10px;
+}
+.project-columns-content[data-full="true"] .project-chat-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.project-columns-content[data-full="true"] .project-chat-pane {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.project-columns-content[data-full="true"] .project-chat-transcript {
+  flex: 1;
+}
+.project-layout-controls[hidden],
+.project-chat-content[hidden] {
+  display: none;
+}
+
+.app[data-project-full="true"] .project-runtime-pane > [aria-label="执行角色"],
+.app[data-project-full="true"]
+  [aria-label="项目进度"]
+  > .project-section-heading,
+.app[data-project-full="true"] [aria-label="项目进度"] > .project-source {
+  display: none;
+}
+
+.project-columns-content:not([data-full="true"]) > .project-chat-slot {
+  height: max(360px, calc(100dvh - 300px));
+}
+.project-chat-content {
+  height: 100%;
+  min-height: 0;
+}
+.project-columns-content .project-chat-pane {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.project-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin-bottom: 10px;
+}
+.project-chat-scroll .project-chat-settings {
+  max-height: 220px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.project-chat-pane > :is(.project-section-heading, .button, form) {
+  flex-shrink: 0;
+}
+.project-chat-pane textarea {
+  max-height: 140px;
+}
+.project-columns-content[data-full="true"] .project-chat-content {
+  overflow: hidden;
 }

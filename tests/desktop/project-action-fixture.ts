@@ -118,6 +118,7 @@ export async function journeyFixture(options: { reader?: boolean } = {}) {
       .locator(".project-open")
       .filter({ hasText: "合成任务旅程" })
       .click();
+    await page.getByRole("button", { name: "打开右栏", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Runtime 内容" })
       .getByRole("button", { name: "合成编码任务", exact: true })

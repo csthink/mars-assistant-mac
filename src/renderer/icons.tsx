@@ -32,6 +32,7 @@ const icons: Record<string, string> = {
   narrow: "M4 12h6M20 12h-6M7 8.5 10.5 12 7 15.5M17 8.5 13.5 12l3.5 3.5",
   takeover: "M4 5h16v14H4ZM9 5v14M14 9.5 11.5 12l2.5 2.5",
   file: "M7 4h7.5L19 8.5V20H7ZM14.5 4v4.5H19",
+  diff: "M5 3h14v18H5ZM8 8h8M8 15h8M12 12v6",
   activity: "M3.5 12h3.8l2.4-6 4.6 12 2.4-6h3.8",
 };
 export function Icon({ name }: { name: string }) {

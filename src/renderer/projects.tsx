@@ -1,3 +1,4 @@
+import { useProjectColumns } from "./project-columns";
 import { ProjectDetail, type Business } from "./project-detail";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -419,6 +420,7 @@ export function Projects({
   model: Business;
   onOpenSettings?: (tab: "扩展管理" | "访问权限") => void;
 }) {
+  const columns = useProjectColumns();
   const projects = snapshot?.projects ?? [];
   const [selected, setSelected] = useState<string | null>(() =>
     sessionStorage.getItem("project-selected"),
@@ -447,6 +449,11 @@ export function Projects({
   const composing = useRef(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const project = projects.find((p) => p.id === selected);
+  const setAvailable = columns?.setAvailable;
+  useEffect(() => {
+    setAvailable?.(!!project);
+    return () => setAvailable?.(false);
+  }, [!!project, setAvailable]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(
@@ -589,6 +596,18 @@ export function Projects({
               )}
             </div>
             {ops(project)}
+            {columns && (
+              <button
+                ref={columns.toggleRef}
+                className="icon-button panel-toggle"
+                aria-label={columns.open ? "收起右栏" : "打开右栏"}
+                aria-expanded={columns.open}
+                aria-controls="right-panel"
+                onClick={columns.toggle}
+              >
+                <Icon name="panelRight" />
+              </button>
+            )}
           </div>
           <p className="project-goal-full">
             {project.goal || "尚未填写项目目标"}
@@ -601,10 +620,10 @@ export function Projects({
               onOpenSettings={onOpenSettings}
             />
           )}
-          <div className="project-detail-card">
-            <h3>本地文件夹</h3>
+          <details className="project-detail-card project-folder-details">
+            <summary>本地文件夹</summary>
             <Folder folder={project.folder} />
-          </div>
+          </details>
         </>
       ) : (
         <>

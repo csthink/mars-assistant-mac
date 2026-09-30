@@ -782,7 +782,6 @@ p {
 /* A project in the enlarged content view covers the window; the rail, sidebar and right column step aside. */
 .app.four-column:has(.project-work-grid[data-full="true"]) .rail,
 .app.four-column:has(.project-work-grid[data-full="true"]) .sidebar,
-.app.four-column:has(.project-work-grid[data-full="true"]) .right-panel,
 .app.four-column:has(.project-work-grid[data-full="true"]) .right-resizer {
   visibility: hidden;
 }

@@ -678,7 +678,17 @@ export function RightPanel({
   onPreview,
   onTakeover,
   onClose,
+  activeTab,
+  onTab,
+  extra,
+  enlarged = false,
+  browser,
 }: {
+  browser?: ReactNode;
+  activeTab?: string;
+  onTab?: (id: string) => void;
+  extra?: ReactNode;
+  enlarged?: boolean;
   owner: string;
   tabs: RightTab[];
   layout: ColumnLayout;
@@ -694,7 +704,11 @@ export function RightPanel({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState(tabs[0]?.id);
-  const current = tabs.find((t) => t.id === tab) ?? tabs[0];
+  const current = tabs.find((t) => t.id === (activeTab ?? tab)) ?? tabs[0];
+  const choose = (id: string) => {
+    setTab(id);
+    onTab?.(id);
+  };
   const drag = useRef<{ x: number; start: number; last: number } | null>(null);
   const clamp = (value: number) =>
     Math.round(Math.min(Math.max(value, layout.rightMin), layout.rightMax));
@@ -738,7 +752,7 @@ export function RightPanel({
   }
   return (
     <>
-      {!layout.takeover && (
+      {!layout.takeover && !enlarged && (
         <div
           className="right-resizer"
           role="separator"
@@ -761,11 +775,12 @@ export function RightPanel({
         ref={panelRef}
         id="right-panel"
         className="right-panel"
+        data-enlarged={enlarged ? "true" : undefined}
         aria-label="右栏"
         data-takeover={layout.takeover ? "true" : undefined}
         style={layout.takeover ? undefined : { width }}
       >
-        <div className="right-head">
+        <div className="right-head" hidden={enlarged}>
           <span className="right-owner" title={owner}>
             所属：{owner}
           </span>
@@ -800,6 +815,7 @@ export function RightPanel({
             <Icon name="close" />
           </button>
         </div>
+        {browser}
         <div className="right-tabs" role="tablist" aria-label="右栏内容">
           {tabs.map((t) => {
             const selected = t.id === current?.id;
@@ -813,7 +829,7 @@ export function RightPanel({
                 aria-label={t.name}
                 title={t.name}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => setTab(t.id)}
+                onClick={() => choose(t.id)}
                 onKeyDown={(event) => {
                   if (event.key !== "ArrowRight" && event.key !== "ArrowLeft")
                     return;
@@ -826,7 +842,7 @@ export function RightPanel({
                         tabs.length) %
                         tabs.length
                     ];
-                  setTab(next.id);
+                  choose(next.id);
                   document.getElementById(`right-tab-${next.id}`)?.focus();
                 }}
               >
@@ -835,6 +851,7 @@ export function RightPanel({
               </button>
             );
           })}
+          {extra}
         </div>
         <div
           className="right-body"
