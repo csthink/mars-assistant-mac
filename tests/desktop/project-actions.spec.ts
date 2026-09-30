@@ -802,7 +802,8 @@ test("project actions: after an action succeeds its object shows 同步中 with 
     await expect(
       f.page
         .getByRole("region", { name: "任务操作", exact: true })
-        .getByText("扩展未连接，显示最后已知内容。", { exact: true }),
+        .locator(":scope > .project-error")
+        .filter({ hasText: /^扩展未连接，显示最后已知内容。$/ }),
     ).toBeVisible();
     await expect(note).toHaveCount(0);
     for (const label of ["执行验证", "提交变更评审"])
