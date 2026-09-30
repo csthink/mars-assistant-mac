@@ -35,8 +35,8 @@ test("projects: create, edit, archive and undo preserve project identity and ren
   const { app, page, data } = await launch();
   try {
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     const dialog = page.getByRole("dialog", { name: "新建项目", exact: true });
     await dialog.getByRole("textbox", { name: /项目名称/ }).fill("个人作品集");
@@ -169,8 +169,8 @@ test("projects: cancelled picker, empty name and expired edit retain input witho
   const { app, page, folder } = await launch();
   try {
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     const dialog = page.getByRole("dialog", { name: "新建项目", exact: true });
     await dialog.getByRole("textbox", { name: /项目名称/ }).fill("保留输入");
@@ -194,8 +194,8 @@ test("projects: cancelled picker, empty name and expired edit retain input witho
       }),
     ).toBe(0);
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = async () => ({
@@ -253,8 +253,8 @@ test("projects: new project guidance stays fully visible above actions at the mi
     );
     await expect.poll(() => page.evaluate(() => window.innerHeight)).toBe(680);
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     const dialog = page.getByRole("dialog", { name: "新建项目", exact: true });
     await expect(dialog.locator(".project-form-footer-hint")).toHaveText(
@@ -292,8 +292,8 @@ test("projects: checking can be cancelled; missing folder retry and save recheck
         });
     });
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     let form = page.getByRole("dialog", { name: "新建项目", exact: true });
     await form.getByRole("textbox", { name: /项目名称/ }).fill("保留名称");
@@ -326,8 +326,8 @@ test("projects: checking can be cancelled; missing folder retry and save recheck
       });
     }, missing);
     await page
+      .locator(".project-controls")
       .getByRole("button", { name: "新建项目", exact: true })
-      .first()
       .click();
     form = page.getByRole("dialog", { name: "新建项目", exact: true });
     await form.getByRole("textbox", { name: /项目名称/ }).fill("保留名称");
@@ -401,8 +401,8 @@ test("projects: timeout recovery stays visible and actionable at minimum size in
         ).ok,
       ).toBe(true);
       await page
+        .locator(".project-controls")
         .getByRole("button", { name: "新建项目", exact: true })
-        .first()
         .click();
       const form = page.getByRole("dialog", { name: "新建项目", exact: true });
       await form.getByRole("textbox", { name: /项目名称/ }).fill("保留名称");
@@ -476,8 +476,8 @@ test("projects: plain folders and multiple Git remotes display their verified so
         });
       }, path);
       await page
+        .locator(".project-controls")
         .getByRole("button", { name: "新建项目", exact: true })
-        .first()
         .click();
       const form = page.getByRole("dialog", { name: "新建项目", exact: true });
       await form.getByRole("textbox", { name: /项目名称/ }).fill(name);
