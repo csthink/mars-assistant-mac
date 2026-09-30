@@ -574,13 +574,13 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
       const first = rail(page).getByRole("button", { name: /^主页/ });
       await first.focus();
       const order: string[] = [await focused(page)];
-      for (let i = 0; i < 24; i++) {
+      for (let i = 0; i < 25; i++) {
         await page.keyboard.press("Tab");
         order.push(await focused(page));
         if (order.at(-1) === "打开右栏") break;
       }
-      // Each sidebar section starts with its fold toggle; the project section's menu follows its toggle.
-      expect(order.slice(0, 13)).toEqual([
+      // Each sidebar section starts with its fold toggle; the permanent project create control precedes its menu.
+      expect(order.slice(0, 14)).toEqual([
         "主页",
         "控件",
         "待处理",
@@ -590,13 +590,14 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
         "新建聊天",
         "搜索⌘K",
         "项目",
+        "新建项目",
         "项目区操作",
         "全部项目 · 0",
         "最近聊天",
         "搜索最近聊天",
       ]);
       expect(order.at(-1)).toBe("打开右栏");
-      const rows = order.slice(13, -1);
+      const rows = order.slice(14, -1);
       expect(rows.filter((name) => name.startsWith("对话 ")).length).toBe(2);
       expect(rows.at(-1)).toBe("已归档 0");
       // Every shell control shows a visible ring when reached by keyboard.

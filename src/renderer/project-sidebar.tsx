@@ -50,7 +50,7 @@ export function useProjectSidebar({
     anchor: HTMLElement;
     keyboard: boolean;
   }>();
-  const [form, setForm] = useState<Project>();
+  const [form, setForm] = useState<Project | null>();
   const [busy, setBusy] = useState(false);
   const [undo, setUndo] = useState<ProjectUndo>();
   const [drag, setDrag] = useState<{
@@ -154,6 +154,11 @@ export function useProjectSidebar({
     } finally {
       setBusy(false);
     }
+  }
+  function create() {
+    if (!connected || busy) return;
+    lastTrigger.current = undefined;
+    setForm(null);
   }
   function row(
     project: Project,
@@ -337,7 +342,7 @@ export function useProjectSidebar({
           move={moveOptions}
         />
       )}
-      {form && (
+      {form !== undefined && (
         <ProjectForm
           project={form}
           close={() => {
@@ -345,7 +350,7 @@ export function useProjectSidebar({
             if (lastTrigger.current)
               follow(lastTrigger.current.id, lastTrigger.current.keyboard);
           }}
-          created={() => {}}
+          created={open}
         />
       )}
       {undo && (
@@ -370,6 +375,7 @@ export function useProjectSidebar({
     </>
   );
   return {
+    create,
     rows: (
       <div className="sessions" aria-label="侧栏项目">
         {visible.map((project) => row(project, "projects"))}

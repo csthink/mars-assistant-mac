@@ -91,6 +91,67 @@ async function launch(
   return { app, page, data, ids, names, conversation };
 }
 
+test("project sidebar: the permanent create control opens the shared form even when the section is folded", async () => {
+  const { app, page, data } = await launch();
+  const sidebar = page.locator("#main-sidebar");
+  const create = sidebar.getByRole("button", {
+    name: "新建项目",
+    exact: true,
+  });
+  const fold = sidebar.locator("#side-projects-title .section-toggle");
+  try {
+    await page.mouse.move(20, 20);
+    await expect(create).toBeVisible();
+    await expect(create).toHaveCSS("opacity", "1");
+    await expect(create).toHaveAttribute("aria-label", "新建项目");
+    await create.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "新建项目" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "新建项目" })).toHaveCount(0);
+    await expect(create).toBeFocused();
+
+    await fold.click();
+    await expect(fold).toHaveAttribute("aria-expanded", "false");
+    await expect(create).toBeVisible();
+    await create.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "新建项目" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(create).toBeFocused();
+
+    const folder = join(data, "sidebar-created");
+    mkdirSync(folder);
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      });
+    }, folder);
+    await create.click();
+    const form = page.getByRole("dialog", { name: "新建项目" });
+    await form.getByRole("textbox", { name: /项目名称/ }).fill("侧栏新建");
+    await form.getByRole("button", { name: "选择文件夹" }).click();
+    await expect(form.getByRole("button", { name: "创建项目" })).toBeEnabled();
+    await form.getByRole("button", { name: "创建项目" }).click();
+    await expect(form).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "侧栏新建" })).toBeVisible();
+    await expect
+      .poll(async () => {
+        const reply = await page.evaluate(() =>
+          window.desktop.command({ type: "snapshot" }),
+        );
+        return reply.ok
+          ? reply.snapshot.projects.filter((project) => !project.archivedAt)
+              .length
+          : -1;
+      })
+      .toBe(7);
+  } finally {
+    await app.close();
+  }
+});
+
 test("project sidebar: three sort modes preserve a separate list preference and manual moves stay within the visible five", async () => {
   const { app, page, data, ids } = await launch();
   const rows = page.locator(

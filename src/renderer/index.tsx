@@ -1989,6 +1989,7 @@ function App() {
             sessionStorage.removeItem("project-selected");
             go("projects");
           }}
+          onCreateProject={projectSidebar.create}
           pinned={organization.pinned}
           pinnedSort={preferences.pinnedSort}
           onPinnedSort={(sort) => {
