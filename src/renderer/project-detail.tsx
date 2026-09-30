@@ -1,9 +1,13 @@
+import { createPortal } from "react-dom";
+import { useProjectColumns } from "./project-columns";
+import { RightPanel } from "./main-shell";
+import { EvidenceReader } from "./project-evidence";
 import { ProjectPendingList } from "./project-pending";
 import { ProjectChatLayout, useProjectLayout } from "./project-layout";
 import { ProjectView } from "./project-views";
 import type { EvidenceCache } from "./project-evidence";
 import { ProjectActionPanel } from "./project-actions";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Project } from "../shared/projects";
 import type { ProjectRequest, ProjectWorkView } from "../shared/project-work";
 import type { Snapshot } from "../shared/protocol";
@@ -157,8 +161,15 @@ export function ProjectDetail({
   onOpenSettings?: (tab: "扩展管理" | "访问权限") => void;
 }) {
   const snapshot = model.snapshot!;
+  const columns = useProjectColumns();
+  const [panelTab, setPanelTab] = useState("document");
+  const [discussion, setDiscussion] = useState({
+    ref: "",
+    title: "项目名称与目标",
+    conversation: "项目对话",
+  });
   const evidenceCache = useRef<EvidenceCache>(new Map());
-  const layout = useProjectLayout(project.id);
+  const layout = useProjectLayout(project.id, columns);
   const [view, setView] = useState<ProjectWorkView | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -222,146 +233,44 @@ export function ProjectDetail({
         .includes(query.toLocaleLowerCase()),
   );
   const disabled = busy || !model.status.connected;
-  return (
-    <div
-      ref={layout.ref}
-      className="project-work-grid"
-      data-full={layout.full}
-      data-chat={layout.mode}
-    >
-      {layout.full && (
-        <button
-          className="button project-restore"
-          aria-label="还原内容区"
-          onClick={layout.restore}
-        >
-          还原
-        </button>
+  function browse(ref: string) {
+    setObjectId(ref);
+    sessionStorage.setItem(`project-object:${project.id}`, ref);
+    const object = objects.find((item) => item.objectRef === ref);
+    setPanelTab(
+      object?.view.kind === "trace"
+        ? "events"
+        : object?.view.kind === "diff"
+          ? "diff"
+          : "document",
+    );
+  }
+  useLayoutEffect(() => {
+    const body = columns?.panelRef.current?.querySelector(".right-body");
+    if (body) body.scrollTop = 0;
+  }, [objectId, panelTab]);
+  function followDiscussion(ref: string, title: string, conversation: string) {
+    setDiscussion({ ref, title, conversation });
+    if (ref) browse(ref);
+  }
+  const documentContent = (
+    <div className="project-runtime-pane project-work-grid">
+      {error && (
+        <p className="project-error" role="alert">
+          {error}
+        </p>
       )}
-      <div className="project-runtime-pane">
-        {error && (
-          <p className="project-error" role="alert">
-            {error}
-          </p>
-        )}
-        <section className="project-detail-card" aria-label="项目进度">
-          <div className="project-section-heading">
-            <h3>项目进度</h3>
-            <button
-              className="button"
-              disabled={disabled}
-              onClick={() => void act({ type: "read", projectId: project.id })}
-            >
-              重新读取
-            </button>
-          </div>
-          {!view && !error && <p role="status">正在读取项目内容…</p>}
-          {view?.unavailable && (
-            <p role="status" className="project-runtime-warning">
-              {view.unavailable}
-            </p>
-          )}
-          {!project.runtime && view && (
-            <>
-              <p className="project-form-hint">
-                AI-SDLC
-                提供项目阶段与任务。完成扩展接入后，可关联同一文件夹的已授权项目内容。
-              </p>
-              {view?.scopes.length ? (
-                <div className="project-inline-controls">
-                  <select
-                    aria-label="关联项目内容"
-                    value={scope}
-                    onChange={(e) => setScope(e.target.value)}
-                  >
-                    <option value="">选择已接入的项目内容</option>
-                    {view.scopes.map((s) => (
-                      <option
-                        key={`${s.instanceId}|${s.scopeRef}`}
-                        value={`${s.instanceId}|${s.scopeRef}`}
-                      >
-                        {s.scopeRef} · {s.instanceId}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="button"
-                    disabled={disabled || !scope}
-                    onClick={() => {
-                      const [instanceId, scopeRef] = scope.split("|");
-                      void act({
-                        type: "bind",
-                        projectId: project.id,
-                        instanceId,
-                        scopeRef,
-                        revision: project.revision,
-                      });
-                    }}
-                  >
-                    关联
-                  </button>
-                </div>
-              ) : (
-                <p className="project-empty-small">
-                  尚无可关联的 Runtime 数据。你可以先开始项目对话。
-                </p>
-              )}
-            </>
-          )}
-          {view?.scope && (
-            <p className="project-source">
-              来源：
-              {snapshot.runtimeInstallations.find(
-                (i) => i.installationId === view.scope!.installationId,
-              )?.runtimeId ?? view.scope.instanceId}{" "}
-              · 更新时间{" "}
-              {new Date(view.scope.updatedAt).toLocaleString("zh-CN")}
-            </p>
-          )}
-          {!layout.full && project.runtime && (
-            <ProjectPendingList
-              entries={[
-                {
-                  project,
-                  view,
-                  unavailable:
-                    view?.unavailable ||
-                    (!model.status.connected ? "服务未连接。" : ""),
-                },
-              ]}
-              refresh={() => void model.reload()}
-            />
-          )}
-          {objects.length > 0 && (
-            <>
-              <nav className="project-object-tabs" aria-label="Runtime 内容">
-                {objects.map((o) => (
-                  <button
-                    key={o.objectRef}
-                    className="button"
-                    aria-pressed={selected?.objectRef === o.objectRef}
-                    onClick={() => {
-                      setObjectId(o.objectRef);
-                      sessionStorage.setItem(
-                        `project-object:${project.id}`,
-                        o.objectRef,
-                      );
-                    }}
-                  >
-                    {o.title}
-                  </button>
-                ))}
-              </nav>
-              {selected && (
+      <section className="project-detail-card" aria-label="项目进度">
+        {objects.length > 0 && (
+          <>
+            {selected &&
+              !["trace", "diff", "graph"].includes(
+                String(selected.view.kind),
+              ) && (
                 <div className="project-domain-content">
                   <div className="project-section-heading">
                     <h4>{selected.title}</h4>
                     <span>{selected.stateLabel}</span>
-                    {!layout.full && (
-                      <button className="button" onClick={layout.enlarge}>
-                        放大内容区
-                      </button>
-                    )}
                   </div>
                   <p className="project-source">版本 {selected.revision}</p>
                   {selected.view.kind === "list" ? (
@@ -444,11 +353,7 @@ export function ProjectDetail({
                                 <button
                                   className="project-text-button"
                                   onClick={() => {
-                                    setObjectId(row.id);
-                                    sessionStorage.setItem(
-                                      `project-object:${project.id}`,
-                                      row.id,
-                                    );
+                                    browse(row.id);
                                   }}
                                 >
                                   {row.title}
@@ -466,56 +371,287 @@ export function ProjectDetail({
                     </>
                   ) : null}
                   <ProjectView
+                    includeEvidence={false}
                     projectId={project.id}
                     object={selected}
                     cache={evidenceCache.current}
                     unavailable={view!.unavailable}
                   />
-                  <ProjectActionPanel
-                    project={project}
-                    object={selected}
-                    actions={view!.projection!.actions}
-                    snapshot={snapshot}
-                    unavailable={
-                      view!.unavailable ||
-                      (!model.status.connected ? "业务服务未连接。" : "")
-                    }
-                    awaiting={view!.awaiting.find(
-                      (a) => a.objectRef === selected.objectRef,
-                    )}
-                  />
                 </div>
               )}
-            </>
+          </>
+        )}
+        {selected &&
+          ["graph", "trace", "diff"].includes(String(selected.view.kind)) && (
+            <p className="project-empty-small" role="status">
+              文档不可用：当前对象没有提供对应投影。
+            </p>
           )}
-        </section>
-        {!layout.full && (
-          <ProjectAccessPanel
-            project={project}
-            revision={snapshot.revision}
-            connected={model.status.connected}
-            onOpenSettings={onOpenSettings}
+        <div className="project-section-heading">
+          <h3>项目进度</h3>
+          <button
+            className="button"
+            disabled={disabled}
+            onClick={() => void act({ type: "read", projectId: project.id })}
+          >
+            重新读取
+          </button>
+        </div>
+        {!view && !error && <p role="status">正在读取项目内容…</p>}
+        {view?.unavailable && (
+          <p role="status" className="project-runtime-warning">
+            {view.unavailable}
+          </p>
+        )}
+        {!project.runtime && view && (
+          <>
+            <p className="project-form-hint">
+              AI-SDLC
+              提供项目阶段与任务。完成扩展接入后，可关联同一文件夹的已授权项目内容。
+            </p>
+            {view?.scopes.length ? (
+              <div className="project-inline-controls">
+                <select
+                  aria-label="关联项目内容"
+                  value={scope}
+                  onChange={(e) => setScope(e.target.value)}
+                >
+                  <option value="">选择已接入的项目内容</option>
+                  {view.scopes.map((s) => (
+                    <option
+                      key={`${s.instanceId}|${s.scopeRef}`}
+                      value={`${s.instanceId}|${s.scopeRef}`}
+                    >
+                      {s.scopeRef} · {s.instanceId}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="button"
+                  disabled={disabled || !scope}
+                  onClick={() => {
+                    const [instanceId, scopeRef] = scope.split("|");
+                    void act({
+                      type: "bind",
+                      projectId: project.id,
+                      instanceId,
+                      scopeRef,
+                      revision: project.revision,
+                    });
+                  }}
+                >
+                  关联
+                </button>
+              </div>
+            ) : (
+              <p className="project-empty-small">
+                尚无可关联的 Runtime 数据。你可以先开始项目对话。
+              </p>
+            )}
+          </>
+        )}
+        {view?.scope && (
+          <p className="project-source">
+            来源：
+            {snapshot.runtimeInstallations.find(
+              (i) => i.installationId === view.scope!.installationId,
+            )?.runtimeId ?? view.scope.instanceId}{" "}
+            · 更新时间 {new Date(view.scope.updatedAt).toLocaleString("zh-CN")}
+          </p>
+        )}
+        {!layout.full && project.runtime && (
+          <ProjectPendingList
+            entries={[
+              {
+                project,
+                view,
+                unavailable:
+                  view?.unavailable ||
+                  (!model.status.connected ? "服务未连接。" : ""),
+              },
+            ]}
+            refresh={() => void model.reload()}
           />
         )}
-        <section className="project-detail-card" aria-label="执行角色">
-          <h3>执行角色</h3>
-          <p className="project-form-hint">
-            引用全局模型设置。保存选择不会启动执行。
-          </p>
-          {!view && !error && <p role="status">正在读取角色选择…</p>}
-          <div className="project-role-grid">
-            {view?.roles.map((entry) => (
-              <Role
-                key={`${entry.role}:${entry.binding?.updatedAt ?? "new"}`}
-                entry={entry}
-                snapshot={snapshot}
-                project={project}
-                act={act}
-                busy={disabled || !!view.unavailable}
-              />
+      </section>
+      {!layout.full && (
+        <ProjectAccessPanel
+          project={project}
+          revision={snapshot.revision}
+          connected={model.status.connected}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
+      <section className="project-detail-card" aria-label="执行角色">
+        <h3>执行角色</h3>
+        <p className="project-form-hint">
+          引用全局模型设置。保存选择不会启动执行。
+        </p>
+        {!view && !error && <p role="status">正在读取角色选择…</p>}
+        <div className="project-role-grid">
+          {view?.roles.map((entry) => (
+            <Role
+              key={`${entry.role}:${entry.binding?.updatedAt ?? "new"}`}
+              entry={entry}
+              snapshot={snapshot}
+              project={project}
+              act={act}
+              busy={disabled || !!view.unavailable}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+  const absent = (name: string) => (
+    <p className="project-empty-small" role="status">
+      {name}不可用：当前对象没有提供对应投影。
+    </p>
+  );
+  const source = selected
+    ? {
+        projectId: project.id,
+        object: selected,
+        cache: evidenceCache.current,
+        unavailable: view?.unavailable ?? "",
+      }
+    : null;
+  const panel = columns ? (
+    <RightPanel
+      owner={`${project.name} · ${discussion.conversation} · 讨论对象：${discussion.title}`}
+      activeTab={panelTab}
+      onTab={setPanelTab}
+      tabs={[
+        {
+          id: "files",
+          name: "文件",
+          icon: "file",
+          body:
+            source && selected!.evidence.length
+              ? selected!.evidence.map((_, index) => (
+                  <EvidenceReader
+                    key={`${selected!.objectRef}:${index}`}
+                    {...source}
+                    source={{ kind: "evidence", index }}
+                    label={`产物与依据 ${index + 1}`}
+                  />
+                ))
+              : absent("文件"),
+        },
+        { id: "document", name: "文档", icon: "note", body: documentContent },
+        {
+          id: "preview",
+          name: "预览",
+          icon: "grid",
+          body: (
+            <p className="project-empty-small" role="status">
+              原型预览不可用：Runtime 未提供受限预览投影。
+            </p>
+          ),
+        },
+        {
+          id: "diff",
+          name: "修改对比",
+          icon: "diff",
+          body:
+            source && selected!.view.kind === "diff" ? (
+              <ProjectView {...source} includeEvidence={false} />
+            ) : (
+              absent("修改对比")
+            ),
+        },
+        {
+          id: "events",
+          name: "事件",
+          icon: "activity",
+          body:
+            source && selected!.view.kind === "trace" ? (
+              <ProjectView {...source} includeEvidence={false} />
+            ) : (
+              absent("事件")
+            ),
+        },
+      ]}
+      layout={columns.layout}
+      width={columns.layout.right}
+      panelRef={columns.panelRef}
+      takeoverButton={columns.takeoverRef}
+      onWidth={columns.width}
+      onPreview={columns.preview}
+      onTakeover={() => columns.setTakeover(!columns.layout.takeover)}
+      onClose={columns.close}
+      browser={
+        <div className="project-object-browser" hidden={layout.full}>
+          <nav className="project-object-tabs" aria-label="Runtime 内容">
+            {objects.map((object) => (
+              <button
+                className="button"
+                key={object.objectRef}
+                aria-pressed={selected?.objectRef === object.objectRef}
+                onClick={() => browse(object.objectRef)}
+              >
+                {object.title}
+              </button>
             ))}
-          </div>
-        </section>
+            {!objects.length && <span>没有可用投影</span>}
+          </nav>
+          {selected && (
+            <p className="project-source">
+              正在浏览：{selected.title} · {selected.revision}
+            </p>
+          )}
+        </div>
+      }
+      enlarged={layout.full}
+      extra={
+        layout.full ? (
+          <button
+            className="button project-restore"
+            aria-label="还原内容区"
+            onClick={layout.restore}
+          >
+            还原 <kbd>Esc</kbd>
+          </button>
+        ) : (
+          <button
+            className="icon-button project-enlarge"
+            aria-label="放大内容区"
+            title="放大内容区"
+            onClick={layout.enlarge}
+          >
+            ⤢
+          </button>
+        )
+      }
+    />
+  ) : (
+    documentContent
+  );
+  return (
+    <div
+      ref={layout.ref}
+      className="project-work-grid project-columns-content"
+      data-full={layout.full}
+      data-chat={layout.mode}
+    >
+      <div className="project-overview" hidden={layout.full}>
+        <span>
+          {view?.unavailable ||
+            (project.runtime
+              ? "项目内容来自 Runtime"
+              : "尚无可关联的 Runtime 数据。你可以先开始项目对话。")}
+        </span>
+        {columns && (
+          <button
+            className="button"
+            onClick={() => {
+              columns.setOpen(true);
+              setPanelTab("document");
+            }}
+          >
+            在右栏查看
+          </button>
+        )}
       </div>
       <ProjectChatLayout layout={layout}>
         <ProjectChat
@@ -523,8 +659,45 @@ export function ProjectDetail({
           model={model}
           view={view}
           compact={layout.full}
+          onDiscussion={followDiscussion}
         />
       </ProjectChatLayout>
+      {selected?.view.kind === "graph" && !layout.full && (
+        <div className="project-center-content project-domain-content">
+          <div className="project-section-heading">
+            <h4>{selected.title}</h4>
+            <span>{selected.stateLabel}</span>
+          </div>
+          <p className="project-source">版本 {selected.revision}</p>
+          <ProjectView
+            projectId={project.id}
+            object={selected}
+            cache={evidenceCache.current}
+            unavailable={view?.unavailable ?? ""}
+            includeEvidence={false}
+          />
+        </div>
+      )}
+      {selected && view?.projection && !layout.full && (
+        <div className="project-center-actions">
+          <ProjectActionPanel
+            project={project}
+            object={selected}
+            actions={view!.projection!.actions}
+            snapshot={snapshot}
+            unavailable={
+              view!.unavailable ||
+              (!model.status.connected ? "业务服务未连接。" : "")
+            }
+            awaiting={view!.awaiting.find(
+              (a) => a.objectRef === selected.objectRef,
+            )}
+          />
+        </div>
+      )}
+      {columns?.host
+        ? createPortal(<>{panel}</>, columns.host)
+        : !columns && panel}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import "./tokens.css";
+import { ProjectColumnsContext } from "./project-columns";
 import { refocusWhenReady } from "./modal-focus";
 import {
   RecordFilters,
@@ -273,6 +274,10 @@ function App() {
   const width = useWindowWidth();
   const overlayOpen = useOverlayOpen();
   const [rightOpen, setRightOpen] = useState(false);
+  const [projectAvailable, setProjectAvailable] = useState(false);
+  const [projectFull, setProjectFull] = useState(false);
+  const [projectPanelHost, setProjectPanelHost] =
+    useState<HTMLDivElement | null>(null);
   const [takeover, setTakeover] = useState(false);
   const [overlay, setOverlay] = useState(false);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -335,7 +340,8 @@ function App() {
   const focusSoon = (target: () => HTMLElement | null | undefined) =>
     requestAnimationFrame(() => requestAnimationFrame(() => target()?.focus()));
   // The right column belongs to the conversation and the new-conversation page in this version.
-  const rightAvailable = !panel && view === "chat";
+  const rightAvailable =
+    !panel && (view === "chat" || (view === "projects" && projectAvailable));
   const effectiveRight = rightOpen && rightAvailable;
   const layout = columnLayout({
     width,
@@ -435,7 +441,13 @@ function App() {
         return;
       const inside = sidebarRef.current?.contains(document.activeElement);
       setOverlay(false);
-      if (inside) focusSoon(() => railSidebarButton.current);
+      if (inside)
+        focusSoon(() =>
+          document.activeElement === document.body ||
+          sidebarRef.current?.contains(document.activeElement)
+            ? railSidebarButton.current
+            : null,
+        );
     };
     document.addEventListener("pointerdown", press, true);
     return () => document.removeEventListener("pointerdown", press, true);
@@ -443,7 +455,7 @@ function App() {
   // Escape closes only the innermost layer: menus and dialogs handle their own first, then the floating
   // sidebar, then a right column that took over the centre, then the right column holding focus.
   useEffect(() => {
-    if (panel) return;
+    if (panel || projectFull) return;
     const key = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented)
         return;
@@ -1385,7 +1397,7 @@ function App() {
   }
   function projectsContent() {
     return (
-      <div className="page">
+      <div className="page projects-page" data-detail={projectAvailable}>
         <div className="page-heading">
           <div>
             <h1 tabIndex={-1} data-center-title>
@@ -1925,225 +1937,256 @@ function App() {
       snapshot?.selected.main === id,
   };
   return (
-    <div
-      className="app four-column"
-      data-sidebar={layout.sidebar}
-      data-overlay={overlay ? "true" : undefined}
-      data-right={
-        !effectiveRight ? "closed" : layout.takeover ? "takeover" : "open"
-      }
+    <ProjectColumnsContext.Provider
+      value={{
+        host: projectPanelHost,
+        open: effectiveRight,
+        layout,
+        panelRef: rightPanel,
+        toggleRef: panelToggle,
+        takeoverRef: takeoverButton,
+        setAvailable: setProjectAvailable,
+        setFull: setProjectFull,
+        setOpen: setRightOpen,
+        setTakeover,
+        toggle: toggleRight,
+        close: closeRight,
+        width: (value) => {
+          void savePreference(
+            "rightPanelWidth",
+            value === null ? null : Math.round(value),
+          );
+        },
+        preview: setDragWidth,
+      }}
     >
-      {organization.overlays}
-      {projectSidebar.overlays}
-      {searchOpen && (
-        <SearchDialog
-          onClose={() => setSearchOpen(false)}
-          onOpen={openSearchHit}
-        />
-      )}
-      {settingsOpen && (
-        <SettingsDialog
-          tab={tab}
-          onTab={setTab}
-          onClose={() => setSettingsOpen(false)}
-          banners={banners}
-        >
-          {settingsBody()}
-        </SettingsDialog>
-      )}
-      <Rail
-        view={view}
-        home={home}
-        pending={pending}
-        sidebarFolded={layout.sidebar !== "expanded"}
-        overlay={overlay}
-        sidebarButton={railSidebarButton}
-        avatar={avatarButton}
-        onHome={goHome}
-        onNavigate={go}
-        onSidebar={railSidebar}
-        onSettings={() => openSettings("通用")}
-      />
-      {showSidebar && (
-        <Sidebar
-          overlay={overlay}
-          sidebarRef={sidebarRef}
-          foldButton={foldButton}
-          connected={status.connected}
-          busy={model.switching}
-          view={view}
-          projectCount={
-            (snapshot?.projects ?? []).filter((p) => !p.archivedAt).length
-          }
-          projects={projectSidebar.rows}
-          projectSort={preferences.projectSort}
-          onProjectSort={(sort) => {
-            void savePreference("projectSort", sort);
-          }}
-          onFold={foldSidebar}
-          onNew={() => {
-            void newConversation();
-          }}
-          onSearch={() => setSearchOpen(true)}
-          onProjects={() => {
-            sessionStorage.removeItem("project-selected");
-            go("projects");
-          }}
-          onCreateProject={projectSidebar.create}
-          pinned={organization.pinned}
-          pinnedSort={preferences.pinnedSort}
-          onPinnedSort={(sort) => {
-            void savePreference("pinnedSort", sort);
-          }}
-          folded={{
-            pinned: preferences.pinnedFolded,
-            projects: preferences.projectsFolded,
-          }}
-          onFoldSection={(section) => {
-            if (section === "pinned")
-              void savePreference("pinnedFolded", !preferences.pinnedFolded);
-            else
-              void savePreference(
-                "projectsFolded",
-                !preferences.projectsFolded,
-              );
-          }}
-          recent={
-            <RecentChats
-              onFilter={setRecentFilter}
-              folded={preferences.recentFolded}
-              onFold={(folded) => {
-                void savePreference("recentFolded", folded);
-              }}
-            >
-              {conversationList}
-            </RecentChats>
-          }
-        />
-      )}
-      <main className="center" aria-label="中栏">
-        {!settingsOpen && banners}
-        {view === "chat" && (
-          <CenterHeader
-            rightOpen={effectiveRight}
-            toggle={panelToggle}
-            onToggle={toggleRight}
+      <div
+        className="app four-column"
+        data-project-full={projectFull ? "true" : undefined}
+        data-sidebar={layout.sidebar}
+        data-overlay={overlay ? "true" : undefined}
+        data-right={
+          !effectiveRight ? "closed" : layout.takeover ? "takeover" : "open"
+        }
+      >
+        {organization.overlays}
+        {projectSidebar.overlays}
+        {searchOpen && (
+          <SearchDialog
+            onClose={() => setSearchOpen(false)}
+            onOpen={openSearchHit}
+          />
+        )}
+        {settingsOpen && (
+          <SettingsDialog
+            tab={tab}
+            onTab={setTab}
+            onClose={() => setSettingsOpen(false)}
+            banners={banners}
           >
-            {current && conversationMessages.length > 0 ? (
-              <>
-                {renaming?.where === "center" && renaming.id === current.id ? (
-                  <InlineRename
-                    conversation={current}
-                    className="center-rename"
-                    onClose={finishRename}
-                  />
-                ) : (
-                  <button
-                    className="conversation-title"
-                    aria-label="修改对话名称"
-                    title={current.title}
-                    data-center-title
-                    disabled={!status.connected || model.switching}
-                    onClick={(event) =>
-                      startRename(
-                        current.id,
-                        "center",
-                        event.detail === 0,
-                        event.currentTarget,
-                      )
-                    }
-                  >
-                    {current.title}
-                  </button>
-                )}
-                <small className="title-source" aria-label="标题来源">
-                  {titleSourceLabels[current.titleSource]}
-                </small>
-                {(organization.counts.get(current.title) ?? 0) > 1 && (
-                  <small className="same-name">
-                    同名 {organization.counts.get(current.title)}
-                  </small>
-                )}
-                {current.archivedAt && (
-                  <small className="archived-tag">已归档</small>
-                )}
-                <button
-                  className="icon-button conversation-menu-trigger"
-                  aria-label="当前对话菜单"
-                  aria-haspopup="menu"
-                  disabled={!status.connected}
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    organization.openMenu(
-                      current,
-                      rect.left,
-                      rect.bottom,
-                      "center",
-                      event.currentTarget,
-                      event.detail === 0,
-                    );
-                  }}
-                >
-                  ⋯
-                </button>
-              </>
-            ) : (
-              <h1 className="center-heading" tabIndex={-1} data-center-title>
-                新对话
-              </h1>
-            )}
-          </CenterHeader>
+            {settingsBody()}
+          </SettingsDialog>
         )}
-        {view === "archived" && (
-          <CenterHeader panelToggle={false}>
-            <h1 className="center-heading" tabIndex={-1} data-center-title>
-              已归档
-            </h1>
-            <small className="center-count">
-              {organization.archived.length} 段对话
-            </small>
-          </CenterHeader>
-        )}
-        <div className="viewport">{mainContent()}</div>
-      </main>
-      {effectiveRight && (
-        <RightPanel
-          owner={current ? `${current.title} · 对话` : "新对话"}
-          tabs={[
-            {
-              id: "files",
-              name: "文件",
-              icon: "file",
-              body: (
-                <ConversationFiles
-                  source={panelSource}
-                  onOpen={openAttachment}
-                />
-              ),
-            },
-            {
-              id: "events",
-              name: "事件",
-              icon: "activity",
-              body: <ConversationEvents source={panelSource} />,
-            },
-          ]}
-          layout={layout}
-          width={layout.right}
-          panelRef={rightPanel}
-          takeoverButton={takeoverButton}
-          onWidth={(value) => {
-            void savePreference(
-              "rightPanelWidth",
-              value === null ? null : Math.round(value),
-            );
-          }}
-          onPreview={setDragWidth}
-          onTakeover={() => setTakeover(!layout.takeover)}
-          onClose={closeRight}
+        <Rail
+          view={view}
+          home={home}
+          pending={pending}
+          sidebarFolded={layout.sidebar !== "expanded"}
+          overlay={overlay}
+          sidebarButton={railSidebarButton}
+          avatar={avatarButton}
+          onHome={goHome}
+          onNavigate={go}
+          onSidebar={railSidebar}
+          onSettings={() => openSettings("通用")}
         />
-      )}
-    </div>
+        {showSidebar && (
+          <Sidebar
+            overlay={overlay}
+            sidebarRef={sidebarRef}
+            foldButton={foldButton}
+            connected={status.connected}
+            busy={model.switching}
+            view={view}
+            projectCount={
+              (snapshot?.projects ?? []).filter((p) => !p.archivedAt).length
+            }
+            projects={projectSidebar.rows}
+            projectSort={preferences.projectSort}
+            onProjectSort={(sort) => {
+              void savePreference("projectSort", sort);
+            }}
+            onFold={foldSidebar}
+            onNew={() => {
+              void newConversation();
+            }}
+            onSearch={() => setSearchOpen(true)}
+            onProjects={() => {
+              sessionStorage.removeItem("project-selected");
+              go("projects");
+            }}
+            onCreateProject={projectSidebar.create}
+            pinned={organization.pinned}
+            pinnedSort={preferences.pinnedSort}
+            onPinnedSort={(sort) => {
+              void savePreference("pinnedSort", sort);
+            }}
+            folded={{
+              pinned: preferences.pinnedFolded,
+              projects: preferences.projectsFolded,
+            }}
+            onFoldSection={(section) => {
+              if (section === "pinned")
+                void savePreference("pinnedFolded", !preferences.pinnedFolded);
+              else
+                void savePreference(
+                  "projectsFolded",
+                  !preferences.projectsFolded,
+                );
+            }}
+            recent={
+              <RecentChats
+                onFilter={setRecentFilter}
+                folded={preferences.recentFolded}
+                onFold={(folded) => {
+                  void savePreference("recentFolded", folded);
+                }}
+              >
+                {conversationList}
+              </RecentChats>
+            }
+          />
+        )}
+        <main className="center" aria-label="中栏">
+          {!settingsOpen && banners}
+          {view === "chat" && (
+            <CenterHeader
+              rightOpen={effectiveRight}
+              toggle={panelToggle}
+              onToggle={toggleRight}
+            >
+              {current && conversationMessages.length > 0 ? (
+                <>
+                  {renaming?.where === "center" &&
+                  renaming.id === current.id ? (
+                    <InlineRename
+                      conversation={current}
+                      className="center-rename"
+                      onClose={finishRename}
+                    />
+                  ) : (
+                    <button
+                      className="conversation-title"
+                      aria-label="修改对话名称"
+                      title={current.title}
+                      data-center-title
+                      disabled={!status.connected || model.switching}
+                      onClick={(event) =>
+                        startRename(
+                          current.id,
+                          "center",
+                          event.detail === 0,
+                          event.currentTarget,
+                        )
+                      }
+                    >
+                      {current.title}
+                    </button>
+                  )}
+                  <small className="title-source" aria-label="标题来源">
+                    {titleSourceLabels[current.titleSource]}
+                  </small>
+                  {(organization.counts.get(current.title) ?? 0) > 1 && (
+                    <small className="same-name">
+                      同名 {organization.counts.get(current.title)}
+                    </small>
+                  )}
+                  {current.archivedAt && (
+                    <small className="archived-tag">已归档</small>
+                  )}
+                  <button
+                    className="icon-button conversation-menu-trigger"
+                    aria-label="当前对话菜单"
+                    aria-haspopup="menu"
+                    disabled={!status.connected}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      organization.openMenu(
+                        current,
+                        rect.left,
+                        rect.bottom,
+                        "center",
+                        event.currentTarget,
+                        event.detail === 0,
+                      );
+                    }}
+                  >
+                    ⋯
+                  </button>
+                </>
+              ) : (
+                <h1 className="center-heading" tabIndex={-1} data-center-title>
+                  新对话
+                </h1>
+              )}
+            </CenterHeader>
+          )}
+          {view === "archived" && (
+            <CenterHeader panelToggle={false}>
+              <h1 className="center-heading" tabIndex={-1} data-center-title>
+                已归档
+              </h1>
+              <small className="center-count">
+                {organization.archived.length} 段对话
+              </small>
+            </CenterHeader>
+          )}
+          <div className="viewport">{mainContent()}</div>
+        </main>
+        {effectiveRight && view === "chat" && (
+          <RightPanel
+            owner={current ? `${current.title} · 对话` : "新对话"}
+            tabs={[
+              {
+                id: "files",
+                name: "文件",
+                icon: "file",
+                body: (
+                  <ConversationFiles
+                    source={panelSource}
+                    onOpen={openAttachment}
+                  />
+                ),
+              },
+              {
+                id: "events",
+                name: "事件",
+                icon: "activity",
+                body: <ConversationEvents source={panelSource} />,
+              },
+            ]}
+            layout={layout}
+            width={layout.right}
+            panelRef={rightPanel}
+            takeoverButton={takeoverButton}
+            onWidth={(value) => {
+              void savePreference(
+                "rightPanelWidth",
+                value === null ? null : Math.round(value),
+              );
+            }}
+            onPreview={setDragWidth}
+            onTakeover={() => setTakeover(!layout.takeover)}
+            onClose={closeRight}
+          />
+        )}
+        <div
+          ref={setProjectPanelHost}
+          className="project-panel-host"
+          hidden={view !== "projects" || (!effectiveRight && !projectFull)}
+        />
+      </div>
+    </ProjectColumnsContext.Provider>
   );
 }
 // This script runs from the document head, before the body is parsed and before the first paint, so the

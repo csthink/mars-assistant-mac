@@ -66,6 +66,7 @@ async function setup(env: NodeJS.ProcessEnv = process.env) {
       .locator(".project-open")
       .filter({ hasText: "项目旅程验证" })
       .click();
+    await page.getByRole("button", { name: "打开右栏", exact: true }).click();
     return { app, page, root, data, folder, projectId };
   } catch (error) {
     await closeLocal(app);

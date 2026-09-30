@@ -14,11 +14,17 @@ export function ProjectChat({
   model,
   view,
   compact = false,
+  onDiscussion,
 }: {
   project: Project;
   model: Business;
   view: ProjectWorkView | null;
   compact?: boolean;
+  onDiscussion?: (
+    objectRef: string,
+    title: string,
+    conversation: string,
+  ) => void;
 }) {
   const snapshot = model.snapshot!;
   const [settingsOpen, setSettingsOpen] = useState(!compact);
@@ -146,6 +152,13 @@ export function ProjectChat({
     object = view?.projection?.objects.find(
       (o) => o.objectRef === target?.objectRef,
     );
+  useEffect(() => {
+    onDiscussion?.(
+      target?.objectRef ?? "",
+      target?.title ?? "项目名称与目标",
+      conversation?.title ?? "项目对话",
+    );
+  }, [id, target?.objectRef, target?.revision, conversation?.title]);
   const contextProblem = target
     ? !view
       ? "正在读取讨论对象，暂不能发送。"
@@ -195,203 +208,205 @@ export function ProjectChat({
         </p>
       ) : (
         <>
-          <details
-            className="project-chat-settings"
-            open={settingsOpen}
-            onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
-          >
-            <summary>
-              对话设置 · {target?.title ?? "项目"} · {modelId || "未选择模型"}
-            </summary>
-            <label>
-              对话
-              <select
-                aria-label="项目对话选择"
-                value={id}
-                disabled={busy}
-                onChange={(e) => {
-                  setChosen(e.target.value);
-                  sessionStorage.setItem(
-                    `project-chat:${project.id}`,
-                    e.target.value,
-                  );
-                  model.clearActionError();
-                }}
-              >
-                {available.map((ch) => (
-                  <option key={ch.conversationId} value={ch.conversationId}>
-                    {
-                      snapshot.conversations.find(
-                        (c) => c.id === ch.conversationId,
-                      )?.title
-                    }{" "}
-                    · {ch.conversationId.slice(0, 8)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              讨论对象
-              <select
-                aria-label="讨论对象"
-                value={target?.objectRef ?? ""}
-                disabled={disabled}
-                onChange={(e) => void context(e.target.value)}
-              >
-                <option value="">项目名称与目标</option>
-                {target && !object && (
-                  <option value={target.objectRef} disabled>
-                    {target.title} · 不可用
-                  </option>
-                )}
-                {view?.projection?.objects.map((o) => (
-                  <option
-                    key={o.objectRef}
-                    value={o.objectRef}
-                    disabled={!!view.unavailable}
-                  >
-                    {o.title} · {o.revision}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {target && (
-              <p className="project-source">
-                当前讨论：{target.title} · {target.revision}{" "}
-                <button
-                  className="project-text-button"
-                  disabled={disabled || !!view?.unavailable || !object}
-                  onClick={() => void context(target.objectRef)}
+          <div className="project-chat-scroll">
+            <details
+              className="project-chat-settings"
+              open={settingsOpen}
+              onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
+            >
+              <summary>
+                对话设置 · {target?.title ?? "项目"} · {modelId || "未选择模型"}
+              </summary>
+              <label>
+                对话
+                <select
+                  aria-label="项目对话选择"
+                  value={id}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setChosen(e.target.value);
+                    sessionStorage.setItem(
+                      `project-chat:${project.id}`,
+                      e.target.value,
+                    );
+                    model.clearActionError();
+                  }}
                 >
-                  采用当前版本
-                </button>
+                  {available.map((ch) => (
+                    <option key={ch.conversationId} value={ch.conversationId}>
+                      {
+                        snapshot.conversations.find(
+                          (c) => c.id === ch.conversationId,
+                        )?.title
+                      }{" "}
+                      · {ch.conversationId.slice(0, 8)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                讨论对象
+                <select
+                  aria-label="讨论对象"
+                  value={target?.objectRef ?? ""}
+                  disabled={disabled}
+                  onChange={(e) => void context(e.target.value)}
+                >
+                  <option value="">项目名称与目标</option>
+                  {target && !object && (
+                    <option value={target.objectRef} disabled>
+                      {target.title} · 不可用
+                    </option>
+                  )}
+                  {view?.projection?.objects.map((o) => (
+                    <option
+                      key={o.objectRef}
+                      value={o.objectRef}
+                      disabled={!!view.unavailable}
+                    >
+                      {o.title} · {o.revision}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {target && (
+                <p className="project-source">
+                  当前讨论：{target.title} · {target.revision}{" "}
+                  <button
+                    className="project-text-button"
+                    disabled={disabled || !!view?.unavailable || !object}
+                    onClick={() => void context(target.objectRef)}
+                  >
+                    采用当前版本
+                  </button>
+                </p>
+              )}
+              <p className="project-form-hint">
+                仅发送本对话历史、项目名称与目标，以及所选对象的身份、版本和状态。切换讨论对象保留历史；需要独立历史时新建对话。
+              </p>
+              <label>
+                对话模型
+                <select
+                  aria-label="项目对话模型"
+                  disabled={disabled}
+                  value={
+                    conversation.connectionId
+                      ? `${conversation.connectionId}::${conversation.modelId ?? connection?.model ?? ""}`
+                      : ""
+                  }
+                  onChange={(e) =>
+                    void model.chooseConnection(id!, e.target.value)
+                  }
+                >
+                  <option value="">
+                    {snapshot.settings.defaultConnectionId
+                      ? "使用全局默认模型"
+                      : "请选择模型"}
+                  </option>
+                  {snapshot.connections.flatMap((c) =>
+                    c.models.map((m) => (
+                      <option
+                        key={`${c.id}::${m.model}`}
+                        value={`${c.id}::${m.model}`}
+                        disabled={!!modelReason(snapshot, c.id, m.model)}
+                      >
+                        {c.name} · {m.model}
+                        {modelReason(snapshot, c.id, m.model)
+                          ? " · " + modelReason(snapshot, c.id, m.model)
+                          : ""}
+                      </option>
+                    )),
+                  )}
+                </select>
+              </label>
+              <label>
+                推理强度
+                <select
+                  aria-label="项目对话推理强度"
+                  value={conversation.effort ?? ""}
+                  disabled={disabled || !modelEntry?.effort}
+                  onChange={(e) =>
+                    void model.chooseEffort(id!, e.target.value || null)
+                  }
+                >
+                  <option value="">
+                    {modelEntry?.effort
+                      ? `模型默认（${modelEntry.effort.defaultLevel ?? "未记录"}）`
+                      : "未记录"}
+                  </option>
+                  {modelEntry?.effort?.levels.map((l) => (
+                    <option key={l}>{l}</option>
+                  ))}
+                </select>
+              </label>
+            </details>
+            {contextProblem && (
+              <p role="status" className="project-runtime-warning">
+                {contextProblem}
               </p>
             )}
-            <p className="project-form-hint">
-              仅发送本对话历史、项目名称与目标，以及所选对象的身份、版本和状态。切换讨论对象保留历史；需要独立历史时新建对话。
-            </p>
-            <label>
-              对话模型
-              <select
-                aria-label="项目对话模型"
-                disabled={disabled}
-                value={
-                  conversation.connectionId
-                    ? `${conversation.connectionId}::${conversation.modelId ?? connection?.model ?? ""}`
-                    : ""
-                }
-                onChange={(e) =>
-                  void model.chooseConnection(id!, e.target.value)
-                }
-              >
-                <option value="">
-                  {snapshot.settings.defaultConnectionId
-                    ? "使用全局默认模型"
-                    : "请选择模型"}
-                </option>
-                {snapshot.connections.flatMap((c) =>
-                  c.models.map((m) => (
-                    <option
-                      key={`${c.id}::${m.model}`}
-                      value={`${c.id}::${m.model}`}
-                      disabled={!!modelReason(snapshot, c.id, m.model)}
-                    >
-                      {c.name} · {m.model}
-                      {modelReason(snapshot, c.id, m.model)
-                        ? " · " + modelReason(snapshot, c.id, m.model)
-                        : ""}
-                    </option>
-                  )),
+            <div className="project-chat-transcript">
+              <Transcript
+                messages={snapshot.messages.filter(
+                  (m) => m.conversationId === id,
                 )}
-              </select>
-            </label>
-            <label>
-              推理强度
-              <select
-                aria-label="项目对话推理强度"
-                value={conversation.effort ?? ""}
-                disabled={disabled || !modelEntry?.effort}
-                onChange={(e) =>
-                  void model.chooseEffort(id!, e.target.value || null)
-                }
-              >
-                <option value="">
-                  {modelEntry?.effort
-                    ? `模型默认（${modelEntry.effort.defaultLevel ?? "未记录"}）`
-                    : "未记录"}
-                </option>
-                {modelEntry?.effort?.levels.map((l) => (
-                  <option key={l}>{l}</option>
-                ))}
-              </select>
-            </label>
-          </details>
-          {contextProblem && (
-            <p role="status" className="project-runtime-warning">
-              {contextProblem}
-            </p>
-          )}
-          <div className="project-chat-transcript">
-            <Transcript
-              messages={snapshot.messages.filter(
-                (m) => m.conversationId === id,
-              )}
-              turns={turns}
-              attachments={snapshot.attachments}
-              messageAttachments={snapshot.messageAttachments}
-              onStop={(id) => void model.stop(id)}
-              onOpenAttachment={(a) => void openAttachment(a)}
+                turns={turns}
+                attachments={snapshot.attachments}
+                messageAttachments={snapshot.messageAttachments}
+                onStop={(id) => void model.stop(id)}
+                onOpenAttachment={(a) => void openAttachment(a)}
+              />
+            </div>
+            {historyNeedsConsent && (
+              <div className="project-runtime-warning">
+                <p>将向 {connection.name} 发送本对话历史与已选资料。</p>
+                <button
+                  className="button"
+                  disabled={disabled}
+                  onClick={() =>
+                    void window.desktop
+                      .command({
+                        type: "grantConnectionScope",
+                        conversationId: id!,
+                        connectionId: connection.id,
+                        baseUrl: connection.baseUrl,
+                      })
+                      .then((r) => {
+                        if (!r.ok) setError(r.message);
+                      })
+                  }
+                >
+                  确认发送范围
+                </button>
+              </div>
+            )}
+            {preview && (
+              <AttachmentPreviewPanel
+                attachment={preview.attachment}
+                preview={preview.text}
+                onClose={() => {
+                  previewRequest.current++;
+                  setPreview(null);
+                }}
+              />
+            )}
+            <DraftAttachments
+              attachments={draftAttachments}
+              disabled={disabled}
+              onOpen={(a) => void openAttachment(a)}
+              onRemove={(a) =>
+                void window.desktop
+                  .command({
+                    type: "removeDraftAttachment",
+                    conversationId: id!,
+                    attachmentId: a.id,
+                  })
+                  .then((r) => {
+                    if (!r.ok) setError(r.message);
+                  })
+              }
             />
           </div>
-          {historyNeedsConsent && (
-            <div className="project-runtime-warning">
-              <p>将向 {connection.name} 发送本对话历史与已选资料。</p>
-              <button
-                className="button"
-                disabled={disabled}
-                onClick={() =>
-                  void window.desktop
-                    .command({
-                      type: "grantConnectionScope",
-                      conversationId: id!,
-                      connectionId: connection.id,
-                      baseUrl: connection.baseUrl,
-                    })
-                    .then((r) => {
-                      if (!r.ok) setError(r.message);
-                    })
-                }
-              >
-                确认发送范围
-              </button>
-            </div>
-          )}
-          {preview && (
-            <AttachmentPreviewPanel
-              attachment={preview.attachment}
-              preview={preview.text}
-              onClose={() => {
-                previewRequest.current++;
-                setPreview(null);
-              }}
-            />
-          )}
-          <DraftAttachments
-            attachments={draftAttachments}
-            disabled={disabled}
-            onOpen={(a) => void openAttachment(a)}
-            onRemove={(a) =>
-              void window.desktop
-                .command({
-                  type: "removeDraftAttachment",
-                  conversationId: id!,
-                  attachmentId: a.id,
-                })
-                .then((r) => {
-                  if (!r.ok) setError(r.message);
-                })
-            }
-          />
           <button
             type="button"
             className="button"

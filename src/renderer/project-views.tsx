@@ -506,7 +506,9 @@ export function ProjectView({
   projectId,
   cache,
   unavailable,
+  includeEvidence = true,
 }: {
+  includeEvidence?: boolean;
   object: ProjectionObject;
   projectId: string;
   cache: EvidenceCache;
@@ -548,14 +550,15 @@ export function ProjectView({
           />
         </div>
       )}
-      {object.evidence.map((_, index) => (
-        <EvidenceReader
-          key={`${object.objectRef}:evidence:${index}`}
-          {...shared}
-          source={{ kind: "evidence", index }}
-          label={`产物与依据 ${index + 1}`}
-        />
-      ))}
+      {includeEvidence &&
+        object.evidence.map((_, index) => (
+          <EvidenceReader
+            key={`${object.objectRef}:evidence:${index}`}
+            {...shared}
+            source={{ kind: "evidence", index }}
+            label={`产物与依据 ${index + 1}`}
+          />
+        ))}
     </>
   );
 }

@@ -1,86 +1,114 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type { ProjectColumns } from "./project-columns";
 type ChatMode = "docked" | "float" | "collapsed";
-export function useProjectLayout(projectId: string) {
-  const ref = useRef<HTMLDivElement>(null),
-    saved = useRef<{
-      viewport: HTMLElement | null;
-      scroll: number;
-      paneScroll: number;
-      focus: HTMLElement | null;
-    } | null>(null);
-  const [full, setFull] = useState(false),
-    [mode, setMode] = useState<ChatMode>(() => {
-      const value = sessionStorage.getItem(`project-chat-layout:${projectId}`);
-      return value === "float" || value === "collapsed" ? value : "docked";
-    });
-  const lastMode = useRef<ChatMode>(
-    sessionStorage.getItem(`project-chat-last-mode:${projectId}`) === "float"
-      ? "float"
-      : "docked",
-  );
+export function useProjectLayout(
+  projectId: string,
+  columns: ProjectColumns | null,
+) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const [mode, setMode] = useState<ChatMode>("docked");
+  const lastMode = useRef<ChatMode>("docked");
+  const saved = useRef<{
+    open: boolean;
+    takeover: boolean;
+    mode: ChatMode;
+    focus: HTMLElement | null;
+    scroll: [HTMLElement, number, number][];
+  } | null>(null);
+  const shellFull = columns?.setFull;
+  useEffect(() => () => shellFull?.(false), [projectId, shellFull]);
   function chatMode(next: ChatMode) {
-    if (next !== "collapsed") {
-      lastMode.current = next;
-      sessionStorage.setItem(`project-chat-last-mode:${projectId}`, next);
-    }
-    sessionStorage.setItem(`project-chat-layout:${projectId}`, next);
+    if (next !== "collapsed") lastMode.current = next;
     setMode(next);
   }
   function enlarge() {
-    const viewport = ref.current?.closest<HTMLElement>(".viewport") ?? null;
+    if (full) return;
+    const scroll = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".viewport, .project-chat-slot, .project-chat-scroll, .project-chat-settings, .project-chat-transcript, .project-runtime-pane, .right-body, .project-evidence pre",
+      ),
+    ].map((node): [HTMLElement, number, number] => [
+      node,
+      node.scrollTop,
+      node.scrollLeft,
+    ]);
     saved.current = {
-      viewport,
-      scroll: viewport?.scrollTop ?? 0,
-      paneScroll:
-        ref.current?.querySelector(".project-runtime-pane")?.scrollTop ?? 0,
+      open: columns?.open ?? false,
+      takeover: columns?.layout.takeover ?? false,
+      mode,
+      scroll,
       focus:
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null,
     };
+    setMode("docked");
+    columns?.setOpen(true);
+    columns?.setTakeover(false);
+    shellFull?.(true);
     setFull(true);
   }
-  useEffect(() => {
-    if (!full || !ref.current) return;
-    const prior: [HTMLElement, boolean][] = [];
-    let node: HTMLElement = ref.current;
-    while (node.parentElement) {
-      for (const other of node.parentElement.children)
-        if (other !== node && other instanceof HTMLElement) {
-          prior.push([other, other.inert]);
-          other.inert = true;
-        }
-      node = node.parentElement;
-      if (node === document.body) break;
+  function restore() {
+    const prior = saved.current;
+    setFull(false);
+    shellFull?.(false);
+    if (prior) {
+      setMode(prior.mode);
+      columns?.setOpen(prior.open);
+      columns?.setTakeover(prior.takeover);
     }
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
-        e.preventDefault();
-        e.stopPropagation();
-        setFull(false);
-      }
+  }
+  useLayoutEffect(() => {
+    if (full) {
+      document
+        .querySelector<HTMLElement>(".project-restore")
+        ?.focus({ preventScroll: true });
+      return;
+    }
+    const prior = saved.current;
+    if (prior)
+      requestAnimationFrame(() => {
+        for (const [node, top, left] of prior.scroll)
+          if (node.isConnected) {
+            node.scrollTop = top;
+            node.scrollLeft = left;
+          }
+        if (prior.focus?.isConnected)
+          prior.focus.focus({ preventScroll: true });
+      });
+  }, [full]);
+  useEffect(() => {
+    if (!full) return;
+    const escape = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.isComposing ||
+        event.defaultPrevented ||
+        document.querySelector(
+          'dialog[open], [role="menu"], .conversation-menu, .project-menu',
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      restore();
     };
     window.addEventListener("keydown", escape, true);
-    return () => {
-      window.removeEventListener("keydown", escape, true);
-      for (const [element, inert] of prior) element.inert = inert;
-      const original = saved.current;
-      requestAnimationFrame(() => {
-        if (original?.viewport?.isConnected)
-          original.viewport.scrollTop = original.scroll;
-        const pane = ref.current?.querySelector(".project-runtime-pane");
-        if (pane && original) pane.scrollTop = original.paneScroll;
-        if (original?.focus?.isConnected)
-          original.focus.focus({ preventScroll: true });
-      });
-    };
-  }, [full]);
+    return () => window.removeEventListener("keydown", escape, true);
+  });
   return {
     ref,
     full,
     mode,
     enlarge,
-    restore: () => setFull(false),
+    restore,
     chatMode,
     reopen: () => chatMode(lastMode.current),
   };
@@ -93,8 +121,11 @@ export function ProjectChatLayout({
   children: ReactNode;
 }) {
   return (
-    <aside className="project-chat-slot" data-mode={layout.mode}>
-      <div className="project-layout-controls">
+    <aside
+      className="project-chat-slot"
+      data-mode={layout.full ? layout.mode : "docked"}
+    >
+      <div className="project-layout-controls" hidden={!layout.full}>
         {layout.mode === "collapsed" ? (
           <button className="button project-primary" onClick={layout.reopen}>
             打开项目对话
@@ -106,7 +137,9 @@ export function ProjectChatLayout({
               <select
                 aria-label="对话布局"
                 value={layout.mode}
-                onChange={(e) => layout.chatMode(e.target.value as ChatMode)}
+                onChange={(event) =>
+                  layout.chatMode(event.target.value as ChatMode)
+                }
               >
                 <option value="docked">停靠</option>
                 <option value="float">悬浮</option>
@@ -121,7 +154,12 @@ export function ProjectChatLayout({
           </>
         )}
       </div>
-      <div hidden={layout.mode === "collapsed"}>{children}</div>
+      <div
+        className="project-chat-content"
+        hidden={layout.full && layout.mode === "collapsed"}
+      >
+        {children}
+      </div>
     </aside>
   );
 }

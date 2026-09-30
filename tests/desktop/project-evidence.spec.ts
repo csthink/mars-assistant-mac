@@ -44,7 +44,10 @@ test("project evidence: topology, nodes, Trace runs, documents and differences a
       .getByRole("group", { name: "拓扑画布，可拖动平移", exact: true })
       .boundingBox())!;
     const graphBox = (await graph.boundingBox())!;
-    expect(canvasBox.height).toBe(380);
+    const centerWidth = await f.page
+      .locator(".center")
+      .evaluate((el) => el.clientWidth);
+    expect(canvasBox.height).toBe(centerWidth <= 760 ? 520 : 380);
     expect(canvasBox.width).toBeCloseTo(graphBox.width, 0);
     await graph
       .getByRole("combobox", { name: "检查节点", exact: true })
@@ -228,7 +231,7 @@ test("project evidence: fullscreen chat can float dock collapse and restore whil
     await f.page
       .getByRole("button", { name: "放大内容区", exact: true })
       .click();
-    const layout = f.page.locator(".project-work-grid");
+    const layout = f.page.locator(".project-columns-content");
     await expect(layout).toHaveAttribute("data-full", "true");
     // The enlarged content covers the window: the rail and the sidebar step aside.
     await expect(
@@ -467,7 +470,7 @@ test("project evidence: a fullscreen chat sends once while Runtime candidate upd
     await expect(f.page.getByLabel("文档内容", { exact: true })).toContainText(
       "当前候选 2",
     );
-    await expect(f.page.locator(".project-work-grid")).toHaveAttribute(
+    await expect(f.page.locator(".project-columns-content")).toHaveAttribute(
       "data-full",
       "true",
     );
@@ -511,6 +514,11 @@ test("project evidence: 适应内容 shows the whole topology inside the canvas 
       exact: true,
     });
     await expect(graph.locator("[data-node]")).toHaveCount(11);
+    // This retained topology lives in the centre; close the context column before testing an expanded sidebar.
+    await f.page
+      .getByRole("button", { name: "收起右栏", exact: true })
+      .first()
+      .click();
     /** Canvas box, node boxes and the rendered size of the node titles after 适应内容. */
     const fitted = async () => {
       await graph

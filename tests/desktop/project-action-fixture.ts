@@ -118,10 +118,53 @@ export async function journeyFixture(options: { reader?: boolean } = {}) {
       .locator(".project-open")
       .filter({ hasText: "合成任务旅程" })
       .click();
+    await page.getByRole("button", { name: "打开右栏", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Runtime 内容" })
       .getByRole("button", { name: "合成编码任务", exact: true })
       .click();
+    // A reply is not a projection boundary. Read the synthetic Runtime's persisted version,
+    // then wait for both the Host's complete object/action projection and the visible object.
+    // This never retries prepare or invoke; expired confirmations remain explicit refusals.
+    async function waitForPublishedProjection() {
+      const state = JSON.parse(
+        readFileSync(
+          join(
+            target.runtimeRoot,
+            "instances",
+            target.instanceId.replace(/[^A-Za-z0-9._-]/g, "_"),
+            "graph-runtime",
+            "state.json",
+          ),
+          "utf8",
+        ),
+      ) as { revision: number };
+      const revision = `rev:${state.revision}`;
+      await expect
+        .poll(async () => {
+          const reply = await page.evaluate(
+            (projectId) =>
+              window.desktop.projectWork({ type: "read", projectId }),
+            projectId,
+          );
+          const projection = reply.ok && reply.view?.projection;
+          return (
+            !!projection &&
+            projection.objects.length > 0 &&
+            projection.actions.length > 0 &&
+            projection.objects.every(
+              (object) => object.revision === revision,
+            ) &&
+            projection.actions.every(
+              (action) => action.expectedRevision === revision,
+            )
+          );
+        })
+        .toBe(true);
+      await expect(
+        page.locator(".project-center-content > .project-source"),
+      ).toHaveText(`版本 ${revision}`);
+    }
     return {
       app,
       page,
@@ -130,6 +173,7 @@ export async function journeyFixture(options: { reader?: boolean } = {}) {
       folder,
       projectId,
       target,
+      waitForPublishedProjection,
       request: (c: ProjectActionRequest) =>
         page.evaluate((c) => window.desktop.projectAction(c), c),
       prepare: async (actionId: string) =>
