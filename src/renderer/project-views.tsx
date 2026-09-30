@@ -225,6 +225,7 @@ export function Graph({
     } | null>(null);
   const { positions, levels } = layout(nodes, edges, view.slots);
   const selected = nodes.find((n) => n.id === view.node);
+  const titleSize = Math.max(14, Math.min(24, 10.25 / view.zoom));
   /** Fits the whole graph: every slot count is tried and the one with the largest scale for this canvas wins. */
   function fit() {
     const box = svg.current?.getBoundingClientRect();
@@ -452,8 +453,8 @@ export function Graph({
                 }}
               >
                 <rect width={NODE_W} height={NODE_H} rx="12" />
-                <text x="14" y="25">
-                  {n.label.slice(0, 18)}
+                <text x="14" y="25" style={{ fontSize: titleSize }}>
+                  {n.label.slice(0, Math.floor((NODE_W - 28) / titleSize))}
                 </text>
                 <text className="project-node-state" x="14" y="47">
                   {n.stateLabel.slice(0, 24)}
@@ -502,7 +503,7 @@ function Trace({
     sections = [
       ...new Set(entries.flatMap((e) => (e.section ? [e.section] : []))),
     ],
-    key = `project-run:${projectId}:${object.objectRef}`;
+    key = `project-trace-section:${projectId}:${object.scopeRef}:${object.objectRef}`;
   const [selection, setSelection] = useState(
     () => sessionStorage.getItem(key) ?? "",
   );
@@ -510,16 +511,16 @@ function Trace({
   return (
     <section aria-label="Trace 日志">
       <label>
-        运行
+        日志分组
         <select
-          aria-label="选择运行"
+          aria-label="筛选日志分组"
           value={chosen}
           onChange={(e) => {
             setSelection(e.target.value);
             sessionStorage.setItem(key, e.target.value);
           }}
         >
-          <option value="">全部运行</option>
+          <option value="">全部分组</option>
           {sections.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -544,7 +545,7 @@ function Trace({
             </li>
           ))}
       </ol>
-      {!entries.length && <p>该运行尚无 Trace 记录。</p>}
+      {!entries.length && <p>该来源尚无 Trace 记录。</p>}
     </section>
   );
 }

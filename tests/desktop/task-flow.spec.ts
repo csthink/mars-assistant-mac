@@ -62,6 +62,9 @@ test("task flow: identity and view survive refresh; missing run and node fields 
     await expect(f.page.locator(".right-body")).toContainText(
       "未提供任务与运行关联",
     );
+    await expect(
+      f.page.getByRole("combobox", { name: "筛选日志分组", exact: true }),
+    ).toBeVisible();
     expect(await actions.innerText()).toBe(before);
     await f.page.getByRole("tab", { name: "文件", exact: true }).click();
     await f.page

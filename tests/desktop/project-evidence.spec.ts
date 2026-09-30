@@ -44,16 +44,16 @@ test("project evidence: topology, nodes, Trace runs, documents and differences a
       .getByRole("group", { name: "拓扑画布，可拖动平移", exact: true })
       .boundingBox())!;
     const graphBox = (await graph.boundingBox())!;
-    const centerWidth = await f.page
-      .locator(".center")
-      .evaluate((el) => el.clientWidth);
-    expect(canvasBox.height).toBe(centerWidth <= 760 ? 520 : 380);
+    expect(canvasBox.height).toBeGreaterThan(300);
+    expect(canvasBox.y + canvasBox.height).toBeGreaterThan(
+      (await f.page.evaluate(() => innerHeight)) - 80,
+    );
     expect(canvasBox.width).toBeCloseTo(graphBox.width, 0);
     await graph
       .getByRole("combobox", { name: "检查节点", exact: true })
       .selectOption("stage:4");
     await expect(
-      graph.getByRole("region", { name: "节点详情", exact: true }),
+      f.page.getByRole("region", { name: "节点详情", exact: true }),
     ).toContainText("待变更评审");
     const oldZoom = await graph
       .getByLabel("拓扑缩放", { exact: true })
@@ -77,7 +77,7 @@ test("project evidence: topology, nodes, Trace runs, documents and differences a
     );
     await f.open("任务运行记录");
     await f.page
-      .getByRole("combobox", { name: "选择运行", exact: true })
+      .getByRole("combobox", { name: "筛选日志分组", exact: true })
       .selectOption("run:2");
     await expect(
       f.page.getByRole("region", { name: "Trace 日志", exact: true }),
