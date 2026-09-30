@@ -1,3 +1,4 @@
+import { taskRoute, clearTaskRoute } from "./task-route";
 import { useProjectColumns } from "./project-columns";
 import { ProjectDetail, type Business } from "./project-detail";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -422,12 +423,15 @@ export function Projects({
 }) {
   const columns = useProjectColumns();
   const projects = snapshot?.projects ?? [];
-  const [selected, setSelected] = useState<string | null>(() =>
-    sessionStorage.getItem("project-selected"),
+  const [selected, setSelected] = useState<string | null>(
+    () => taskRoute()?.project ?? sessionStorage.getItem("project-selected"),
   );
   useEffect(() => {
     if (selected) sessionStorage.setItem("project-selected", selected);
-    else sessionStorage.removeItem("project-selected");
+    else {
+      sessionStorage.removeItem("project-selected");
+      clearTaskRoute();
+    }
   }, [selected]);
   const [form, setForm] = useState<{ project: Project | null } | null>(null);
   const [menu, setMenu] = useState<{

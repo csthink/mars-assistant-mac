@@ -800,7 +800,9 @@ test("project actions: after an action succeeds its object shows 同步中 with 
       f.target,
     );
     await expect(
-      f.page.getByText("扩展未连接，显示最后已知内容。").first(),
+      f.page
+        .getByRole("region", { name: "任务操作", exact: true })
+        .getByText("扩展未连接，显示最后已知内容。", { exact: true }),
     ).toBeVisible();
     await expect(note).toHaveCount(0);
     for (const label of ["执行验证", "提交变更评审"])

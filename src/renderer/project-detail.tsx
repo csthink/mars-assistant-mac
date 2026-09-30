@@ -1,3 +1,5 @@
+import { taskRoute, clearTaskRoute } from "./task-route";
+import { TaskFlow } from "./task-flow";
 import { createPortal } from "react-dom";
 import { useProjectColumns } from "./project-columns";
 import { RightPanel } from "./main-shell";
@@ -175,7 +177,15 @@ export function ProjectDetail({
     [busy, setBusy] = useState(false),
     [scope, setScope] = useState("");
   const [objectId, setObjectId] = useState(
-    () => sessionStorage.getItem(`project-object:${project.id}`) ?? "",
+    () =>
+      (taskRoute()?.project === project.id ? taskRoute()?.object : null) ??
+      sessionStorage.getItem(`project-object:${project.id}`) ??
+      "",
+  );
+  const [taskRef, setTaskRef] = useState(() =>
+    taskRoute()?.project === project.id
+      ? (taskRoute()?.object ?? "")
+      : (sessionStorage.getItem(`project-task:${project.id}`) ?? ""),
   );
   const [query, setQuery] = useState(
       () => sessionStorage.getItem(`project-query:${project.id}`) ?? "",
@@ -232,11 +242,17 @@ export function ProjectDetail({
         .toLocaleLowerCase()
         .includes(query.toLocaleLowerCase()),
   );
+  const taskActive = !!selected && taskRef === selected.objectRef;
   const disabled = busy || !model.status.connected;
   function browse(ref: string) {
     setObjectId(ref);
     sessionStorage.setItem(`project-object:${project.id}`, ref);
     const object = objects.find((item) => item.objectRef === ref);
+    setTaskRef(object?.view.kind === "graph" ? ref : "");
+    if (object?.view.kind === "graph")
+      sessionStorage.setItem(`project-task:${project.id}`, ref);
+    else sessionStorage.removeItem(`project-task:${project.id}`);
+    if (object?.view.kind !== "graph") clearTaskRoute();
     setPanelTab(
       object?.view.kind === "trace"
         ? "events"
@@ -387,6 +403,26 @@ export function ProjectDetail({
               文档不可用：当前对象没有提供对应投影。
             </p>
           )}
+        {selected && (
+          <button
+            className="button"
+            onClick={() => {
+              setTaskRef(selected.objectRef);
+              sessionStorage.setItem(
+                `project-task:${project.id}`,
+                selected.objectRef,
+              );
+              setObjectId(selected.objectRef);
+              sessionStorage.setItem(
+                `project-object:${project.id}`,
+                selected.objectRef,
+              );
+              columns?.setOpen(true);
+            }}
+          >
+            查看详情与流程
+          </button>
+        )}
         <div className="project-section-heading">
           <h3>项目进度</h3>
           <button
@@ -633,6 +669,7 @@ export function ProjectDetail({
       className="project-work-grid project-columns-content"
       data-full={layout.full}
       data-chat={layout.mode}
+      data-task={taskActive && !layout.full ? "true" : undefined}
     >
       <div className="project-overview" hidden={layout.full}>
         <span>
@@ -662,23 +699,18 @@ export function ProjectDetail({
           onDiscussion={followDiscussion}
         />
       </ProjectChatLayout>
-      {selected?.view.kind === "graph" && !layout.full && (
-        <div className="project-center-content project-domain-content">
-          <div className="project-section-heading">
-            <h4>{selected.title}</h4>
-            <span>{selected.stateLabel}</span>
-          </div>
-          <p className="project-source">版本 {selected.revision}</p>
-          <ProjectView
-            projectId={project.id}
-            object={selected}
-            cache={evidenceCache.current}
-            unavailable={view?.unavailable ?? ""}
-            includeEvidence={false}
-          />
-        </div>
+      {taskActive && selected && view?.projection && !layout.full && (
+        <TaskFlow
+          key={selected.objectRef}
+          project={project}
+          object={selected}
+          view={view}
+          model={model}
+          cache={evidenceCache.current}
+          onBrowse={browse}
+        />
       )}
-      {selected && view?.projection && !layout.full && (
+      {selected && !taskActive && view?.projection && !layout.full && (
         <div className="project-center-actions">
           <ProjectActionPanel
             project={project}
@@ -695,9 +727,11 @@ export function ProjectDetail({
           />
         </div>
       )}
-      {columns?.host
-        ? createPortal(<>{panel}</>, columns.host)
-        : !columns && panel}
+      {!taskActive || layout.full
+        ? columns?.host
+          ? createPortal(<>{panel}</>, columns.host)
+          : !columns && panel
+        : null}
     </div>
   );
 }

@@ -7,6 +7,10 @@ test("project columns: browsing follows explicit discussion, preserves drafts, a
   const f = await journeyFixture({ reader: true });
   try {
     await f.page
+      .getByRole("navigation", { name: "Runtime 内容" })
+      .getByRole("button", { name: "设计文档", exact: true })
+      .click();
+    await f.page
       .getByRole("button", { name: "新建项目对话", exact: true })
       .click();
     const input = f.page.getByRole("textbox", {
@@ -83,6 +87,10 @@ test("project columns: browsing follows explicit discussion, preserves drafts, a
       };
     }, f.projectId);
     expect(after).toEqual(before);
+    await f.page
+      .getByRole("navigation", { name: "Runtime 内容" })
+      .getByRole("button", { name: "设计文档", exact: true })
+      .click();
     await expect(input).toHaveValue("本项目的独立草稿");
     const option = f.page
       .getByRole("combobox", { name: "讨论对象", exact: true })
@@ -111,6 +119,10 @@ test("project columns: browsing follows explicit discussion, preserves drafts, a
 test("project columns: enlarged content restores scroll, focus and drafts with mouse, keyboard and Escape in both sizes and appearances", async ({}, info) => {
   const f = await journeyFixture({ reader: true });
   try {
+    await f.page
+      .getByRole("navigation", { name: "Runtime 内容" })
+      .getByRole("button", { name: "设计文档", exact: true })
+      .click();
     await f.page
       .getByRole("button", { name: "新建项目对话", exact: true })
       .click();

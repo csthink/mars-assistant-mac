@@ -162,8 +162,8 @@ export async function journeyFixture(options: { reader?: boolean } = {}) {
         })
         .toBe(true);
       await expect(
-        page.locator(".project-center-content > .project-source"),
-      ).toHaveText(`版本 ${revision}`);
+        page.locator(".task-fixed-actions > .project-source"),
+      ).toHaveText(`candidate:1 · 版本 ${revision}`);
     }
     return {
       app,
