@@ -42,21 +42,7 @@ export function policyDigest(policy: unknown): string {
   return sha256Hex(canonicalJson(policy));
 }
 /** The current installation's binary digest for `programIdentity` (a launcher's real file). */
-export function binaryDigest(path: string): string {
-  const fd = openSync(path, "r");
-  try {
-    const hash = createHash("sha256");
-    const chunk = Buffer.alloc(1024 * 1024);
-    for (;;) {
-      const read = readSync(fd, chunk, 0, chunk.length, null);
-      if (read <= 0) break;
-      hash.update(chunk.subarray(0, read));
-    }
-    return hash.digest("hex");
-  } finally {
-    closeSync(fd);
-  }
-}
+export { binaryDigest } from "./execution-program";
 /**
  * The image the helper reports for a launched executable: a script's interpreter (the shebang
  * program, `/usr/bin/env NAME` resolved on the launch PATH), otherwise the executable itself;

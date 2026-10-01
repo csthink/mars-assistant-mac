@@ -131,7 +131,7 @@ export async function discoverCodex(
       if (!(await stat(resolvedPath)).isFile()) continue;
       await access(resolvedPath, constants.X_OK);
       const version = await (options.version ?? readCodexVersion)(
-        candidate,
+        resolvedPath,
         environment,
         Math.min(versionProbeTimeout, deadline - Date.now()),
       );
