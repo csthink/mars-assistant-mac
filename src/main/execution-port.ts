@@ -57,6 +57,8 @@ import {
   sha256,
 } from "./execution-record";
 import { canonicalJson } from "../shared/runtime-host";
+import type { ProgramIdentity } from "../shared/runtime-host";
+import { matchesProgramIdentity } from "./execution-program";
 import {
   blockedOperations,
   physicalExecutionOf,
@@ -121,6 +123,8 @@ export interface AdapterSession {
 }
 export interface LaunchPlan {
   executable: string;
+  /** The discovered Reviewer launcher, fixed before spawn and rechecked before release. */
+  programIdentity?: ProgramIdentity;
   /** The image the helper must report for the target (the binary, or a script's interpreter). */
   expectedImage: string;
   argv: string[];
@@ -455,6 +459,15 @@ export class EmbeddedExecutionPort implements ExecutionPort {
         return fail(error.code, error.message, error.errorClass);
       return fail("ACCEPT_ABORTED", (error as Error).message);
     }
+    if (
+      found.profile.purpose === "review" &&
+      (!plan.programIdentity ||
+        !matchesProgramIdentity(plan.executable, plan.programIdentity))
+    )
+      return fail(
+        "IDENTITY_MISMATCH",
+        "Reviewer program identity changed before spawn",
+      );
     // 1. Exclusive shared observation record in the resource's Git common directory.
     let writer: ExecutionRecordWriter;
     const root =
@@ -668,6 +681,18 @@ export class EmbeddedExecutionPort implements ExecutionPort {
     });
     if (this.options.beforeRelease)
       await this.options.beforeRelease(executionRef, target.pid);
+    if (
+      plan.programIdentity &&
+      !matchesProgramIdentity(plan.executable, plan.programIdentity)
+    ) {
+      live.observationErrors.push("program identity changed before release");
+      await this.endUnreleased(live, "program identity changed before release");
+      return {
+        status: "failed",
+        resultCode: "IDENTITY_MISMATCH",
+        reason: "program identity changed before release",
+      };
+    }
     if (live.exit) {
       // Exited before release: never ran any business; recorded as unknown, not completed.
       await this.endUnreleased(live, "target exited before release");
@@ -1375,7 +1400,9 @@ export class EmbeddedExecutionPort implements ExecutionPort {
       outcome: summary.outcome,
       resultCode: summary.resultCode,
       reason: summary.reason,
-      evidence: summary.evidence,
+      evidence: live.plan.programIdentity
+        ? { ...summary.evidence, programIdentity: live.plan.programIdentity }
+        : summary.evidence,
       accounting,
       budget: live.record.budget,
       stopReason: live.stopReason,

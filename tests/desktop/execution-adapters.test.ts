@@ -2,10 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
@@ -177,12 +179,17 @@ async function harness() {
     executionsRoot,
     statusTtlMs: 0,
   });
+  const seams: {
+    beforeRelease: ((ref: string, pid: number) => Promise<void>) | null;
+  } = { beforeRelease: null };
   const port = new EmbeddedExecutionPort({
     helper: helper(),
     adapters: [implementer, reviewer],
     evidenceRoot: join(executionsRoot, "evidence"),
     recordFallbackRoot: join(executionsRoot, "records"),
     hostImage: process.execPath,
+    beforeRelease: (ref, pid) =>
+      seams.beforeRelease?.(ref, pid) ?? Promise.resolve(),
   });
   host.registerExecutionPort(port);
   store.execute({ type: "runtimeInstall", installation }, "main", "host");
@@ -480,6 +487,7 @@ async function harness() {
     store,
     host,
     port,
+    seams,
     implementer,
     reviewer,
     connection,
@@ -1089,8 +1097,21 @@ test("codex reviewer: preflight runs the inventory and the restricted inspection
         "model-available",
         "effort-option",
         "codex-restricted-config",
+        "program-identity/v1",
       ],
     );
+    const identity = {
+      launcher: realpathSync(h.codex.binary),
+      binaryDigest: createHash("sha256")
+        .update(readFileSync(h.codex.binary))
+        .digest("hex"),
+      version: "0.153.4",
+    };
+    assert.deepEqual(pre.checks.at(-1), {
+      id: "program-identity/v1",
+      passed: true,
+      detail: canonicalJson(identity),
+    });
     const accepted = await h.inbound(h.connection, "host.execution.start", req);
     assert.equal(accepted.status, "running", JSON.stringify(accepted));
     const done = await h.finished(String(accepted.executionRef));
@@ -1174,6 +1195,7 @@ test("codex reviewer: preflight runs the inventory and the restricted inspection
       evidence.evidence.answer,
       "REVIEW: 01-candidate_1.md,02-task_1.txt bytes 16,10",
     );
+    assert.deepEqual(evidence.evidence.programIdentity, identity);
     assert.equal((evidence.evidence.readback as Json).fingerprintMatches, true);
     assert.deepEqual((evidence.evidence.readback as Json).environment, {
       environmentId: "local",
@@ -1190,6 +1212,72 @@ test("codex reviewer: preflight runs the inventory and the restricted inspection
     const cwd = calls.filter((c) => c.method === "thread/start").at(-1)!
       .params as Json;
     assert.equal(cwd.cwd, join(materials, "..", "cwd"));
+  } finally {
+    await h.port.close();
+  }
+});
+test("codex reviewer discovers an upgraded installation on the next preflight", async () => {
+  const h = await harness();
+  try {
+    await h.roleBinding(
+      "role:reviewer",
+      h.codexConnection().id,
+      codexModel,
+      "high",
+    );
+    const req = h.request("reviewer");
+    const readIdentity = async () => {
+      const pre = (await h.inbound(
+        h.connection,
+        "host.execution.preflight",
+        h.preflightOf(req),
+      )) as {
+        status: string;
+        checks: { id: string; passed: boolean; detail: string }[];
+      };
+      assert.equal(pre.status, "supported", JSON.stringify(pre.checks));
+      return JSON.parse(
+        pre.checks.find((c) => c.id === "program-identity/v1")!.detail,
+      ) as Json;
+    };
+    const original = await readIdentity();
+    h.codex.update({ version: "0.159.2" });
+    const upgraded = await readIdentity();
+    assert.equal(original.version, "0.153.4");
+    assert.equal(upgraded.version, "0.159.2");
+    assert.equal(upgraded.binaryDigest, original.binaryDigest);
+  } finally {
+    await h.port.close();
+  }
+});
+test("codex reviewer refuses changed launcher bytes before release", async () => {
+  const h = await harness();
+  try {
+    await h.roleBinding(
+      "role:reviewer",
+      h.codexConnection().id,
+      codexModel,
+      "high",
+    );
+    h.seams.beforeRelease = async () => {
+      appendFileSync(h.codex.binary, "\n// changed after spawn\n");
+    };
+    const result = await h.inbound(
+      h.connection,
+      "host.execution.start",
+      h.request("reviewer"),
+    );
+    assert.equal(result.status, "unknown", JSON.stringify(result));
+    assert.match(
+      String(result.reason),
+      /program identity changed before release/,
+    );
+    const record = h.recordOf(String(result.executionRef));
+    assert.equal(record?.releasedAt, null);
+    assert.equal(
+      h.calls(h.codex.calls).filter((c) => c.reviewerTurn).length,
+      0,
+    );
   } finally {
     await h.port.close();
   }
