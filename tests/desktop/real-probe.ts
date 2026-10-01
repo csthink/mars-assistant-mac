@@ -164,6 +164,7 @@ export class ProbeClient {
     const back = this.page.getByRole("button", { name: "返回项目列表" });
     if (await back.count()) await back.click();
     await this.page.locator(".project-open").filter({ hasText: name }).click();
+    await this.page.getByRole("button", { name: "在右栏查看" }).click();
     return this.page.getByRole("region", {
       name: "仓库治理接入",
       exact: true,

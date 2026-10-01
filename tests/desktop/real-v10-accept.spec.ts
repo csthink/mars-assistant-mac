@@ -63,8 +63,8 @@ const expectedHead = process.env.CSTHINK_V10_EXPECTED_HEAD ?? "";
 const j07Record = process.env.CSTHINK_V10_J07_RECORD ?? "";
 const evidenceDir = process.env.CSTHINK_V10_EVIDENCE_DIR ?? "";
 const expectedKey = process.env.CSTHINK_V10_EXPECTED_PUBLISHER_KEY_DIGEST ?? "";
-/** The authority reference the binding records: a V-10 run under OD-421. */
-const bindingAuthority = "assistant:feature-t31:OD-421:v10-probe";
+/** Synthetic authority reference, confined to the isolated zero-model working copy. */
+const bindingAuthority = "synthetic:v10-acceptance-probe";
 /** Actions whose payload schema delivery-r3 announced outside its capability document (s06-r10). */
 const previouslyRefused = new Set([
   "definition.decide",
