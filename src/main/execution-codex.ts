@@ -15,7 +15,7 @@
  * connection or the execution stops with nothing sent to the model.
  */
 import { randomUUID } from "node:crypto";
-import { mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { ChildProcess } from "node:child_process";
@@ -541,7 +541,6 @@ const authenticationOf = (
 export class CodexReviewerAdapter implements ExecutionAdapter {
   private inspection: Inspection | null = null;
   private inflight: Promise<Inspection> | null = null;
-  private digests = new Map<string, { key: string; digest: string }>();
   constructor(private readonly options: CodexAdapterOptions) {}
   private discovery: {
     installation: CodexInstallation | null;
@@ -597,8 +596,8 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
       Date.now() - this.inspection.at < ttl
     )
       return this.inspection;
-    if (this.inflight) return this.inflight;
-    this.inflight = (async () => {
+    if (!fresh && this.inflight) return this.inflight;
+    const pending = (async () => {
       const base: Inspection = {
         installation: null,
         status: null,
@@ -660,10 +659,13 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
       base.message = status.message;
       this.inspection = base;
       return base;
-    })().finally(() => {
-      this.inflight = null;
+    })();
+    if (fresh) return pending;
+    const shared = pending.finally(() => {
+      if (this.inflight === shared) this.inflight = null;
     });
-    return this.inflight;
+    this.inflight = shared;
+    return shared;
   }
   /** The restricted inspection app-server: same argv shape as a target, initialize and config/read only, no thread, no account method. */
   private async restrictedCheck(
@@ -710,17 +712,9 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
     };
   }
   private programIdentity(installation: CodexInstallation) {
-    const stat = statSync(installation.resolvedPath);
-    const key = `${stat.size}:${stat.mtimeMs}`;
-    const cached = this.digests.get(installation.resolvedPath);
-    const digest =
-      cached && cached.key === key
-        ? cached.digest
-        : binaryDigest(installation.resolvedPath);
-    this.digests.set(installation.resolvedPath, { key, digest });
     return {
       launcher: installation.resolvedPath,
-      binaryDigest: digest,
+      binaryDigest: binaryDigest(installation.resolvedPath),
       version: installation.version,
     };
   }
@@ -895,9 +889,25 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
       );
     } else if (restricted)
       check("codex-restricted-config", false, "没有可检视的安装");
+    let programIdentity: ExecutionProfile["programIdentity"] | null = null;
+    if (installation) {
+      try {
+        programIdentity = this.programIdentity(installation);
+      } catch {
+        // An installation whose bytes cannot be read cannot be sealed for a Reviewer attempt.
+      }
+    }
+    check(
+      "program-identity/v1",
+      programIdentity !== null,
+      programIdentity === null
+        ? "Codex 程序身份不可读取"
+        : canonicalJson(programIdentity),
+    );
     return {
       checks,
       inspection,
+      programIdentity,
       connection,
       entry,
       model,
@@ -907,7 +917,7 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
     };
   }
   async preflight(request: PreflightRequest): Promise<PreflightCheck[]> {
-    return (await this.checks(request, false, true)).checks;
+    return (await this.checks(request, true, true)).checks;
   }
   async plan(
     request: ExecutionStartRequest,
@@ -916,6 +926,7 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
     const {
       checks,
       inspection,
+      programIdentity,
       connection,
       entry,
       model,
@@ -923,7 +934,7 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
       current,
     } = await this.checks(request, true, false);
     const failed = checks.find((c) => !c.passed);
-    if (failed || !connection || !entry?.codex)
+    if (failed || !connection || !entry?.codex || !programIdentity)
       throw new AdapterRefusal(
         failed?.id === "connection" || failed?.id === "connection-model"
           ? "PRECONDITION_CONFLICT"
@@ -971,6 +982,7 @@ export class CodexReviewerAdapter implements ExecutionAdapter {
     const authentication = entry.codex.authentication;
     return {
       executable: installation.resolvedPath,
+      programIdentity,
       expectedImage,
       argv,
       env,
