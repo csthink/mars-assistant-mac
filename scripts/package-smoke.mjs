@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { clearTimeout, setTimeout } from "node:timers";
+import { Buffer } from "node:buffer";
 /* global WebSocket -- Node.js 24 provides the WHATWG WebSocket client globally. */
 
 /**
@@ -349,6 +350,40 @@ async function command(session, body) {
 }
 
 /**
+ * The HarnessPlane entry in the trial build (spec RUNTIME-01): opens 设置 → 扩展管理 in the
+ * main window, reads the AI-SDLC card and saves a capture of the page. Without an imported
+ * runtime package the card must say 未安装 and offer no working action.
+ */
+async function extensionsProbe(session, capture) {
+  const result = await session.evaluate(`(async () => {
+    const { BrowserWindow } = require("electron");
+    const main = BrowserWindow.getAllWindows().find((w) => w.getTitle() !== "工作台助手");
+    const read = await main.webContents.executeJavaScript(\`(async () => {
+      const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+      const find = async (pick) => {
+        for (let i = 0; i < 50; i++) { const found = pick(); if (found) return found; await wait(100); }
+        return null;
+      };
+      const avatar = await find(() => [...document.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") || "").startsWith("我，个人空间")));
+      if (!avatar) return { error: "no avatar button" };
+      avatar.click();
+      const nav = await find(() => [...document.querySelectorAll("nav[aria-label='设置分类'] button")].find((b) => b.textContent.trim() === "扩展管理"));
+      if (!nav) return { error: "no 扩展管理 category" };
+      nav.click();
+      const card = await find(() => document.querySelector("article[aria-label='AI-SDLC 扩展']"));
+      if (!card) return { error: "no AI-SDLC card" };
+      const badge = card.querySelector(".extension-badge");
+      const buttons = [...card.querySelectorAll("button")].map((b) => ({ label: b.textContent.trim(), disabled: b.disabled }));
+      return { badge: badge ? badge.textContent.trim() : null, buttons, switches: card.querySelectorAll("[role=switch]").length };
+    })()\`);
+    const image = await main.webContents.capturePage();
+    return { read, png: image.toPNG().toString("base64") };
+  })()`);
+  await writeFile(capture, Buffer.from(result.png, "base64"));
+  return result.read;
+}
+
+/**
  * Quits through the product's own quit path. Node keeps the process until the inspector
  * detaches, so the socket stays open while the app shuts down (to read any recorded error
  * box) and is closed once Node reports that it waits for the debugger.
@@ -512,6 +547,10 @@ try {
     report.data = projection(snapshot);
   } else {
     report.data = projection(state.snapshot);
+    report.extensions = await extensionsProbe(
+      session,
+      join(work, "extensions.png"),
+    );
   }
   report.exit = await quit(session);
   report.dataDirectories = await dataDirectories();
@@ -558,6 +597,10 @@ if (
   !report.cleanExit ||
   report.anyFocusableWindow ||
   !report.appDataIsIsolated ||
+  (report.extensions &&
+    (report.extensions.badge !== "未安装" ||
+      report.extensions.switches !== 0 ||
+      report.extensions.buttons.some((button) => !button.disabled))) ||
   (report.compare &&
     !Object.entries(report.compare).every(
       ([key, value]) => key === "seededBy" || value === true,
