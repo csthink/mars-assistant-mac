@@ -134,7 +134,7 @@ mars-assistant-mac/
 
 ## 试用安装包
 
-`npm run package:trial` 在 Apple silicon 的 macOS 上构建试用安装包 `Qingluan-<版本>-arm64.dmg`，盘内是 `Qingluan.app` 与指向「应用程序」文件夹的链接。
+`npm run package:trial` 在 Apple silicon 的 macOS 上构建试用安装包 `Qingluan-<版本>-arm64.dmg`。盘内是 `Qingluan.app`、指向「应用程序」文件夹的链接与快捷方式「打开隐私与安全性」（`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension`，只打开该设置页）；窗口背景（`assets/dmg/`，1x 与 2x）画出拖入方向，并用中英文写明首次打开被拦截时的放行步骤。窗口布局由构建依赖 dmgbuild 直接写入 `.DS_Store`，不驱动访达；它按 `scripts/dmg-requirements.txt` 固定版本与哈希，首次构建时安装到 `dist/dmgbuild-venv`（需要 `python3` 3.10 或更新版本与网络）。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -144,7 +144,7 @@ mars-assistant-mac/
 | 签名 | 由内向外的 ad-hoc 签名，`codesign --verify --deep --strict` 通过；没有 Developer ID 签名与 Apple 公证，Gatekeeper 评估（`spctl`）会拒绝 |
 | 图标 | `assets/icon/`：`AppIcon.icns`（打包时由 PNG 组生成）与 macOS 26 起使用的分层图标 `Assets.car`；主窗口窄列的产品标识是同一图标的 32 像素简化版 |
 
-从网上下载的副本第一次打开会被系统拦下：在「系统设置 → 隐私与安全性」中对本应用选择「仍要打开」放行一次即可，不需要也不应该关闭 Gatekeeper。每个新版本的 ad-hoc 签名都不同，升级后第一次使用已保存的 API key 时，macOS 可能请求允许访问钥匙串项；拒绝时密钥无法解密，需要在设置中重新填写。
+从网上下载的副本第一次打开会被系统拦下：首次打开如被系统拦截，打开「系统设置 → 隐私与安全性」，在「安全性」一栏点「仍要打开」，放行一次即可，不需要也不应该关闭 Gatekeeper。每个新版本的 ad-hoc 签名都不同，升级后第一次使用已保存的 API key 时，macOS 可能请求允许访问钥匙串项；拒绝时密钥无法解密，需要在设置中重新填写。
 
 `node scripts/package-smoke.mjs --phase seed|verify --dmg <dmg>`（或 `--app <应用包>`）在后台核对安装包：从只读挂载的磁盘映像复制应用，在独立的 HOME（自带临时钥匙串）与独立的 Application Support 中启动，不出现在程序坞与菜单栏、不取得焦点；`seed` 写入一个对话、草稿、经产品 vault 保存的合成 API key、引用它的提供方与外观设置后正常退出，`verify` 在同一目录用另一个构建启动并逐项比较读回结果、vault 文件字节与钥匙串项名称。两次运行加 `--work <同一目录>`。
 

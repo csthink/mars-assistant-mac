@@ -13,7 +13,6 @@ import {
   readdir,
   rm,
   stat,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -166,28 +165,77 @@ async function sha256(path) {
   return hash.digest("hex");
 }
 
-/** A compressed, read-only disk image with the app and a link to /Applications. */
+/**
+ * The URL that opens System Settings > Privacy & Security, where a person allows the app once.
+ * The Privacy & Security settings extension (com.apple.settings.PrivacySecurity.extension)
+ * declares allowsXAppleSystemPreferencesURLScheme. The shortcut only opens the page; it changes
+ * no setting and runs nothing.
+ */
+const privacySecurityURL =
+  "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension";
+const shortcutName = "打开隐私与安全性.webloc";
+
+/** dmgbuild in a private virtual environment, installed only from the pinned, hashed wheels. */
+function dmgbuild() {
+  const venv = resolve("dist/dmgbuild-venv");
+  const bin = join(venv, "bin", "dmgbuild");
+  if (!existsSync(bin)) {
+    run("python3", ["-m", "venv", venv]);
+    run(join(venv, "bin", "python"), [
+      "-m",
+      "pip",
+      "install",
+      "--require-hashes",
+      "--no-deps",
+      "--only-binary",
+      ":all:",
+      "-r",
+      "scripts/dmg-requirements.txt",
+    ]);
+  }
+  return bin;
+}
+
+/**
+ * A compressed, read-only disk image: the app, a link to /Applications, the shortcut to
+ * Privacy & Security, and a window background that shows how to install and how to allow the
+ * first launch. dmgbuild writes the window layout (.DS_Store) directly, so building the image
+ * never scripts the Finder.
+ */
 async function diskImage(app, outDir, version) {
   const file = join(outDir, `${productName}-${version}-arm64.dmg`);
   if (existsSync(file)) throw new Error(`${file} already exists.`);
-  const root = await mkdtemp(join(tmpdir(), "qingluan-dmg-"));
+  const work = await mkdtemp(join(tmpdir(), "qingluan-dmg-"));
   try {
-    run("/usr/bin/ditto", [app, join(root, basename(app))]);
-    await symlink("/Applications", join(root, "Applications"));
-    run("/usr/bin/hdiutil", [
-      "create",
-      "-volname",
+    const background = join(work, "background.tiff");
+    run("/usr/bin/tiffutil", [
+      "-cathidpicheck",
+      "assets/dmg/background.png",
+      "assets/dmg/background@2x.png",
+      "-out",
+      background,
+    ]);
+    const shortcut = join(work, shortcutName);
+    await writeFile(
+      shortcut,
+      `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>URL</key>\n\t<string>${privacySecurityURL}</string>\n</dict>\n</plist>\n`,
+      "utf8",
+    );
+    run("/usr/bin/plutil", ["-lint", shortcut]);
+    run(dmgbuild(), [
+      "-s",
+      "scripts/dmg-settings.py",
+      "-D",
+      `app=${app}`,
+      "-D",
+      `background=${background}`,
+      "-D",
+      `shortcut=${shortcut}`,
       productName,
-      "-srcfolder",
-      root,
-      "-fs",
-      "APFS",
-      "-format",
-      "UDZO",
       file,
     ]);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(work, { recursive: true, force: true });
   }
   run("/usr/bin/hdiutil", ["verify", file]);
   return file;

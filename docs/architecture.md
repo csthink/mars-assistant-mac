@@ -152,7 +152,7 @@ Host 服务（`src/main/runtime-host.ts`）只保留每个连接的同步状态�
 2. esbuild 打包主进程、业务服务、各 worker、preload 与产品 MCP 进程（目标 `node24`，输出 `.cjs`），以及界面（目标 `chrome144`）。
 3. 复制 `index.html`、PDF.js 的 worker 模块与 `assets/icon/` 下 1x 与 2x 的菜单栏模板图 PNG。
 
-`scripts/package-macos.mjs` 用 `@electron/packager` 生成应用包 `Qingluan.app`，注册对话链接协议 `csthink-assistant`；输出目录已存在时拒绝覆盖。显示名「青鸾」写进应用包每个 `.lproj` 的 `InfoPlist.strings`（`LSHasLocalizedDisplayName`，`CFBundleDevelopmentRegion` 为 `zh_CN`），任何系统语言下访达、程序坞与菜单栏都显示同一名称，主进程的 `app.setName("csthink-assistant")` 决定默认数据目录与 safeStorage 钥匙串项的名称，二者都不随显示名改变；窗口、侧栏标题与菜单上的名称取自 `src/shared/app-name.ts` 这一处。打包后由内向外做 ad-hoc 签名；`--dmg` 另用 `hdiutil` 生成 arm64 磁盘映像与元数据。`scripts/package-smoke.mjs` 经 Node inspector 在打包产物里安装与后台测试相同的隔离后启动它，核对读回与升级。
+`scripts/package-macos.mjs` 用 `@electron/packager` 生成应用包 `Qingluan.app`，注册对话链接协议 `csthink-assistant`；输出目录已存在时拒绝覆盖。显示名「青鸾」写进应用包每个 `.lproj` 的 `InfoPlist.strings`（`LSHasLocalizedDisplayName`，`CFBundleDevelopmentRegion` 为 `zh_CN`），任何系统语言下访达、程序坞与菜单栏都显示同一名称，主进程的 `app.setName("csthink-assistant")` 决定默认数据目录与 safeStorage 钥匙串项的名称，二者都不随显示名改变；窗口、侧栏标题与菜单上的名称取自 `src/shared/app-name.ts` 这一处。打包后由内向外做 ad-hoc 签名；`--dmg` 另用固定版本的 dmgbuild（构建依赖，直接写 `.DS_Store`，不驱动访达）生成 arm64 磁盘映像：应用、「应用程序」链接、打开「隐私与安全性」的 `.webloc` 快捷方式与首次打开引导背景，并写元数据。`scripts/package-smoke.mjs` 经 Node inspector 在打包产物里安装与后台测试相同的隔离后启动它，核对读回与升级。
 
 ## 测试结构
 
