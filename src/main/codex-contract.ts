@@ -35,7 +35,8 @@ export async function verifyCodexRuntime(
     codexHome = join(home, ".codex");
   await mkdir(cwd);
   await mkdir(codexHome);
-  const personalSkill = join(home, ".agents", "skills", "private-fixture");
+  const personalSkillName = "private-fixture";
+  const personalSkill = join(home, ".agents", "skills", personalSkillName);
   await mkdir(personalSkill, { recursive: true });
   await writeFile(
     join(personalSkill, "SKILL.md"),
@@ -132,6 +133,8 @@ export async function verifyCodexRuntime(
     },
   ];
   let direct: boolean | undefined;
+  /** Whether the direct-function session offers the skill tools (Codex 0.159 no longer does). */
+  let directSkillTools = false;
   const functionOutputs = new Map<string, string>();
   function checkDirectTools(raw: unknown) {
     if (!Array.isArray(raw)) throw error();
@@ -153,11 +156,42 @@ export async function verifyCodexRuntime(
         }
       } else throw error();
     }
-    const required = [readToolName, "skills.list", "skills.read"];
+    // The skill tools come as a pair or not at all; nothing beyond the read tool is required.
+    const skills = ["skills.list", "skills.read"];
+    const present = skills.filter((name) => names.includes(name)).length;
     if (
       new Set(names).size !== names.length ||
-      required.some((name) => !names.includes(name)) ||
-      names.some((name) => ![...required, "request_user_input"].includes(name))
+      !names.includes(readToolName) ||
+      present === 1 ||
+      names.some(
+        (name) =>
+          ![readToolName, ...skills, "request_user_input"].includes(name),
+      )
+    )
+      throw error();
+    directSkillTools = present === 2;
+  }
+  /**
+   * The parts of a request the model provider receives besides our own scripted calls and their
+   * results: no instruction, tool description or message may name the unselected personal skill.
+   */
+  function checkNoPersonalSkill(body: Record<string, unknown>) {
+    const own = [
+      "custom_tool_call",
+      "custom_tool_call_output",
+      "function_call",
+      "function_call_output",
+    ];
+    const exposed = JSON.stringify({
+      instructions: body.instructions ?? null,
+      tools: body.tools ?? null,
+      input: (body.input as unknown[]).filter(
+        (raw) => !own.includes(String(record(raw).type)),
+      ),
+    });
+    if (
+      exposed.includes(personalSkillName) ||
+      exposed.includes("UNSELECTED_SYNTHETIC_SKILL_SECRET")
     )
       throw error();
   }
@@ -196,6 +230,7 @@ export async function verifyCodexRuntime(
           requests > Math.max(scripts.length, functions.length)
         )
           throw error();
+        checkNoPersonalSkill(body);
         const style = Array.isArray(body.tools);
         if (direct !== undefined && direct !== style) throw error();
         direct = style;
@@ -417,40 +452,46 @@ export async function verifyCodexRuntime(
       ],
     });
     await done;
+    const includes = (value: unknown) =>
+      outputs.some((out) => JSON.stringify(out) === JSON.stringify(value));
+    // The one script result that lists the tools. Clock availability is model-specific and is not
+    // required by our read tool, so only that known harmless optional tool is normalized away. The skill
+    // tools are optional as a pair: Codex 0.159 no longer offers them here, and where they are offered
+    // they must list nothing. Every other extra or missing tool is rejected.
+    const listed = outputs
+      .map((out) => record(out))
+      .filter((value) => Array.isArray(value.tools));
+    const reported = listed.length === 1 ? listed[0] : null;
+    const tools = reported?.tools as unknown[] | undefined;
+    const named =
+      tools && tools.every((tool) => typeof tool === "string")
+        ? tools.filter((tool) => tool !== "clock__curr_time").sort()
+        : null;
+    const skillTools = !!named?.includes("skills__list");
     const expected = {
-      tools: [readToolName, "skills__list", "skills__read"].sort(),
+      tools: (skillTools
+        ? [readToolName, "skills__list", "skills__read"]
+        : [readToolName]
+      ).sort(),
       fetch: "undefined",
       process: "undefined",
       require: "undefined",
     };
-    const includes = (value: unknown) =>
-      outputs.some((out) => JSON.stringify(out) === JSON.stringify(value));
     if (
       !direct &&
       (requests !== scripts.length + 1 ||
         callbacks !== 1 ||
-        !outputs.some((out) => {
-          const value = record(out);
-          if (
-            !Array.isArray(value.tools) ||
-            new Set(value.tools).size !== value.tools.length
-          )
-            return false;
-          // Clock availability is model-specific and is not required by our read tool.
-          // Normalize only that known harmless optional tool; reject every other extra or missing tool.
-          return (
-            JSON.stringify({
-              ...value,
-              tools: value.tools
-                .filter((tool) => tool !== "clock__curr_time")
-                .sort(),
-            }) === JSON.stringify(expected)
-          );
-        }) ||
-        !includes({
-          orchestrator: { skills: [], warnings: [], next_cursor: null },
-          executor: { skills: [], warnings: [], next_cursor: null },
-        }) ||
+        !reported ||
+        !tools ||
+        !named ||
+        new Set(tools).size !== tools.length ||
+        JSON.stringify({ ...reported, tools: named }) !==
+          JSON.stringify(expected) ||
+        (skillTools &&
+          !includes({
+            orchestrator: { skills: [], warnings: [], next_cursor: null },
+            executor: { skills: [], warnings: [], next_cursor: null },
+          })) ||
         !includes({ nodeImportDenied: true }) ||
         !includes({ bypassDenied: true }) ||
         !includes({ contractMaterialRead: true }))
@@ -464,11 +505,12 @@ export async function verifyCodexRuntime(
         requests !== functions.length + 1 ||
         callbacks !== 1 ||
         functionOutputs.size !== functions.length ||
-        JSON.stringify(parse(0)) !== JSON.stringify(emptySkills) ||
-        JSON.stringify(parse(1)) !== JSON.stringify(emptySkills) ||
+        (directSkillTools &&
+          (JSON.stringify(parse(0)) !== JSON.stringify(emptySkills) ||
+            JSON.stringify(parse(1)) !== JSON.stringify(emptySkills))) ||
         JSON.stringify(parse(7)) !==
           JSON.stringify({ contractMaterialRead: true }) ||
-        [2, 3, 4, 5, 6].some(
+        (directSkillTools ? [2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5, 6]).some(
           (id) =>
             !/unsupported|unknown|not (?:available|found)|unavailable/i.test(
               functionOutputs.get(`fixture-${id}`) ?? "",
