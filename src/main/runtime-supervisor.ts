@@ -18,6 +18,7 @@ import {
   statSync,
 } from "node:fs";
 import { join } from "node:path";
+import { isMacMetadata } from "../shared/macos-metadata";
 import {
   digestOf,
   expandArgv,
@@ -497,10 +498,13 @@ export class RuntimeConnection {
 function pruneDiagnostics(dir: string) {
   let files: { path: string; mtime: number; size: number }[] = [];
   try {
-    files = readdirSync(dir).map((name) => {
-      const stat = statSync(join(dir, name));
-      return { path: join(dir, name), mtime: stat.mtimeMs, size: stat.size };
-    });
+    // Finder metadata is not a diagnostics file and is never pruned.
+    files = readdirSync(dir)
+      .filter((name) => !isMacMetadata(name))
+      .map((name) => {
+        const stat = statSync(join(dir, name));
+        return { path: join(dir, name), mtime: stat.mtimeMs, size: stat.size };
+      });
   } catch {
     return;
   }

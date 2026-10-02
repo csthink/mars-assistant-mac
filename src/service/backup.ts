@@ -18,6 +18,7 @@ import {
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { StoreError } from "./errors";
+import { isMacMetadata } from "../shared/macos-metadata";
 
 /** The root lock must be held. Never overwrite a prior snapshot or follow links. */
 export function backupBeforeUpgrade(
@@ -66,6 +67,9 @@ export function backupBeforeUpgrade(
         throw new Error("invalid attachment directory");
       mkdirSync(join(data, "attachments"), { mode: 0o700 });
       for (const name of readdirSync(source)) {
+        // Finder metadata is not part of the data and is not copied into the backup.
+        if (isMacMetadata(name, (base) => /^[0-9a-f]{64}$/.test(base)))
+          continue;
         const file = join(source, name);
         if (!/^[0-9a-f]{64}$/.test(name) || !lstatSync(file).isFile())
           throw new Error("invalid attachment file");

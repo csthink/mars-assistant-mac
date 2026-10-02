@@ -42,6 +42,7 @@ const { values } = parseArgs({
     dmg: { type: "string" },
     app: { type: "string" },
     work: { type: "string" },
+    "finder-metadata": { type: "boolean", default: false },
   },
 });
 if (process.platform !== "darwin")
@@ -500,6 +501,15 @@ const source = values.dmg
   ? await appFromImage(resolve(values.dmg))
   : { app: resolve(values.app), layout: null, link: null };
 if (!isAbsolute(source.app)) throw new Error("App path must be absolute.");
+// --finder-metadata: the Finder has already written a .DS_Store into the default business
+// directory, as it does once a person opens that folder (mac-feature-t46:KB-01). The app must
+// open the directory anyway and leave the file exactly as it was.
+const finderFile = join(appData, "csthink-assistant", ".DS_Store");
+const finderBytes = Buffer.from("Bud1 smoke-check Finder metadata");
+if (values["finder-metadata"] && !existsSync(finderFile)) {
+  await mkdir(join(appData, "csthink-assistant"), { recursive: true });
+  await writeFile(finderFile, finderBytes);
+}
 const session = await launch(source.app);
 const report = {
   phase: values.phase,
@@ -611,6 +621,10 @@ try {
       ).sort()
     : [];
   report.keychainItems = keychainItems();
+  if (values["finder-metadata"])
+    report.finderMetadataKept =
+      existsSync(finderFile) &&
+      (await readFile(finderFile)).equals(finderBytes);
   if (values.phase === "seed") {
     await writeFile(seedFile, JSON.stringify(report, null, 2) + "\n");
   } else {
@@ -638,6 +652,7 @@ if (
   !report.cleanExit ||
   report.anyFocusableWindow ||
   !report.appDataIsIsolated ||
+  report.finderMetadataKept === false ||
   (report.extensions &&
     (report.extensions.badge !== "未安装" ||
       report.extensions.switches !== 0 ||

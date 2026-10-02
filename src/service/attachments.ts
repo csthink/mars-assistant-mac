@@ -34,6 +34,7 @@ import {
   type Snapshot,
 } from "../shared/protocol";
 import { StoreError } from "./errors";
+import { isMacMetadata } from "../shared/macos-metadata";
 
 /**
  * Schema version 8: selected material. A copy of the chosen bytes is stored
@@ -92,6 +93,8 @@ export function verifyAttachmentDirectory(root: string) {
     throw error;
   }
   for (const name of names) {
+    // Finder metadata is left in place; it is not a copy and nothing references it.
+    if (isMacMetadata(name, (base) => hex64.test(base))) continue;
     const entry = lstatSync(join(dir, name));
     if (temporary.test(name)) {
       // An interrupted import left its own scratch file; nothing references it.

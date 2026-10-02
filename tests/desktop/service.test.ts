@@ -9,6 +9,7 @@ import {
   readdirSync,
   readFileSync,
   statSync,
+  existsSync,
 } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { join, resolve } from "node:path";
@@ -16,6 +17,8 @@ import { randomUUID } from "node:crypto";
 import { fork } from "node:child_process";
 import { once } from "node:events";
 import { Store, schemaVersion, migrations } from "../../src/service/store";
+import { backupBeforeUpgrade } from "../../src/service/backup";
+import { isMacMetadata } from "../../src/shared/macos-metadata";
 
 mkdirSync(".test-data/disposable", { recursive: true });
 function root() {
@@ -1241,4 +1244,104 @@ test("文本测试按连接与模型隔离，拒绝重复执行，重启保留�
     store.close();
     rmSync(dir, { recursive: true });
   }
+});
+
+// mac-feature-t46:KB-01: the Finder writes .DS_Store into any folder a person opens; it is not someone else's data.
+const finderBytes = Buffer.from("Bud1 finder metadata");
+test("数据目录与 macOS 元数据：只有 .DS_Store 的目录可以初始化，元数据原样保留", () => {
+  const dir = root();
+  writeFileSync(join(dir, ".DS_Store"), finderBytes);
+  const store = new Store(dir);
+  try {
+    assert.equal(
+      store.execute({ type: "create", id: randomUUID() }, "main").ok,
+      true,
+    );
+    assert.equal(existsSync(join(dir, "state.sqlite")), true);
+    assert.deepEqual(readFileSync(join(dir, ".DS_Store")), finderBytes);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+test("数据目录与 macOS 元数据：已有本应用数据外加 .DS_Store 与 AppleDouble 文件仍能打开，附件目录里的元数据也不拒绝", () => {
+  const dir = root();
+  let store = new Store(dir);
+  const id = randomUUID();
+  try {
+    assert.equal(store.execute({ type: "create", id }, "main").ok, true);
+    store.close();
+    mkdirSync(join(dir, "attachments"), { recursive: true, mode: 0o700 });
+    const copy = "a".repeat(64);
+    writeFileSync(join(dir, "attachments", copy), "copy");
+    for (const name of [
+      ".DS_Store",
+      "._state.sqlite",
+      "._attachments",
+      "._.DS_Store",
+    ])
+      writeFileSync(join(dir, name), finderBytes);
+    for (const name of [".DS_Store", `._${copy}`])
+      writeFileSync(join(dir, "attachments", name), finderBytes);
+    store = new Store(dir);
+    assert.equal(
+      store.snapshot().conversations.some((c) => c.id === id),
+      true,
+    );
+    // Nothing is deleted: the metadata stays exactly as the Finder left it.
+    assert.deepEqual(readFileSync(join(dir, ".DS_Store")), finderBytes);
+    assert.deepEqual(
+      readFileSync(join(dir, "attachments", ".DS_Store")),
+      finderBytes,
+    );
+    // An upgrade backup copies the data and leaves the metadata out.
+    const backup = backupBeforeUpgrade(store.db, dir, schemaVersion);
+    try {
+      assert.deepEqual(readdirSync(join(backup, "data", "attachments")), [
+        copy,
+      ]);
+    } finally {
+      rmSync(backup, { recursive: true });
+    }
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+test("数据目录与 macOS 元数据：真正的外来文件、外来文件的 AppleDouble 与 .localized 仍然拒绝，且不改写目录", () => {
+  for (const [where, name] of [
+    ["", "notes.txt"],
+    ["", "._notes.txt"],
+    ["", ".localized"],
+    ["", "._"],
+    ["attachments", "notes.txt"],
+    ["attachments", "._notes.txt"],
+  ]) {
+    const dir = root();
+    try {
+      writeFileSync(join(dir, ".DS_Store"), finderBytes);
+      mkdirSync(join(dir, where), { recursive: true });
+      writeFileSync(join(dir, where, name), "someone else");
+      const before = readdirSync(dir).sort();
+      assert.throws(
+        () => new Store(dir),
+        (error: Error & { code?: string }) => error.code === "INVALID_ROOT",
+        `${where}/${name}`,
+      );
+      assert.deepEqual(readdirSync(dir).sort(), before);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  }
+});
+test("数据目录与 macOS 元数据：识别规则", () => {
+  const own = (name: string) => name === "state.sqlite";
+  assert.equal(isMacMetadata(".DS_Store"), true);
+  assert.equal(isMacMetadata("._.DS_Store"), true);
+  assert.equal(isMacMetadata("._state.sqlite", own), true);
+  assert.equal(isMacMetadata("._state.sqlite"), false);
+  assert.equal(isMacMetadata("._notes.txt", own), false);
+  assert.equal(isMacMetadata("._", own), false);
+  assert.equal(isMacMetadata(".localized", own), false);
+  assert.equal(isMacMetadata("state.sqlite", own), false);
 });
