@@ -40,6 +40,13 @@ export function createCodexFixture(root: string) {
     reviewerEnvironments: "local" as "local" | "empty" | "null" | "foreign",
     reviewerNetwork: false,
     reviewerMcpEnabled: false,
+    /**
+     * Skill instructions in the contract requests, as Codex 0.159 sends them: unless-disabled lists the
+     * skills under HOME/.agents/skills unless skills.include_instructions=false was passed; always
+     * ignores that setting (a Codex whose read-back and behaviour disagree); none never lists them.
+     */
+    skillInstructions: "unless-disabled" as
+      "unless-disabled" | "always" | "none",
   };
   const update = (patch: Partial<typeof state>) => {
     Object.assign(state, patch);
@@ -82,7 +89,7 @@ function config() {
   if (state.reviewerFilesystemExtra) fs[state.reviewerFilesystemExtra] = 'read';
   const mcp = { ...(overrides.mcp_servers || {}) };
   if (state.reviewerMcpEnabled) mcp.synthetic_mcp = { enabled: true };
-  return { ...value, features: { ...(overrides.features || {}), ...(state.mode === 'conflict' ? {shell_tool:true} : {}) }, mcp_servers:mcp, permissions:{[profileName]:{filesystem:fs,network:{enabled: state.reviewerNetwork ? true : (requested.network || {}).enabled}}}, agents:overrides.agents,default_permissions:profileName,web_search:overrides.web_search,approval_policy:overrides.approval_policy,notify:overrides.notify,project_doc_max_bytes:overrides.project_doc_max_bytes };
+  return { ...value, ...(overrides['skills.include_instructions'] === undefined ? {} : {skills:{include_instructions:overrides['skills.include_instructions']}}), features: { ...(overrides.features || {}), ...(state.mode === 'conflict' ? {shell_tool:true} : {}) }, mcp_servers:mcp, permissions:{[profileName]:{filesystem:fs,network:{enabled: state.reviewerNetwork ? true : (requested.network || {}).enabled}}}, agents:overrides.agents,default_permissions:profileName,web_search:overrides.web_search,approval_policy:overrides.approval_policy,notify:overrides.notify,project_doc_max_bytes:overrides.project_doc_max_bytes };
 }
 const readback = (params) => state.effortReadback ?? (params && params.config && typeof params.config.model_reasoning_effort === 'string' ? params.config.model_reasoning_effort : null);
 const rl = readline.createInterface({ input: process.stdin });
@@ -95,21 +102,26 @@ async function contractNext(output) {
   const match=fixtureProvider.match(/"base_url"="([^" ]+)"/);
   if(!match||!match[1].startsWith('http://127.0.0.1:'))throw new Error('nonlocal fixture endpoint');
   const modelArg=process.argv.find(arg=>arg.startsWith('model='));
-  const response=await fetch(match[1]+'/responses',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:JSON.parse(modelArg.slice(6)),input:contractInput,...(state.runtimeStyle==='functions'?{tools:[{type:'namespace',name:'skills',tools:[{type:'function',name:'list'},{type:'function',name:'read'}]},...state.runtimeTools.filter(t=>!t.startsWith('skills__')&&t!=='clock__curr_time').map(name=>({type:'function',name})),{type:'function',name:'request_user_input'}]}:{})})});
+  const skillsDir=path.join(process.env.HOME||'/nonexistent','.agents','skills');
+  const listsSkills=state.skillInstructions==='always'||(state.skillInstructions==='unless-disabled'&&overrides['skills.include_instructions']!==false);
+  const skillList=listsSkills&&fs.existsSync(skillsDir)?fs.readdirSync(skillsDir):[];
+  const instructions=skillList.length?[{type:'message',role:'developer',content:[{type:'input_text',text:'<skills_instructions>'+skillList.map(name=>'- '+name+': (file: '+name+'/SKILL.md)').join('\n')+'</skills_instructions>'}]}]:[];
+  const skillTools=['list','read'].filter(name=>state.runtimeTools.includes('skills__'+name)).map(name=>({type:'function',name}));
+  const response=await fetch(match[1]+'/responses',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:JSON.parse(modelArg.slice(6)),input:[...instructions,...contractInput],...(state.runtimeStyle==='functions'?{tools:[...(skillTools.length?[{type:'namespace',name:'skills',tools:skillTools}]:[]),...state.runtimeTools.filter(t=>!t.startsWith('skills__')&&t!=='clock__curr_time').map(name=>({type:'function',name})),{type:'function',name:'request_user_input'}]}:{})})});
   const events=(await response.text()).split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
   const item=events.find(e=>e.type==='response.output_item.done')?.item;
   if(!item)throw new Error('missing fixture response');
   if(item.type==='message'){delta('synthetic-complete');completed('completed');return;}
   contractCall=item.call_id;
   if(item.type==='function_call'){
-    if(item.namespace==='skills'&&item.name==='list')await contractNext({skills:[],warnings:[],next_cursor:null});
-    else if(item.namespace==='skills'&&item.name==='read')await contractNext('skill package is not available');
+    if(item.namespace==='skills'&&item.name==='list'&&state.runtimeTools.includes('skills__list'))await contractNext({skills:[],warnings:[],next_cursor:null});
+    else if(item.namespace==='skills'&&item.name==='read'&&state.runtimeTools.includes('skills__read'))await contractNext('skill package is not available');
     else if(item.name==='read_selected_material')materialCall('contract-request',{arguments:{attachmentId:'contract-material'}});
     else await contractNext('unsupported tool call');
     return;
   }
   if(item.input.includes('Object.keys(tools)'))await contractNext({tools:state.runtimeTools??['clock__curr_time','read_selected_material','skills__list','skills__read'],fetch:'undefined',process:'undefined',require:'undefined'});
-  else if(item.input.includes('skills__list'))await contractNext({orchestrator:{skills:[],warnings:[],next_cursor:null},executor:{skills:[],warnings:[],next_cursor:null}});
+  else if(item.input.includes('skills__list'))await contractNext(state.runtimeTools.includes('skills__list')?{orchestrator:{skills:[],warnings:[],next_cursor:null},executor:{skills:[],warnings:[],next_cursor:null}}:'Script error: TypeError: tools.skills__list is not a function');
   else if(item.input.includes('bypassDenied'))await contractNext({bypassDenied:true});
   else if(item.input.includes('import('))await contractNext({nodeImportDenied:true});
   else materialCall('contract-request',{arguments:{attachmentId:'contract-material'}});

@@ -24,6 +24,12 @@ function reply() {
   return {
     config: {
       ...config,
+      skills: {
+        include_instructions: config["skills.include_instructions"],
+        config: [
+          { path: "/synthetic/skills/personal/SKILL.md", enabled: false },
+        ],
+      },
       permissions: {
         csthink_assistant: config["permissions.csthink_assistant"],
       },
@@ -93,6 +99,25 @@ test("permission expansion, inheritance, network and callback hooks cannot silen
   rejects((value) => {
     Object.assign(value.config, { notify: ["never-run"] });
   }, "configuration");
+});
+test("skill instructions stay out of the model instructions: the leaf is passed alone and must read back off", () => {
+  const args = codexPolicyArgs(binary, cwd, inventory);
+  assert.ok(args.includes("skills.include_instructions=false"));
+  // A dotted leaf, never the whole table: the user's own skill switches stay as they are.
+  assert.equal(
+    args.some((arg) => arg.startsWith("skills=")),
+    false,
+  );
+  rejects((value) => {
+    value.config.skills.include_instructions = true;
+  }, "configuration");
+  rejects((value) => {
+    delete (value.config.skills as { include_instructions?: boolean })
+      .include_instructions;
+  }, "configuration");
+  rejects((value) => {
+    delete (value.config as { skills?: unknown }).skills;
+  }, "shape");
 });
 test("malformed configuration is not interpreted as an empty tool set; names are encoded as TOML keys", () => {
   for (const value of [
