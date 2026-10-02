@@ -9,7 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { clearTimeout, setTimeout } from "node:timers";
@@ -55,6 +55,39 @@ const work = resolve(
 );
 const home = join(work, "home");
 const appData = join(home, "Library", "Application Support");
+// Guards, checked before anything is created: the work directory is not the account's home,
+// one of its ancestors or inside its Library, and the isolated Application Support cannot be the
+// account's real one.
+const realHome = userInfo().homedir;
+const realAppData = join(realHome, "Library", "Application Support");
+const inside = (path, parent) =>
+  resolve(path) === resolve(parent) ||
+  resolve(path).startsWith(resolve(parent) + "/");
+if (
+  inside(realHome, work) ||
+  inside(work, join(realHome, "Library")) ||
+  inside(appData, realAppData)
+)
+  throw new Error(
+    `Refusing to run: the work directory ${work} overlaps the account's home or Library.`,
+  );
+if (
+  existsSync(work) &&
+  (await readdir(work)).some(
+    (name) =>
+      ![
+        "home",
+        "mount",
+        "Applications",
+        "seed.json",
+        "extensions.png",
+      ].includes(name) && !name.startsWith("."),
+  ) &&
+  !existsSync(join(work, "seed.json"))
+)
+  throw new Error(
+    `Refusing to run: ${work} holds files this check did not create.`,
+  );
 const keychain = join(home, "Library", "Keychains", "login.keychain-db");
 const run = (file, args, env = process.env) =>
   execFileSync(file, args, {
@@ -288,8 +321,15 @@ async function launch(app) {
   await send("Debugger.enable");
   await send("Runtime.runIfWaitingForDebugger");
   await nextPause(() => true);
-  if ((await evaluate(isolation(mainBundle, appData), false)) !== "isolated")
-    throw new Error("Isolation was not installed.");
+  // Still paused before any product code: if the isolation or the appData redirect did not
+  // take, the process is killed here and never opens a data directory.
+  const installed = await evaluate(isolation(mainBundle, appData), false).catch(
+    (error) => String(error),
+  );
+  if (installed !== "isolated") {
+    child.kill("SIGKILL");
+    throw new Error(`Isolation was not installed: ${installed}`);
+  }
   await send("Debugger.resume");
   await send("Debugger.disable");
   const exited = new Promise((done) =>
@@ -374,7 +414,8 @@ async function extensionsProbe(session, capture) {
       if (!card) return { error: "no AI-SDLC card" };
       const badge = card.querySelector(".extension-badge");
       const buttons = [...card.querySelectorAll("button")].map((b) => ({ label: b.textContent.trim(), disabled: b.disabled }));
-      return { badge: badge ? badge.textContent.trim() : null, buttons, switches: card.querySelectorAll("[role=switch]").length };
+      const hint = card.querySelector(".extension-hint");
+      return { badge: badge ? badge.textContent.trim() : null, reason: hint ? hint.textContent.trim() : null, buttons, switches: card.querySelectorAll("[role=switch]").length };
     })()\`);
     const image = await main.webContents.capturePage();
     return { read, png: image.toPNG().toString("base64") };
