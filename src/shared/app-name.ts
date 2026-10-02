@@ -1,29 +1,15 @@
 /**
- * The product's display name. The packaged bundle localizes its name for exactly two
- * languages (`zh_CN.lproj` and `en.lproj`, see scripts/package-macos.mjs); every other
- * language falls back to the base Info.plist value, which is the English name. Window
- * titles, the menu bar icon and the application menu follow the same rule, so the name
- * inside the app matches the one macOS shows in the Dock, the Finder and the menu bar.
+ * The product's display name: the single source for every name the app shows itself (window
+ * and page titles, the sidebar heading, the menu bar icon tooltip, the application menu and the
+ * About panel). The packaged bundle carries the same name in every localization of its
+ * InfoPlist.strings (scripts/package-macos.mjs), so the Finder, the Dock and the menu bar agree.
  *
- * The internal application name (`app.setName("csthink-assistant")`), the bundle
- * identifier, the data directories and the keychain item are not display names and do
- * not change with it.
+ * The interface is in Chinese only, so the name is 青鸾 whatever the system language. The
+ * English name Qingluan is used only for the app bundle and disk image file names and the
+ * Release and Homebrew names. When an English interface is added, this becomes a choice per
+ * locale again, here and in the packaging script together.
+ *
+ * The internal application name (`app.setName("csthink-assistant")`), the bundle identifier, the
+ * data directories and the keychain item are not display names and do not change with it.
  */
-export const displayNames = { chinese: "青鸾", english: "Qingluan" } as const;
-export type DisplayName = (typeof displayNames)[keyof typeof displayNames];
-
-/** Simplified Chinese locales (as reported by Chromium or as BCP 47 tags) get the Chinese name. */
-export function displayNameFor(locale: string): DisplayName {
-  const tag = locale.trim().toLowerCase().replace(/_/g, "-");
-  const simplified =
-    tag === "zh" ||
-    tag.startsWith("zh-cn") ||
-    tag.startsWith("zh-sg") ||
-    tag.startsWith("zh-hans");
-  return simplified ? displayNames.chinese : displayNames.english;
-}
-
-/** The value the main process hands to each window's preload; anything else falls back to the English name. */
-export function validDisplayName(value: unknown): DisplayName {
-  return value === displayNames.chinese ? value : displayNames.english;
-}
+export const displayName = "青鸾";

@@ -1,39 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  displayNameFor,
-  displayNames,
-  validDisplayName,
-} from "../../src/shared/app-name";
+import { readFileSync } from "node:fs";
+import { displayName } from "../../src/shared/app-name";
 
-test("app name: Simplified Chinese locales get 青鸾, every other locale gets Qingluan", () => {
-  for (const locale of [
-    "zh-CN",
-    "zh_CN",
-    "zh",
-    "zh-Hans",
-    "zh-Hans-CN",
-    "zh-SG",
-    " ZH-cn ",
-  ])
-    assert.equal(displayNameFor(locale), displayNames.chinese, locale);
-  for (const locale of [
-    "en-US",
-    "en",
-    "en-GB",
-    "ja",
-    "zh-TW",
-    "zh-HK",
-    "zh-Hant-TW",
-    "fr-FR",
-    "",
-  ])
-    assert.equal(displayNameFor(locale), displayNames.english, locale);
+test("app name: the single display name is 青鸾, the Chinese name of the Chinese-only interface", () => {
+  assert.equal(displayName, "青鸾");
 });
 
-test("app name: the preload accepts only the two known names and falls back to Qingluan", () => {
-  assert.equal(validDisplayName("青鸾"), "青鸾");
-  assert.equal(validDisplayName("Qingluan"), "Qingluan");
-  for (const value of [undefined, "", "csthink-assistant", "青鸞", 1, null])
-    assert.equal(validDisplayName(value), "Qingluan");
+test("app name: the packaging script writes the same display name into the bundle", () => {
+  const script = readFileSync("scripts/package-macos.mjs", "utf8");
+  assert.match(
+    script,
+    new RegExp(`^const displayName = "${displayName}";$`, "m"),
+  );
+  assert.match(script, /CFBundleDevelopmentRegion: "zh_CN"/);
 });

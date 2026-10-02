@@ -224,8 +224,8 @@ test("shell: at the 900 × 680 minimum window the four columns do not overlap, t
   const { app, page } = await launch(root);
   try {
     await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows().find((w) =>
-        ["青鸾", "Qingluan"].includes(w.getTitle()),
+      const window = BrowserWindow.getAllWindows().find(
+        (w) => w.getTitle() === "青鸾",
       )!;
       window.setContentSize(900, 680);
     });

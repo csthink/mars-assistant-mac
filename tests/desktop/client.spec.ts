@@ -286,7 +286,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   expect(
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => ["青鸾", "Qingluan"].includes(w.getTitle()))
+        .find((w) => w.getTitle() === "青鸾")
         ?.isAlwaysOnTop(),
     ),
   ).toBe(false);
@@ -326,7 +326,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   await closeRecent(page);
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((window) => ["青鸾", "Qingluan"].includes(window.getTitle()))
+      .find((window) => window.getTitle() === "青鸾")
       ?.close(),
   );
   await expect

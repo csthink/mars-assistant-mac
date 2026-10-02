@@ -3,8 +3,9 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve } from "node:path";
 import { closeLocal, launchLocal } from "./local-client";
 
-/** Launches with the given locale and checks every place the app shows its own name. */
-async function checkNames(lang: "en-US" | "zh-CN", name: "Qingluan" | "青鸾") {
+/** Launches with the given locale and checks every place the app shows its own name: 青鸾 whatever the locale. */
+async function checkNames(lang: "en-US" | "zh-CN") {
+  const name = "青鸾";
   mkdirSync(".test-data/disposable", { recursive: true });
   const root = mkdtempSync(resolve(".test-data/disposable/app-name-"));
   const app = await launchLocal({
@@ -51,10 +52,10 @@ async function checkNames(lang: "en-US" | "zh-CN", name: "Qingluan" | "青鸾") 
   }
 }
 
-test("app name: with the en-US locale the main window, the page title, the menu bar icon, the application menu and the about panel all say Qingluan", async () => {
-  await checkNames("en-US", "Qingluan");
+test("app name: with the en-US locale the main window, the page title, the sidebar, the menu bar icon, the application menu and the about panel still say 青鸾", async () => {
+  await checkNames("en-US");
 });
 
-test("app name: with the zh-CN locale the main window, the page title, the menu bar icon, the application menu and the about panel all say 青鸾", async () => {
-  await checkNames("zh-CN", "青鸾");
+test("app name: with the zh-CN locale the main window, the page title, the sidebar, the menu bar icon, the application menu and the about panel say 青鸾", async () => {
+  await checkNames("zh-CN");
 });

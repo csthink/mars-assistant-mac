@@ -1,3 +1,4 @@
+import { displayName } from "../shared/app-name";
 import { refocus } from "./modal-focus";
 import {
   useEffect,
@@ -423,7 +424,7 @@ export function Sidebar({
       data-overlay={overlay ? "true" : undefined}
     >
       <div className="side-top">
-        <span className="side-title">{window.desktop.displayName}</span>
+        <span className="side-title">{displayName}</span>
         <button
           ref={foldButton}
           className="icon-button side-fold"

@@ -1,3 +1,4 @@
+import { displayName } from "../shared/app-name";
 import "./tokens.css";
 import { taskRoute, clearTaskRoute } from "./task-route";
 import { ProjectColumnsContext } from "./project-columns";
@@ -2006,9 +2007,7 @@ function App() {
 // appearance and the window title are set first and the page mounts once the body exists.
 applyInitialAppearance();
 document.title =
-  window.desktop.surface === "panel"
-    ? "工作台助手"
-    : window.desktop.displayName;
+  window.desktop.surface === "panel" ? "工作台助手" : displayName;
 document.addEventListener("DOMContentLoaded", () => {
   createRoot(document.getElementById("root")!).render(<App />);
 });

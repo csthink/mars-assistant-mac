@@ -1,5 +1,5 @@
 import { closeLocal, launchLocal } from "./local-client";
-import { displayNameFor } from "../../src/shared/app-name";
+import { displayName } from "../../src/shared/app-name";
 import { goTo, recent } from "./shell";
 import { addProvider, openProvider } from "./provider-ui";
 import type { Provider } from "../../src/shared/protocol";
@@ -364,7 +364,7 @@ async function chooseQuitDialog(response: number) {
 }
 /** The application menu's quit item carries the localized display name the app resolved from its locale. */
 async function quitLabel() {
-  return `退出 ${displayNameFor(await app.evaluate(({ app }) => app.getLocale()))}`;
+  return `退出 ${displayName}`;
 }
 async function clickAppMenu(label: string) {
   await app.evaluate(({ Menu }, target) => {
@@ -398,7 +398,7 @@ test("quit and windows: closing the window keeps the turn running; cancelling qu
   // Closing the main window is not quitting: the turn finishes in the background.
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((window) => ["青鸾", "Qingluan"].includes(window.getTitle()))
+      .find((window) => window.getTitle() === "青鸾")
       ?.close(),
   );
   await expect

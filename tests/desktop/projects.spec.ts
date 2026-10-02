@@ -95,7 +95,7 @@ test("projects: create, edit, archive and undo preserve project identity and ren
     await page.screenshot({ path: info.outputPath("project-list-dark.png") });
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => ["青鸾", "Qingluan"].includes(w.getTitle()))!
+        .find((w) => w.getTitle() === "青鸾")!
         .setSize(900, 680),
     );
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(900);
@@ -248,7 +248,7 @@ test("projects: new project guidance stays fully visible above actions at the mi
   try {
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((window) => ["青鸾", "Qingluan"].includes(window.getTitle()))!
+        .find((window) => window.getTitle() === "青鸾")!
         .setSize(900, 680),
     );
     await expect.poll(() => page.evaluate(() => window.innerHeight)).toBe(680);
@@ -366,7 +366,7 @@ test("projects: timeout recovery stays visible and actionable at minimum size in
   try {
     await app.evaluate(({ BrowserWindow, dialog }, path) => {
       BrowserWindow.getAllWindows()
-        .find((window) => ["青鸾", "Qingluan"].includes(window.getTitle()))!
+        .find((window) => window.getTitle() === "青鸾")!
         .setSize(900, 680);
       (
         globalThis as unknown as { projectPickerCalls: number }
@@ -493,7 +493,7 @@ test("projects: plain folders and multiple Git remotes display their verified so
         );
         await app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()
-            .find((w) => ["青鸾", "Qingluan"].includes(w.getTitle()))!
+            .find((w) => w.getTitle() === "青鸾")!
             .setSize(900, 680),
         );
         await expect(

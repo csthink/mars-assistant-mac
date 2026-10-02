@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { closeLocal, launchLocal } from "./local-client";
-import { displayNameFor } from "../../src/shared/app-name";
+import { displayName } from "../../src/shared/app-name";
 import { goTo } from "./shell";
 import { openProvider } from "./provider-ui";
 import { scrollIntoCenter } from "./scroll-into-center";
@@ -1049,7 +1049,7 @@ const quitSheets = () =>
     () => (globalThis as unknown as { quitSheets: QuitSheet[] }).quitSheets,
   );
 async function clickQuit() {
-  const label = `退出 ${displayNameFor(await app.evaluate(({ app }) => app.getLocale()))}`;
+  const label = `退出 ${displayName}`;
   await app.evaluate(({ Menu }, target) => {
     const item = Menu.getApplicationMenu()?.items[0].submenu?.items.find(
       (entry) => entry.label === target,

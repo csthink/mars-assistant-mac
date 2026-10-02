@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/csthink/mars-assistant-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/csthink/mars-assistant-mac/actions/workflows/ci.yml)
 
-Assistant 的 macOS 客户端，应用显示名在简体中文系统上为「青鸾」，在其他语言下为「Qingluan」。Assistant 是面向个人使用的桌面助手与工作台：用户向 Assistant 这个统一沟通对象提出目标、查看进度、作出决定，并在工作台里使用和继续修改成果。本仓是它在 macOS 上的实现，使用 Electron、React、TypeScript 与 SQLite。
+Assistant 的 macOS 客户端，应用显示名为「青鸾」（英文名 Qingluan，用于应用包与安装包文件名）。Assistant 是面向个人使用的桌面助手与工作台：用户向 Assistant 这个统一沟通对象提出目标、查看进度、作出决定，并在工作台里使用和继续修改成果。本仓是它在 macOS 上的实现，使用 Electron、React、TypeScript 与 SQLite。
 
 客户端同时承担 Runtime Host 职责：从本地导入的扩展运行包以受监督子进程运行，按 [Runtime Contract 0.1.0](contract/0.1.0/) 与客户端通信。[HarnessPlane](https://github.com/csthink/mars-assistant-harness-plane) 的 serve-stdio 入口实现同一份 Contract。
 
@@ -63,7 +63,7 @@ npm start -- --data-root="<数据目录>"
 | `<数据目录>-runtimes/` | `csthink-assistant-runtimes/` | 已导入的扩展运行包（`packages/`）与实例运行目录（`instances/`） |
 | `<数据目录>-executions/` | `csthink-assistant-executions/` | 执行端口的 Host 证据与执行会话目录 |
 
-同一数据目录只能被一个进程打开。目录不存在、混入其他文件、数据库身份不兼容或已被占用时，应用拒绝打开，不会改用另一个空目录。打开较旧的数据版本前，应用在数据目录同级建立完整的升级前备份；旧版本客户端拒绝写入新版本数据库。
+同一数据目录只能被一个进程打开。目录不存在、混入其他文件、数据库身份不兼容或已被占用时，应用拒绝打开，不会改用另一个空目录。访达写入的 `.DS_Store` 与本应用文件的 AppleDouble 文件（`._` 前缀）不算其他文件，应用不读取也不删除它们。打开较旧的数据版本前，应用在数据目录同级建立完整的升级前备份；旧版本客户端拒绝写入新版本数据库。
 
 ## 常用命令
 
@@ -139,7 +139,7 @@ mars-assistant-mac/
 | 项目 | 内容 |
 | --- | --- |
 | 架构与系统 | 只有 arm64；`LSMinimumSystemVersion` 为 26.6.2 |
-| 名称 | 应用包文件名 `Qingluan.app`；`InfoPlist.strings` 在 `zh_CN.lproj` 写「青鸾」、在 `en.lproj` 写「Qingluan」，其他语言使用 `Info.plist` 的 `Qingluan`；窗口标题、侧栏标题、应用菜单、菜单栏图标提示与关于面板按应用语言取同一名称 |
+| 名称 | 界面只有中文，名称无论系统语言都显示「青鸾」：应用包里每个 `.lproj` 的 `InfoPlist.strings` 都写「青鸾」，`CFBundleDevelopmentRegion` 为 `zh_CN`；窗口标题、侧栏标题、应用菜单、菜单栏图标提示与关于面板取自 `src/shared/app-name.ts`。英文名 `Qingluan` 只用于应用包与安装包文件名（`Info.plist` 的基础值与文件名一致，访达据此显示本地化名称） |
 | 不变的身份 | bundle id `com.csthink.assistant`；内部应用名 `csthink-assistant`（`app.setName`），因此「数据目录」一节的默认目录与 safeStorage 的钥匙串项（服务名 `csthink-assistant Safe Storage`）都不随显示名改变 |
 | 签名 | 由内向外的 ad-hoc 签名，`codesign --verify --deep --strict` 通过；没有 Developer ID 签名与 Apple 公证，Gatekeeper 评估（`spctl`）会拒绝 |
 | 图标 | `assets/icon/`：`AppIcon.icns`（打包时由 PNG 组生成）与 macOS 26 起使用的分层图标 `Assets.car`；主窗口窄列的产品标识是同一图标的 32 像素简化版 |

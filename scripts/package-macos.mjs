@@ -21,8 +21,8 @@ import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 
 /**
- * Packages the macOS app bundle "Qingluan.app" (shown as 青鸾 on a Simplified Chinese
- * system and as Qingluan elsewhere) with an ad-hoc signature, and with --dmg also the
+ * Packages the macOS app bundle "Qingluan.app" (shown as 青鸾 whatever the system language)
+ * with an ad-hoc signature, and with --dmg also the
  * arm64 disk image of the trial build. There is no Developer ID signature and no
  * notarization: a downloaded copy must be allowed once in System Settings > Privacy &
  * Security.
@@ -33,7 +33,13 @@ import { parseArgs } from "node:util";
 const productName = "Qingluan";
 const bundleId = "com.csthink.assistant";
 /** Localized names per bundle localization; other languages use the base Info.plist value. */
-const localizedNames = { en: "Qingluan", zh_CN: "青鸾" };
+/**
+ * The display name in every localization of the bundle; equal to src/shared/app-name.ts, which a
+ * service test compares. The interface is Chinese only, so the Finder, the Dock and the menu bar
+ * show 青鸾 for every system language; the base Info.plist keeps Qingluan, the file name, which the
+ * Finder requires before it shows a localized name.
+ */
+const displayName = "青鸾";
 /** The lowest macOS version the product is built and accepted for (spec D-01). */
 const minimumSystemVersion = "26.6.2";
 /**
@@ -129,22 +135,29 @@ async function adHocSign(app) {
   return order.length;
 }
 
-/** Writes InfoPlist.strings (binary property list) so macOS shows the localized name. */
+/**
+ * Writes InfoPlist.strings (binary property list) with the display name into every localization
+ * the bundle has (Electron ships one per Chromium locale), so whichever one macOS picks for the
+ * system language shows the same name.
+ */
 async function localize(app) {
-  for (const [locale, name] of Object.entries(localizedNames)) {
-    const dir = join(app, "Contents", "Resources", `${locale}.lproj`);
-    if (!existsSync(dir))
-      throw new Error(
-        `The Electron bundle has no ${locale}.lproj localization.`,
-      );
-    const file = join(dir, "InfoPlist.strings");
+  const resources = join(app, "Contents", "Resources");
+  const localizations = (await readdir(resources)).filter((name) =>
+    name.endsWith(".lproj"),
+  );
+  for (const required of ["en.lproj", "zh_CN.lproj"])
+    if (!localizations.includes(required))
+      throw new Error(`The Electron bundle has no ${required} localization.`);
+  for (const localization of localizations) {
+    const file = join(resources, localization, "InfoPlist.strings");
     await writeFile(
       file,
-      `"CFBundleDisplayName" = "${name}";\n"CFBundleName" = "${name}";\n`,
+      `"CFBundleDisplayName" = "${displayName}";\n"CFBundleName" = "${displayName}";\n`,
       "utf8",
     );
     run("/usr/bin/plutil", ["-convert", "binary1", file]);
   }
+  return localizations.length;
 }
 
 async function sha256(path) {
@@ -232,7 +245,7 @@ try {
       CFBundleIconName: "AppIcon",
       LSHasLocalizedDisplayName: true,
       LSMinimumSystemVersion: minimumSystemVersion,
-      CFBundleDevelopmentRegion: "en",
+      CFBundleDevelopmentRegion: "zh_CN",
     },
     protocols: [
       {
@@ -248,7 +261,7 @@ try {
     throw new Error("The app icon was not copied into the bundle.");
   await rm(join(resources, "electron.icns"), { force: true });
   await cp(assetCatalog, join(resources, "Assets.car"));
-  await localize(app);
+  const localizations = await localize(app);
   const signed = await adHocSign(app);
   const result = {
     app,
@@ -258,6 +271,8 @@ try {
     arch: process.arch,
     dataRoot: values["data-root"] ?? "default",
     widgetAcceptance: values["widget-acceptance"],
+    displayName,
+    localizations,
     signing: `Ad-hoc signature on ${signed} code items; no Developer ID signature and no notarization.`,
   };
   if (values.dmg) {
@@ -272,7 +287,7 @@ try {
       JSON.stringify(
         {
           name: productName,
-          localizedNames,
+          displayName,
           version: pkg.version,
           bundleId,
           minimumSystemVersion,

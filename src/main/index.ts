@@ -91,7 +91,7 @@ import { CodexReviewerAdapter } from "./execution-codex";
 import { defaultPythonCandidates } from "./runtime-admission";
 import { catalogPins } from "../shared/runtime-capabilities";
 import { windowBackground } from "../shared/appearance";
-import { displayNameFor, type DisplayName } from "../shared/app-name";
+import { displayName } from "../shared/app-name";
 import {
   runtimeCopyValue,
   validRuntimeControl,
@@ -387,12 +387,6 @@ function refreshExecutionProfiles(invalidate = true) {
   return profileRefresh;
 }
 let tray: Tray;
-/**
- * The localized display name (青鸾 or Qingluan), resolved once the app is ready because
- * app.getLocale() is only meaningful then. Every window, the menu bar icon and the menus
- * are created after ready. The internal name set with app.setName stays unchanged.
- */
-let displayName: DisplayName = displayNameFor("en");
 let sequence = 0;
 let quitting = false;
 let confirmingQuit = false;
@@ -1394,7 +1388,6 @@ function createWindow(surface: Surface) {
       partition: "csthink-shell",
       additionalArguments: [
         `--surface=${surface}`,
-        `--display-name=${displayName}`,
         ...(initialAppearance ? [`--appearance=${initialAppearance}`] : []),
         ...(initialInterface && !panel
           ? [`--interface=${JSON.stringify(initialInterface)}`]
@@ -1683,7 +1676,6 @@ if (!instance) {
     }
   });
   void app.whenReady().then(() => {
-    displayName = displayNameFor(app.getLocale());
     app.setAboutPanelOptions({
       applicationName: displayName,
       applicationVersion: app.getVersion(),
