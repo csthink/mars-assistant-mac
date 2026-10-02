@@ -210,8 +210,7 @@ async function diskImage(app, outDir, version) {
     const background = join(work, "background.tiff");
     run("/usr/bin/tiffutil", [
       "-cathidpicheck",
-      "assets/dmg/background.png",
-      "assets/dmg/background@2x.png",
+      ...["", "@2x"].map((scale) => `assets/dmg/background${scale}.png`),
       "-out",
       background,
     ]);

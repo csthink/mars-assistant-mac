@@ -1,4 +1,4 @@
-// Renders the disk image window background (assets/dmg/background.png and background@2x.png).
+// Renders the disk image window background: assets/dmg/background.png and its 2x version (suffix "@2x").
 // Run once after changing the layout or the wording, then commit both PNG files:
 //   swift assets/dmg/render-background.swift assets/dmg
 // The layout must match scripts/dmg-settings.py: a 680 × 540 point window, 112-point icons,
@@ -76,4 +76,5 @@ func render(scale: Double, to path: String) {
 
 let directory = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "."
 render(scale: 1, to: "\(directory)/background.png")
-render(scale: 2, to: "\(directory)/background@2x.png")
+let retina = "@2x"
+render(scale: 2, to: "\(directory)/background\(retina).png")
