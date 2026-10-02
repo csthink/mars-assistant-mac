@@ -91,6 +91,7 @@ import { CodexReviewerAdapter } from "./execution-codex";
 import { defaultPythonCandidates } from "./runtime-admission";
 import { catalogPins } from "../shared/runtime-capabilities";
 import { windowBackground } from "../shared/appearance";
+import { displayNameFor, type DisplayName } from "../shared/app-name";
 import {
   runtimeCopyValue,
   validRuntimeControl,
@@ -386,6 +387,12 @@ function refreshExecutionProfiles(invalidate = true) {
   return profileRefresh;
 }
 let tray: Tray;
+/**
+ * The localized display name (青鸾 or Qingluan), resolved once the app is ready because
+ * app.getLocale() is only meaningful then. Every window, the menu bar icon and the menus
+ * are created after ready. The internal name set with app.setName stays unchanged.
+ */
+let displayName: DisplayName = displayNameFor("en");
 let sequence = 0;
 let quitting = false;
 let confirmingQuit = false;
@@ -1376,7 +1383,7 @@ function createWindow(surface: Surface) {
     resizable: !panel,
     alwaysOnTop: panel,
     show: false,
-    title: panel ? "工作台助手" : "csthink-assistant",
+    title: panel ? "工作台助手" : displayName,
     backgroundColor: currentBackground(),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
@@ -1387,6 +1394,7 @@ function createWindow(surface: Surface) {
       partition: "csthink-shell",
       additionalArguments: [
         `--surface=${surface}`,
+        `--display-name=${displayName}`,
         ...(initialAppearance ? [`--appearance=${initialAppearance}`] : []),
         ...(initialInterface && !panel
           ? [`--interface=${JSON.stringify(initialInterface)}`]
@@ -1675,6 +1683,12 @@ if (!instance) {
     }
   });
   void app.whenReady().then(() => {
+    displayName = displayNameFor(app.getLocale());
+    app.setAboutPanelOptions({
+      applicationName: displayName,
+      applicationVersion: app.getVersion(),
+      version: "",
+    });
     nativeTheme.on("updated", paintBackgrounds);
     // macOS requires a packaged Info.plist URL declaration. Development Electron is not registered.
     if (app.isPackaged && !app.setAsDefaultProtocolClient("csthink-assistant"))
@@ -2382,7 +2396,7 @@ if (!instance) {
     if (icon.isEmpty()) throw new Error("菜单栏图标加载失败，请重新构建应用。");
     icon.setTemplateImage(true);
     tray = new Tray(icon);
-    tray.setToolTip("csthink-assistant");
+    tray.setToolTip(displayName);
     tray.on("click", () => {
       const panel = [...windows.values()].find(
         (entry) => entry.surface === "panel",
@@ -2395,7 +2409,7 @@ if (!instance) {
         Menu.buildFromTemplate([
           { label: "打开主窗口", click: () => createWindow("main") },
           {
-            label: "退出 csthink-assistant",
+            label: `退出 ${displayName}`,
             click: () => {
               void quit();
             },
@@ -2406,13 +2420,15 @@ if (!instance) {
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         {
-          label: "csthink-assistant",
+          label: displayName,
           submenu: [
+            { role: "about", label: `关于 ${displayName}` },
+            { type: "separator" },
             { label: "打开主窗口", click: () => createWindow("main") },
             { label: "打开工作台助手", click: () => createWindow("panel") },
             { type: "separator" },
             {
-              label: "退出 csthink-assistant",
+              label: `退出 ${displayName}`,
               accelerator: "Cmd+Q",
               click: () => {
                 void quit();

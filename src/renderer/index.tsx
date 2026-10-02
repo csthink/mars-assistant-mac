@@ -2006,7 +2006,9 @@ function App() {
 // appearance and the window title are set first and the page mounts once the body exists.
 applyInitialAppearance();
 document.title =
-  window.desktop.surface === "panel" ? "工作台助手" : "csthink-assistant";
+  window.desktop.surface === "panel"
+    ? "工作台助手"
+    : window.desktop.displayName;
 document.addEventListener("DOMContentLoaded", () => {
   createRoot(document.getElementById("root")!).render(<App />);
 });

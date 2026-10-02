@@ -6,6 +6,7 @@ import {
   type Snapshot,
   type Status,
 } from "../shared/protocol";
+import { validDisplayName } from "../shared/app-name";
 function listen<T>(channel: string, callback: (value: T) => void) {
   const listener = (_event: Electron.IpcRendererEvent, value: T) =>
     callback(value);
@@ -96,6 +97,11 @@ const bridge: DesktopBridge = {
   prepareCodex: (model) => ipcRenderer.invoke("codex:prepare", model),
   acceptCodex: (token) => ipcRenderer.invoke("codex:accept", token),
   surface: process.argv.includes("--surface=panel") ? "panel" : "main",
+  displayName: validDisplayName(
+    process.argv
+      .find((arg) => arg.startsWith("--display-name="))
+      ?.slice("--display-name=".length),
+  ),
   appearance,
   interface: interfacePreferences,
   copyConversation: (id, kind) =>

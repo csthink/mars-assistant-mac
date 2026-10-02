@@ -1,4 +1,5 @@
 import { launchLocal } from "./local-client";
+import { displayNameFor } from "../../src/shared/app-name";
 import { test, expect } from "@playwright/test";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -20,13 +21,12 @@ test("startup: invalid data root remains disconnected and can quit", async () =>
       ),
     ).toBeVisible();
     const closed = application.waitForEvent("close", { timeout: 5000 });
-    await application.evaluate(({ Menu }) => {
+    const label = `退出 ${displayNameFor(await application.evaluate(({ app }) => app.getLocale()))}`;
+    await application.evaluate(({ Menu }, target) => {
       Menu.getApplicationMenu()
-        ?.items[0].submenu?.items.find(
-          (item) => item.label === "退出 csthink-assistant",
-        )
+        ?.items[0].submenu?.items.find((item) => item.label === target)
         ?.click();
-    });
+    }, label);
     await closed;
   } finally {
     if (child.exitCode === null) child.kill("SIGKILL");

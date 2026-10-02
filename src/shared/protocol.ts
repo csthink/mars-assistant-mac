@@ -39,6 +39,7 @@ import {
   type WidgetPreview,
 } from "./widget-store";
 import type { WidgetReply } from "./widget-runtime";
+import type { DisplayName } from "./app-name";
 import {
   validClaudePath,
   validClaudeModel,
@@ -1029,6 +1030,8 @@ export interface DesktopBridge {
   prepareCodex: (model?: string) => Promise<CodexSetupReply>;
   acceptCodex: (token: string) => Promise<Reply>;
   surface: Surface;
+  /** The localized product name (青鸾 or Qingluan) the main process resolved for this window. */
+  displayName: DisplayName;
   /** The saved appearance known when the window was created, before the first snapshot; absent when unknown. */
   appearance?: Appearance;
   /** The saved interface preferences known when the window was created, before the first snapshot; absent when unknown. */

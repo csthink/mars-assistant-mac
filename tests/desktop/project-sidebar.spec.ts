@@ -77,7 +77,7 @@ async function launch(
   const page = await app.firstWindow();
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((window) => window.getTitle() === "csthink-assistant")!
+      .find((window) => ["青鸾", "Qingluan"].includes(window.getTitle()))!
       .setSize(1440, 850),
   );
   await expect

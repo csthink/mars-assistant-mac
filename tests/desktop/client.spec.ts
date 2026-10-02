@@ -286,7 +286,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   expect(
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => w.getTitle() === "csthink-assistant")
+        .find((w) => ["青鸾", "Qingluan"].includes(w.getTitle()))
         ?.isAlwaysOnTop(),
     ),
   ).toBe(false);
@@ -326,7 +326,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   await closeRecent(page);
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((window) => window.getTitle() === "csthink-assistant")
+      .find((window) => ["青鸾", "Qingluan"].includes(window.getTitle()))
       ?.close(),
   );
   await expect
