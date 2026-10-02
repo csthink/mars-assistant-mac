@@ -76,7 +76,3 @@
 ^tests/desktop/runtime-store\.test\.ts:      \["last not final", \[page\(\{ nextPageToken[:] "page:1:1" \}\)\]\],$
 # tests/desktop/runtime-store.test.ts：第二页的游标
 ^tests/desktop/runtime-store\.test\.ts:          nextPageToken[:] "page:2:1",$
-
-# ── 完整版扫描器的邮箱模式误报
-# tests/desktop/real-material.spec.ts：文件名 trayTemplate 加 @2x 倍率后缀，不是邮箱
-^tests/desktop/real-material\.spec\.ts:  const star = readFileSync\(resolve\("dist/trayTemplate@2x\.png"\)\);$

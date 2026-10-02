@@ -112,7 +112,8 @@ function CatalogCard({ entry }: { entry: (typeof extensionCatalog)[number] }) {
         )
       ) : (
         <p className="extension-hint" role="status">
-          随产品提供的项目默认管理能力，尚无已核验的运行包；运行包在切片集成时接入，不提供全局启停或卸载。
+          随产品提供的项目默认管理能力；本版本尚未附带已核验的运行包，AI-SDLC
+          运行包将在后续版本提供。不提供全局启停或卸载。
         </p>
       )}
       <footer>

@@ -891,6 +891,75 @@ test("codex: models without the optional clock remain usable while extra or miss
   expect((await nativeSnapshot()).turns).toHaveLength(0);
 });
 
+test("codex: a runtime without the skill tools (Codex 0.159) is confirmed with skill instructions off; half of the skill tools or a personal skill named in the instructions is rejected", async () => {
+  fixture.update({
+    runtimeTools: ["clock__curr_time", "read_selected_material"],
+  });
+  await configureNative();
+  // Every restricted process was asked to keep the skill list out of the model instructions.
+  const restricted = readFileSync(
+    join(fixture.bin, "invocations.jsonl"),
+    "utf8",
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as string[])
+    .filter((args) => args.includes('default_permissions="csthink_assistant"'));
+  expect(restricted.length).toBeGreaterThan(0);
+  expect(
+    restricted.every((args) =>
+      args.includes("skills.include_instructions=false"),
+    ),
+  ).toBe(true);
+  await providersPage(page);
+  const section = page.getByRole("region", { name: "Codex 连接" });
+  const cases: [Parameters<typeof fixture.update>[0], string][] = [
+    [
+      { runtimeTools: ["read_selected_material", "skills__list"] },
+      "half-skills",
+    ],
+    [
+      { runtimeTools: ["read_selected_material"], skillInstructions: "always" },
+      "listed-skill",
+    ],
+  ];
+  for (const [patch, model] of cases) {
+    fixture.update({ ...patch, models: ["synthetic-model", model] });
+    await section
+      .getByRole("button", { name: "刷新模型列表", exact: true })
+      .click();
+    await section
+      .getByRole("checkbox", { name: `启用模型 ${model}`, exact: true })
+      .click();
+    await expect(section.getByRole("alert")).toContainText(
+      "运行环境未通过工具限制验证",
+    );
+    await expect(
+      section.getByRole("checkbox", { name: `启用模型 ${model}`, exact: true }),
+    ).not.toBeChecked();
+    expect(
+      (await nativeSnapshot()).connections
+        .find((c) => c.provider === "codex")!
+        .models.map((m) => m.model),
+    ).toEqual(["synthetic-model"]);
+  }
+  expect((await nativeSnapshot()).turns).toHaveLength(0);
+});
+
+test("codex: direct function models without the skill namespace are confirmed and keep controlled reads", async () => {
+  fixture.update({
+    runtimeStyle: "functions",
+    runtimeTools: ["read_selected_material"],
+  });
+  await configureNative();
+  expect(
+    (await nativeSnapshot()).connections
+      .find((c) => c.provider === "codex")!
+      .models.map((m) => m.model),
+  ).toEqual(["synthetic-model"]);
+  expect((await nativeSnapshot()).turns).toHaveLength(0);
+});
+
 test("codex: direct function models preserve controlled reads and reject extra advertised execution tools", async () => {
   fixture.update({ runtimeStyle: "functions" });
   await configureNative();

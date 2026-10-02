@@ -64,6 +64,7 @@ src/service ───┘
 
 - 业务数据目录内是 `state.sqlite`（WAL、`synchronous=FULL`、外键约束）与 `root-lock.sqlite`（数据目录独占锁），资料副本在 `attachments/`，按内容摘要命名、只读保存。搜索索引是同一数据库中的 SQLite FTS5 表，由业务服务在同一事务中更新。
 - 主进程注册单实例入口，业务服务再对解析后的数据目录取得独占锁，防止不同启动参数绕过单实例检查。
+- 业务服务只打开不含他人数据的目录：数据目录与 `attachments/` 中除本应用文件外的任何条目都会使打开被拒绝，macOS 自行写入的元数据除外（`.DS_Store`，以及本应用条目的 AppleDouble 文件 `._<名称>`，判断见 `src/shared/macos-metadata.ts`）；这些元数据不读取、不删除，升级前备份也不复制它们。
 - 业务服务是唯一写者，提交短事务；模型执行与等待授权不占用事务。业务服务失联时界面进入只读并提供重新连接入口，不启动第二个写者；重新连接后读取完整快照。
 - 打开较旧的数据版本前，业务服务在数据目录同级写出升级前备份：SQLite 快照（含已提交的 WAL 内容）与全部资料副本，外加记录旧版本与文件摘要的 `complete.json`。快照校验失败时停止升级、保留原数据库。
 - 密钥不进业务数据库。API key 经 macOS safeStorage 加密后保存在数据目录同级的 vault 目录，业务数据只保存随机引用；传输层每次请求时读取，不写日志。
@@ -149,9 +150,9 @@ Host 服务（`src/main/runtime-host.ts`）只保留每个连接的同步状态�
 
 1. 在 macOS 上用 `/usr/bin/clang` 编译进程身份辅助程序，用 `/usr/bin/clang++` 以当前 Node.js 的头文件编译面板事件模块（AppKit）。
 2. esbuild 打包主进程、业务服务、各 worker、preload 与产品 MCP 进程（目标 `node24`，输出 `.cjs`），以及界面（目标 `chrome144`）。
-3. 复制 `index.html` 与 PDF.js 的 worker 模块，用 resvg 从 `src/main/tray.svg` 生成 1x 与 2x 的 Tray PNG。
+3. 复制 `index.html`、PDF.js 的 worker 模块与 `assets/icon/` 下 1x 与 2x 的菜单栏模板图 PNG。
 
-`scripts/package-macos.mjs` 用 `@electron/packager` 生成本机开发用应用包 `csthink-assistant.app`，注册对话链接协议 `csthink-assistant`；输出目录已存在时拒绝覆盖。
+`scripts/package-macos.mjs` 用 `@electron/packager` 生成应用包 `Qingluan.app`，注册对话链接协议 `csthink-assistant`；输出目录已存在时拒绝覆盖。显示名「青鸾」写进应用包每个 `.lproj` 的 `InfoPlist.strings`（`LSHasLocalizedDisplayName`，`CFBundleDevelopmentRegion` 为 `zh_CN`），任何系统语言下访达、程序坞与菜单栏都显示同一名称，主进程的 `app.setName("csthink-assistant")` 决定默认数据目录与 safeStorage 钥匙串项的名称，二者都不随显示名改变；窗口、侧栏标题与菜单上的名称取自 `src/shared/app-name.ts` 这一处。打包后由内向外做 ad-hoc 签名；`--dmg` 另用固定版本的 dmgbuild（构建依赖，直接写 `.DS_Store`，不驱动访达）生成 arm64 磁盘映像：应用、「应用程序」链接、打开「隐私与安全性」的 `.webloc` 快捷方式与首次打开引导背景，并写元数据。`scripts/package-smoke.mjs` 经 Node inspector 在打包产物里安装与后台测试相同的隔离后启动它，核对读回与升级。
 
 ## 测试结构
 

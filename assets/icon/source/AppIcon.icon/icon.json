@@ -1,0 +1,53 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "extended-srgb:0.13725,0.52157,0.47843,1.00000",
+      "extended-srgb:0.04314,0.29020,0.27059,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1
+      }
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "4-accent.svg",
+          "name": "accent"
+        },
+        {
+          "image-name": "3-body.svg",
+          "name": "body"
+        },
+        {
+          "image-name": "2-tail.svg",
+          "name": "tail"
+        },
+        {
+          "image-name": "1-wing-crest.svg",
+          "name": "wing-crest"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}

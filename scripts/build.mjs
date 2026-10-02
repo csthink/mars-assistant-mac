@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { build } from "esbuild";
 import { dirname, resolve } from "node:path";
-import { mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
-import { Resvg } from "@resvg/resvg-js";
+import { mkdir, copyFile } from "node:fs/promises";
 await mkdir("dist", { recursive: true });
 if (process.platform === "darwin")
   execFileSync(
@@ -79,13 +78,11 @@ await Promise.all([
   ),
 ]);
 
-// NativeImage accepts PNG, not SVG. Keep both pixel densities for macOS.
-const traySVG = await readFile("src/main/tray.svg");
-for (const scale of [1, 2]) {
-  const png = new Resvg(traySVG, {
-    fitTo: { mode: "width", value: 20 * scale },
-  })
-    .render()
-    .asPng();
-  await writeFile(`dist/trayTemplate${scale === 1 ? "" : "@2x"}.png`, png);
-}
+// The menu bar icon is a template image (black plus transparency, the file name ends in
+// Template) at 20 × 20 points in both pixel densities. assets/icon/README.md describes the files.
+await copyFile("assets/icon/brand-mark.svg", "dist/brand-mark.svg");
+for (const scale of ["", "@2x"])
+  await copyFile(
+    `assets/icon/trayTemplate${scale}.png`,
+    `dist/trayTemplate${scale}.png`,
+  );

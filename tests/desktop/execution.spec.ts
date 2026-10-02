@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { closeLocal, launchLocal } from "./local-client";
+import { displayName } from "../../src/shared/app-name";
 import { goTo } from "./shell";
 import { openProvider } from "./provider-ui";
 import { scrollIntoCenter } from "./scroll-into-center";
@@ -1048,13 +1049,14 @@ const quitSheets = () =>
     () => (globalThis as unknown as { quitSheets: QuitSheet[] }).quitSheets,
   );
 async function clickQuit() {
-  await app.evaluate(({ Menu }) => {
+  const label = `退出 ${displayName}`;
+  await app.evaluate(({ Menu }, target) => {
     const item = Menu.getApplicationMenu()?.items[0].submenu?.items.find(
-      (entry) => entry.label === "退出 csthink-assistant",
+      (entry) => entry.label === target,
     );
     if (!item) throw new Error("Missing quit menu item");
     item.click();
-  });
+  }, label);
 }
 
 test("quit confirmation in plain words: with an Implementer execution running the sheet says 有工作正在进行 and counts the Coding execution, and 取消退出 leaves the target running; once its cancel leaves a process in its own session the sheet says that process may keep running; 停止并退出 with a running execution stops the target by identity before the exit, the lingering process is never signalled, and the next start still watches it", async ({}, info) => {

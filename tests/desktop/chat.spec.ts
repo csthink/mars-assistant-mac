@@ -1,4 +1,5 @@
 import { closeLocal, launchLocal } from "./local-client";
+import { displayName } from "../../src/shared/app-name";
 import { goTo, recent } from "./shell";
 import { addProvider, openProvider } from "./provider-ui";
 import type { Provider } from "../../src/shared/protocol";
@@ -361,6 +362,10 @@ async function chooseQuitDialog(response: number) {
     })) as typeof dialog.showMessageBox;
   }, response);
 }
+/** The application menu's quit item carries the localized display name the app resolved from its locale. */
+async function quitLabel() {
+  return `退出 ${displayName}`;
+}
 async function clickAppMenu(label: string) {
   await app.evaluate(({ Menu }, target) => {
     const item = Menu.getApplicationMenu()?.items[0].submenu?.items.find(
@@ -393,7 +398,7 @@ test("quit and windows: closing the window keeps the turn running; cancelling qu
   // Closing the main window is not quitting: the turn finishes in the background.
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((window) => window.getTitle() === "csthink-assistant")
+      .find((window) => window.getTitle() === "青鸾")
       ?.close(),
   );
   await expect
@@ -413,7 +418,7 @@ test("quit and windows: closing the window keeps the turn running; cancelling qu
     page.getByRole("article", { name: "助手回合" }).getByRole("status"),
   ).toHaveText("生成中");
   await chooseQuitDialog(0);
-  await clickAppMenu("退出 csthink-assistant");
+  await clickAppMenu(await quitLabel());
   await expect(page.getByRole("article", { name: "助手消息" })).toHaveCount(2, {
     timeout: 15000,
   });
@@ -425,7 +430,7 @@ test("quit and windows: closing the window keeps the turn running; cancelling qu
   ).toHaveText("生成中");
   await chooseQuitDialog(1);
   const closed = app.waitForEvent("close", { timeout: 15000 });
-  await clickAppMenu("退出 csthink-assistant");
+  await clickAppMenu(await quitLabel());
   await closed;
   const restart = await launch();
   app = restart.application;

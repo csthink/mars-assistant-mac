@@ -1,4 +1,5 @@
 import "./tokens.css";
+import { displayName } from "../shared/app-name";
 import { taskRoute, clearTaskRoute } from "./task-route";
 import { ProjectColumnsContext } from "./project-columns";
 import { refocusWhenReady } from "./modal-focus";
@@ -2006,7 +2007,7 @@ function App() {
 // appearance and the window title are set first and the page mounts once the body exists.
 applyInitialAppearance();
 document.title =
-  window.desktop.surface === "panel" ? "工作台助手" : "csthink-assistant";
+  window.desktop.surface === "panel" ? "工作台助手" : displayName;
 document.addEventListener("DOMContentLoaded", () => {
   createRoot(document.getElementById("root")!).render(<App />);
 });

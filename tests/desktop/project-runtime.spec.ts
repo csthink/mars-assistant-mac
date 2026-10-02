@@ -127,7 +127,7 @@ test("project runtime: unavailable domain stays honest; independent chats retain
     });
     await f.app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => w.getTitle() === "csthink-assistant")!
+        .find((w) => w.getTitle() === "青鸾")!
         .setSize(900, 680),
     );
     await f.page.evaluate(() =>

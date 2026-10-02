@@ -204,7 +204,7 @@ test("real material: probe image capability on every saved connection, ask about
     resolve(user, "brief.pdf"),
     textPdf(`The secret word is ${secretWord}. Second line: ${secondLine}.`, 2),
   );
-  const star = readFileSync(resolve("dist/trayTemplate@2x.png"));
+  const star = readFileSync(resolve("tests/desktop/fixtures/star.png"));
   writeFileSync(resolve(user, "star.png"), star);
   await openConnections();
   const initial = await snapshotConnections();

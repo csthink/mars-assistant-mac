@@ -119,6 +119,10 @@ export function codexPolicy(
     web_search: "disabled",
     approval_policy: "never",
     "analytics.enabled": false,
+    // Codex 0.159 lists every discoverable skill (name, description and SKILL.md path, the personal
+    // ones included) in the model instructions even with host skill discovery skipped; this leaf
+    // keeps that list out of every request. A dotted key leaves the user's own skills table intact.
+    "skills.include_instructions": false,
     default_permissions: codexPermissionProfile,
     "permissions.csthink_assistant": {
       filesystem: { ":minimal": "read", [binary]: "read", [cwd]: "read" },
@@ -172,6 +176,9 @@ export function verifyCodexPolicy(
   const fs = { ...object(profile.filesystem) };
   if (fs.glob_scan_max_depth == null) delete fs.glob_scan_max_depth;
   const expectedFs = expected["permissions.csthink_assistant"].filesystem;
+  // A Codex that cannot report the skill instruction control is not known to keep skills out.
+  if (object(config.skills).include_instructions !== false)
+    throw new CodexPolicyError("configuration");
   if (
     config.web_search !== "disabled" ||
     config.approval_policy !== "never" ||

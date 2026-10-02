@@ -2,6 +2,7 @@ import { _electron, test, expect } from "@playwright/test";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve } from "node:path";
 import { closeLocal, launchLocal } from "./local-client";
+import { displayName } from "../../src/shared/app-name";
 
 test("background: failed isolation closes only its own launched application", async () => {
   const original = _electron.launch;
@@ -164,10 +165,11 @@ test("background: the menu bar icon is an in-process stand-in: no system status 
         .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     // The production code made exactly one icon, with its image and tooltip, and never a real one.
+    const name = displayName;
     expect(await record()).toEqual({
       created: 1,
       realTrayUsed: false,
-      toolTip: "csthink-assistant",
+      toolTip: name,
       imageEmpty: false,
       menus: [],
     });
@@ -178,9 +180,7 @@ test("background: the menu bar icon is an in-process stand-in: no system status 
     await app.evaluate(({ app }) => app.emit("test-tray-click"));
     await expect.poll(panelVisible).toBe(false);
     await app.evaluate(({ app }) => app.emit("test-tray-right-click"));
-    expect((await record()).menus).toEqual([
-      ["打开主窗口", "退出 csthink-assistant"],
-    ]);
+    expect((await record()).menus).toEqual([["打开主窗口", `退出 ${name}`]]);
     // The recorded menu still acts: with the main window closed, its first item opens a new one.
     const mainVisible = () =>
       app.evaluate(({ BrowserWindow }) =>

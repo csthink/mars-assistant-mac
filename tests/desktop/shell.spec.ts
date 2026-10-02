@@ -225,7 +225,7 @@ test("shell: at the 900 × 680 minimum window the four columns do not overlap, t
   try {
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find(
-        (w) => w.getTitle() === "csthink-assistant",
+        (w) => w.getTitle() === "青鸾",
       )!;
       window.setContentSize(900, 680);
     });

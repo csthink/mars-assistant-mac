@@ -205,18 +205,11 @@ p {
   height: 52px;
   flex: none;
 }
+/* The product mark is the 32-pixel simplified app icon (assets/icon/brand-mark.svg). */
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background: var(--c-accent-soft);
-  color: var(--c-accent);
-}
-.brand-mark svg {
-  width: 16px;
-  height: 16px;
 }
 .rail-nav {
   display: flex;

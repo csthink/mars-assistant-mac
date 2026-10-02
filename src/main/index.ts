@@ -91,6 +91,7 @@ import { CodexReviewerAdapter } from "./execution-codex";
 import { defaultPythonCandidates } from "./runtime-admission";
 import { catalogPins } from "../shared/runtime-capabilities";
 import { windowBackground } from "../shared/appearance";
+import { displayName } from "../shared/app-name";
 import {
   runtimeCopyValue,
   validRuntimeControl,
@@ -1376,7 +1377,7 @@ function createWindow(surface: Surface) {
     resizable: !panel,
     alwaysOnTop: panel,
     show: false,
-    title: panel ? "工作台助手" : "csthink-assistant",
+    title: panel ? "工作台助手" : displayName,
     backgroundColor: currentBackground(),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
@@ -1675,6 +1676,11 @@ if (!instance) {
     }
   });
   void app.whenReady().then(() => {
+    app.setAboutPanelOptions({
+      applicationName: displayName,
+      applicationVersion: app.getVersion(),
+      version: "",
+    });
     nativeTheme.on("updated", paintBackgrounds);
     // macOS requires a packaged Info.plist URL declaration. Development Electron is not registered.
     if (app.isPackaged && !app.setAsDefaultProtocolClient("csthink-assistant"))
@@ -1708,9 +1714,13 @@ if (!instance) {
     trusted.on("will-download", (event) => event.preventDefault());
     trusted.protocol.handle("attachment", serveAttachmentCopy);
     trusted.webRequest.onBeforeRequest((details, callback) => {
-      const permitted = ["index.html", "renderer.js", "renderer.css"].map(
-        (name) => pathToFileURL(join(__dirname, name)).href,
-      );
+      // brand-mark.svg is the product mark in the rail, a fixed file built from assets/icon.
+      const permitted = [
+        "index.html",
+        "renderer.js",
+        "renderer.css",
+        "brand-mark.svg",
+      ].map((name) => pathToFileURL(join(__dirname, name)).href);
       callback({
         cancel:
           !permitted.includes(details.url) &&
@@ -2382,7 +2392,7 @@ if (!instance) {
     if (icon.isEmpty()) throw new Error("菜单栏图标加载失败，请重新构建应用。");
     icon.setTemplateImage(true);
     tray = new Tray(icon);
-    tray.setToolTip("csthink-assistant");
+    tray.setToolTip(displayName);
     tray.on("click", () => {
       const panel = [...windows.values()].find(
         (entry) => entry.surface === "panel",
@@ -2395,7 +2405,7 @@ if (!instance) {
         Menu.buildFromTemplate([
           { label: "打开主窗口", click: () => createWindow("main") },
           {
-            label: "退出 csthink-assistant",
+            label: `退出 ${displayName}`,
             click: () => {
               void quit();
             },
@@ -2406,13 +2416,15 @@ if (!instance) {
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         {
-          label: "csthink-assistant",
+          label: displayName,
           submenu: [
+            { role: "about", label: `关于 ${displayName}` },
+            { type: "separator" },
             { label: "打开主窗口", click: () => createWindow("main") },
             { label: "打开工作台助手", click: () => createWindow("panel") },
             { type: "separator" },
             {
-              label: "退出 csthink-assistant",
+              label: `退出 ${displayName}`,
               accelerator: "Cmd+Q",
               click: () => {
                 void quit();

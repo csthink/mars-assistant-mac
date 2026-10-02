@@ -94,6 +94,7 @@ import {
   removeDraftAttachment,
   verifyAttachmentDirectory,
 } from "./attachments";
+import { isMacMetadata } from "../shared/macos-metadata";
 import {
   applyHostCommand,
   connectionChecks,
@@ -333,9 +334,10 @@ export class Store {
     }
     const original = readdirSync(this.root);
     const known = /^(root-lock|state)\.sqlite(?:-wal|-shm|-journal)?$/;
-    if (
-      original.some((name) => !known.test(name) && name !== attachmentDirectory)
-    )
+    const own = (name: string) =>
+      known.test(name) || name === attachmentDirectory;
+    // Finder metadata (.DS_Store, AppleDouble files of our own entries) is not someone else's data.
+    if (original.some((name) => !own(name) && !isMacMetadata(name, own)))
       throw new StoreError(
         "INVALID_ROOT",
         "目录中包含非本应用数据。请选择独立的空目录。",
