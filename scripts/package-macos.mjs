@@ -175,25 +175,27 @@ const privacySecurityURL =
   "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension";
 const shortcutName = "打开隐私与安全性.webloc";
 
-/** dmgbuild in a private virtual environment, installed only from the pinned, hashed wheels. */
-function dmgbuild() {
-  const venv = resolve("dist/dmgbuild-venv");
-  const bin = join(venv, "bin", "dmgbuild");
-  if (!existsSync(bin)) {
-    run("python3", ["-m", "venv", venv]);
-    run(join(venv, "bin", "python"), [
-      "-m",
-      "pip",
-      "install",
-      "--require-hashes",
-      "--no-deps",
-      "--only-binary",
-      ":all:",
-      "-r",
-      "scripts/dmg-requirements.txt",
-    ]);
-  }
-  return bin;
+/**
+ * dmgbuild in a private virtual environment inside the build's temporary work directory,
+ * installed only from the pinned, hashed wheels and removed with it. Nothing is left in the
+ * product tree, so build outputs and installed dependencies stay as the tests know them.
+ */
+function dmgbuild(work) {
+  const venv = join(work, "dmgbuild-venv");
+  run("python3", ["-m", "venv", venv]);
+  run(join(venv, "bin", "python"), [
+    "-m",
+    "pip",
+    "install",
+    "--quiet",
+    "--require-hashes",
+    "--no-deps",
+    "--only-binary",
+    ":all:",
+    "-r",
+    resolve("scripts/dmg-requirements.txt"),
+  ]);
+  return join(venv, "bin", "dmgbuild");
 }
 
 /**
@@ -221,7 +223,7 @@ async function diskImage(app, outDir, version) {
       "utf8",
     );
     run("/usr/bin/plutil", ["-lint", shortcut]);
-    run(dmgbuild(), [
+    run(dmgbuild(work), [
       "-s",
       "scripts/dmg-settings.py",
       "-D",

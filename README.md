@@ -134,7 +134,7 @@ mars-assistant-mac/
 
 ## 试用安装包
 
-`npm run package:trial` 在 Apple silicon 的 macOS 上构建试用安装包 `Qingluan-<版本>-arm64.dmg`。盘内是 `Qingluan.app`、指向「应用程序」文件夹的链接与快捷方式「打开隐私与安全性」（`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension`，只打开该设置页）；窗口背景（`assets/dmg/`，1x 与 2x）画出拖入方向，并用中英文写明首次打开被拦截时的放行步骤。窗口布局由构建依赖 dmgbuild 直接写入 `.DS_Store`，不驱动访达；它按 `scripts/dmg-requirements.txt` 固定版本与哈希，首次构建时安装到 `dist/dmgbuild-venv`（需要 `python3` 3.10 或更新版本与网络）。
+`npm run package:trial` 在 Apple silicon 的 macOS 上构建试用安装包 `Qingluan-<版本>-arm64.dmg`。盘内是 `Qingluan.app`、指向「应用程序」文件夹的链接与快捷方式「打开隐私与安全性」（`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension`，只打开该设置页）；窗口背景（`assets/dmg/`，1x 与 2x）画出拖入方向，并用中英文写明首次打开被拦截时的放行步骤。窗口布局由构建依赖 dmgbuild 直接写入 `.DS_Store`，不驱动访达；它按 `scripts/dmg-requirements.txt` 固定版本与哈希，每次构建时装进临时虚拟环境、用完删除（需要 `python3` 3.10 或更新版本与网络）。
 
 | 项目 | 内容 |
 | --- | --- |
