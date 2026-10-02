@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/csthink/mars-assistant-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/csthink/mars-assistant-mac/actions/workflows/ci.yml)
 
-Assistant 的 macOS 客户端。Assistant 是面向个人使用的桌面助手与工作台：用户向 Assistant 这个统一沟通对象提出目标、查看进度、作出决定，并在工作台里使用和继续修改成果。本仓是它在 macOS 上的实现，使用 Electron、React、TypeScript 与 SQLite。
+Assistant 的 macOS 客户端，应用显示名在简体中文系统上为「青鸾」，在其他语言下为「Qingluan」。Assistant 是面向个人使用的桌面助手与工作台：用户向 Assistant 这个统一沟通对象提出目标、查看进度、作出决定，并在工作台里使用和继续修改成果。本仓是它在 macOS 上的实现，使用 Electron、React、TypeScript 与 SQLite。
 
 客户端同时承担 Runtime Host 职责：从本地导入的扩展运行包以受监督子进程运行，按 [Runtime Contract 0.1.0](contract/0.1.0/) 与客户端通信。[HarnessPlane](https://github.com/csthink/mars-assistant-harness-plane) 的 serve-stdio 入口实现同一份 Contract。
 
@@ -79,7 +79,8 @@ npm start -- --data-root="<数据目录>"
 | `npm run test:desktop` | 构建后启动真实 Electron，验证导航、Tray 图像、草稿、窗口生命周期、故障恢复、资料选择与预览等界面行为 |
 | `npm run test:native` | 原生桌面测试：可见窗口的焦点切换与跨应用失焦，会占用前台桌面 |
 | `npm run test:real` | 真实提供方与本地 Agent 验证，见下文 |
-| `npm run package:mac -- --out=<新输出目录>` | 构建本机开发用应用包；输出目录已存在时拒绝覆盖，可加 `--data-root=<绝对目录>` 固定数据目录 |
+| `npm run package:mac -- --out=<新输出目录>` | 构建本机应用包 `Qingluan.app`（ad-hoc 签名）；输出目录已存在时拒绝覆盖，可加 `--data-root=<绝对目录>` 固定数据目录 |
+| `npm run package:trial` | 构建试用安装包：`dist/trial/` 下的 arm64 `.dmg` 与同名 `.json` 元数据（版本、SHA-256、最低系统版本），见「试用安装包」 |
 
 ## 测试
 
@@ -116,7 +117,8 @@ mars-assistant-mac/
 │   └── shared/          主进程、业务服务与界面共享的类型、协议与校验
 ├── tests/desktop/       各层测试与夹具；runtime-fakes/ 是两个领域的 fake Runtime 与运行包构建工具
 ├── contract/0.1.0/      Runtime Contract 0.1.0 的冻结副本：contract-manifest.json 与它列出的 13 个文件（schema.json、methods.json、示例、说明、修订记录、release-record/）
-├── scripts/             build.mjs、package-macos.mjs、execution-audit.mjs、runtime-host-coverage.mjs
+├── assets/icon/         应用图标与菜单栏模板图，见 assets/icon/README.md
+├── scripts/             build.mjs、package-macos.mjs、package-smoke.mjs、execution-audit.mjs、runtime-host-coverage.mjs
 ├── tools/               check-public-safety-generic.sh、install-hooks.sh、public-safety-allowlist.txt
 ├── docs/                architecture.md
 ├── .github/workflows/   ci.yml
@@ -130,6 +132,22 @@ mars-assistant-mac/
 - `node scripts/execution-audit.mjs --data-root <数据目录>`：按 Contract schema 校验执行端口的执行记录，并从 transcript 与结果文档重算工具调用数、输出字节、运行时长等核算字段逐项比较。
 - `node scripts/runtime-host-coverage.mjs --transcripts <目录> --out <报告文件>`：逐帧校验 Host 与 Runtime 之间的协议记录，统计方法与错误码的覆盖。协议记录由 `npm start -- --data-root=<数据目录> --runtime-transcripts=<绝对目录>` 写出，含双向的全部协议帧，只用于测试与诊断。
 
+## 试用安装包
+
+`npm run package:trial` 在 Apple silicon 的 macOS 上构建试用安装包 `Qingluan-<版本>-arm64.dmg`，盘内是 `Qingluan.app` 与指向「应用程序」文件夹的链接。
+
+| 项目 | 内容 |
+| --- | --- |
+| 架构与系统 | 只有 arm64；`LSMinimumSystemVersion` 为 26.6.2 |
+| 名称 | 应用包文件名 `Qingluan.app`；`InfoPlist.strings` 在 `zh_CN.lproj` 写「青鸾」、在 `en.lproj` 写「Qingluan」，其他语言使用 `Info.plist` 的 `Qingluan`；窗口标题、应用菜单、菜单栏图标提示与关于面板按应用语言取同一名称 |
+| 不变的身份 | bundle id `com.csthink.assistant`；内部应用名 `csthink-assistant`（`app.setName`），因此「数据目录」一节的默认目录与 safeStorage 的钥匙串项（服务名 `csthink-assistant Safe Storage`）都不随显示名改变 |
+| 签名 | 由内向外的 ad-hoc 签名，`codesign --verify --deep --strict` 通过；没有 Developer ID 签名与 Apple 公证，Gatekeeper 评估（`spctl`）会拒绝 |
+| 图标 | `assets/icon/`：`AppIcon.icns`（打包时由 PNG 组生成）与 macOS 26 起使用的分层图标 `Assets.car` |
+
+从网上下载的副本第一次打开会被系统拦下：在「系统设置 → 隐私与安全性」中对本应用选择「仍要打开」放行一次即可，不需要也不应该关闭 Gatekeeper。每个新版本的 ad-hoc 签名都不同，升级后第一次使用已保存的 API key 时，macOS 可能请求允许访问钥匙串项；拒绝时密钥无法解密，需要在设置中重新填写。
+
+`node scripts/package-smoke.mjs --phase seed|verify --dmg <dmg>`（或 `--app <应用包>`）在后台核对安装包：从只读挂载的磁盘映像复制应用，在独立的 HOME（自带临时钥匙串）与独立的 Application Support 中启动，不出现在程序坞与菜单栏、不取得焦点；`seed` 写入一个对话、草稿、经产品 vault 保存的合成 API key、引用它的提供方与外观设置后正常退出，`verify` 在同一目录用另一个构建启动并逐项比较读回结果、vault 文件字节与钥匙串项名称。两次运行加 `--work <同一目录>`。
+
 ## 文档
 
 - [docs/architecture.md](docs/architecture.md)：进程划分、模块与依赖方向、数据归属、Runtime Host 与执行端口的设计理由
@@ -139,4 +157,4 @@ mars-assistant-mac/
 
 ## 许可
 
-本仓暂未授予开源许可（仓内没有 `LICENSE` 文件），也不发布安装包。
+本仓暂未授予开源许可（仓内没有 `LICENSE` 文件）。试用安装包经本仓的 GitHub Release 发布。
