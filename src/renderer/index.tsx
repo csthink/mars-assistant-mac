@@ -1,5 +1,5 @@
-import { displayName } from "../shared/app-name";
 import "./tokens.css";
+import { displayName } from "../shared/app-name";
 import { taskRoute, clearTaskRoute } from "./task-route";
 import { ProjectColumnsContext } from "./project-columns";
 import { refocusWhenReady } from "./modal-focus";
