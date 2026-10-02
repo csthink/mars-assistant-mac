@@ -124,6 +124,8 @@ export class ProbeClient {
   constructor(
     private readonly data: string,
     private readonly transcripts: string,
+    /** Variables added to the inherited environment (the J-04 entry's Codex protocol log). */
+    private readonly env: Record<string, string> = {},
   ) {}
   async launch() {
     this.app = await launchLocal({
@@ -133,6 +135,9 @@ export class ProbeClient {
         `--runtime-transcripts=${this.transcripts}`,
       ],
       cwd: resolve("."),
+      ...(Object.keys(this.env).length
+        ? { env: { ...(process.env as Record<string, string>), ...this.env } }
+        : {}),
     });
     this.page = await this.app.firstWindow();
     await ready(this.page);

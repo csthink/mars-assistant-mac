@@ -235,4 +235,101 @@ app.on("csthink:execution-port", (port) => {
   globalThis.executionPort = port;
 });
 
+// Codex protocol observation (real-provider entries, mac-feature-t32 J-04): with
+// CSTHINK_TEST_CODEX_PROTOCOL_LOG naming an absolute file, every Codex app-server the product spawns
+// is recorded before production code loads: its pid, the model provider its last `-c model_provider=`
+// argument selects and whether that provider's definition points at a loopback endpoint (the local
+// synthetic capability check), the method of every request the product writes to it, the thread and
+// turn notifications it answers with, and its exit. Methods and those two configuration facts only:
+// no parameters, answers, credentials or paths are recorded. The stream wrappers observe without
+// adding readers, so the product's own reading is unchanged. The entry counts model turns per process
+// from this file; a turn on a process whose provider is not the loopback one is a real one.
+const codexProtocolLog = process.env.CSTHINK_TEST_CODEX_PROTOCOL_LOG;
+if (codexProtocolLog) {
+  const { isAbsolute } = require("node:path");
+  if (!isAbsolute(codexProtocolLog))
+    throw new Error("CSTHINK_TEST_CODEX_PROTOCOL_LOG must be an absolute path");
+  const fs = require("node:fs");
+  const childProcess = require("node:child_process");
+  const record = (entry) =>
+    fs.appendFileSync(
+      codexProtocolLog,
+      JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n",
+    );
+  const lastValue = (args, prefix) => {
+    const found = args.filter(
+      (arg, i) => args[i - 1] === "-c" && arg.startsWith(prefix),
+    );
+    return found.length ? found[found.length - 1].slice(prefix.length) : null;
+  };
+  /** Calls observe with every complete line the stream carries, in order. */
+  const lines = (observe) => {
+    let buffer = "";
+    return (chunk) => {
+      buffer += String(chunk);
+      let end;
+      while ((end = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, end);
+        buffer = buffer.slice(end + 1);
+        let message = null;
+        try {
+          message = JSON.parse(line);
+        } catch {
+          // Not a protocol line; the product's own reader decides what it is.
+        }
+        observe(message);
+      }
+    };
+  };
+  const notifications = ["thread/started", "turn/started", "turn/completed"];
+  const spawn = childProcess.spawn;
+  childProcess.spawn = function (file, args, ...rest) {
+    const child = spawn.call(this, file, args, ...rest);
+    if (!Array.isArray(args) || args[0] !== "app-server") return child;
+    const pid = child.pid ?? null;
+    const raw = lastValue(args, "model_provider=");
+    let provider = raw;
+    try {
+      provider = raw === null ? null : JSON.parse(raw);
+    } catch {
+      // Recorded as written; an unparsed provider never counts as the loopback one.
+    }
+    const definition =
+      provider === null
+        ? null
+        : lastValue(args, `model_providers.${provider}=`);
+    record({
+      event: "spawn",
+      pid,
+      modelProvider: provider,
+      loopbackProvider:
+        definition !== null &&
+        /"base_url"="http:\/\/127\.0\.0\.1:[0-9]+\/v1"/.test(definition),
+    });
+    const requests = lines((message) => {
+      if (message && typeof message.method === "string")
+        record({ event: "request", pid, method: message.method });
+      else if (!message) record({ event: "request", pid, method: null });
+    });
+    const write = child.stdin.write;
+    child.stdin.write = function (chunk, ...more) {
+      requests(chunk);
+      return write.call(this, chunk, ...more);
+    };
+    const answers = lines((message) => {
+      if (message && notifications.includes(message.method))
+        record({ event: "notification", pid, method: message.method });
+    });
+    const emit = child.stdout.emit;
+    child.stdout.emit = function (event, chunk, ...more) {
+      if (event === "data") answers(chunk);
+      return emit.call(this, event, chunk, ...more);
+    };
+    child.once("exit", (code, signal) =>
+      record({ event: "exit", pid, code, signal }),
+    );
+    return child;
+  };
+}
+
 require(resolve(root, "dist/main.cjs"));
