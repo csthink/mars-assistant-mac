@@ -1722,9 +1722,13 @@ if (!instance) {
     trusted.on("will-download", (event) => event.preventDefault());
     trusted.protocol.handle("attachment", serveAttachmentCopy);
     trusted.webRequest.onBeforeRequest((details, callback) => {
-      const permitted = ["index.html", "renderer.js", "renderer.css"].map(
-        (name) => pathToFileURL(join(__dirname, name)).href,
-      );
+      // brand-mark.svg is the product mark in the rail, a fixed file built from assets/icon.
+      const permitted = [
+        "index.html",
+        "renderer.js",
+        "renderer.css",
+        "brand-mark.svg",
+      ].map((name) => pathToFileURL(join(__dirname, name)).href);
       callback({
         cancel:
           !permitted.includes(details.url) &&

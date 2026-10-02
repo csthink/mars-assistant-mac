@@ -80,6 +80,7 @@ await Promise.all([
 
 // The menu bar icon is a template image (black plus transparency, the file name ends in
 // Template) at 20 × 20 points in both pixel densities. assets/icon/README.md describes the files.
+await copyFile("assets/icon/brand-mark.svg", "dist/brand-mark.svg");
 for (const scale of ["", "@2x"])
   await copyFile(
     `assets/icon/trayTemplate${scale}.png`,

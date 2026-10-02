@@ -112,9 +112,12 @@ export function Rail({
   return (
     <nav className="rail" aria-label="全局导航">
       <div className="rail-top">
-        <span className="brand-mark" aria-hidden="true">
-          <Icon name="spark" />
-        </span>
+        <img
+          className="brand-mark"
+          src="brand-mark.svg"
+          alt=""
+          aria-hidden="true"
+        />
       </div>
       <div className="rail-nav">
         {item("主页", "home", view === "chat" && home, onHome)}
@@ -420,7 +423,7 @@ export function Sidebar({
       data-overlay={overlay ? "true" : undefined}
     >
       <div className="side-top">
-        <span className="side-title">Assistant</span>
+        <span className="side-title">{window.desktop.displayName}</span>
         <button
           ref={foldButton}
           className="icon-button side-fold"

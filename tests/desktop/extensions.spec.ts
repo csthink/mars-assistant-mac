@@ -78,6 +78,10 @@ test("extensions: the settings category lists the catalog honestly, an offline i
     // Catalog before any bundle: AI-SDLC is not installed and has no start/stop control; knowledge stays planned.
     const sdlc = card(page, "AI-SDLC");
     await expect(sdlc.locator(".extension-badge")).toHaveText("未安装");
+    // The reason is the real one for this build: no verified runtime package ships with it.
+    await expect(sdlc.locator(".extension-hint")).toHaveText(
+      "随产品提供的项目默认管理能力；本版本尚未附带已核验的运行包，AI-SDLC 运行包将在后续版本提供。不提供全局启停或卸载。",
+    );
     await expect(sdlc.getByRole("button", { name: "检查更新" })).toBeDisabled();
     await expect(sdlc.getByRole("switch")).toHaveCount(0);
     await expect(

@@ -16,6 +16,13 @@ for (const [lang, name] of [
     try {
       const page = await app.firstWindow();
       await expect(page).toHaveTitle(name);
+      // The sidebar heading carries the same name, and the rail shows the app icon as the product mark.
+      await expect(page.locator("#main-sidebar .side-title")).toHaveText(name);
+      const mark = page.locator(".rail .brand-mark");
+      await expect(mark).toHaveAttribute("src", "brand-mark.svg");
+      await expect
+        .poll(() => mark.evaluate((img: HTMLImageElement) => img.naturalWidth))
+        .toBeGreaterThan(0);
       const shell = await app.evaluate(({ app, BrowserWindow, Menu }) => {
         const menu = Menu.getApplicationMenu()!.items[0];
         return {

@@ -139,10 +139,10 @@ mars-assistant-mac/
 | 项目 | 内容 |
 | --- | --- |
 | 架构与系统 | 只有 arm64；`LSMinimumSystemVersion` 为 26.6.2 |
-| 名称 | 应用包文件名 `Qingluan.app`；`InfoPlist.strings` 在 `zh_CN.lproj` 写「青鸾」、在 `en.lproj` 写「Qingluan」，其他语言使用 `Info.plist` 的 `Qingluan`；窗口标题、应用菜单、菜单栏图标提示与关于面板按应用语言取同一名称 |
+| 名称 | 应用包文件名 `Qingluan.app`；`InfoPlist.strings` 在 `zh_CN.lproj` 写「青鸾」、在 `en.lproj` 写「Qingluan」，其他语言使用 `Info.plist` 的 `Qingluan`；窗口标题、侧栏标题、应用菜单、菜单栏图标提示与关于面板按应用语言取同一名称 |
 | 不变的身份 | bundle id `com.csthink.assistant`；内部应用名 `csthink-assistant`（`app.setName`），因此「数据目录」一节的默认目录与 safeStorage 的钥匙串项（服务名 `csthink-assistant Safe Storage`）都不随显示名改变 |
 | 签名 | 由内向外的 ad-hoc 签名，`codesign --verify --deep --strict` 通过；没有 Developer ID 签名与 Apple 公证，Gatekeeper 评估（`spctl`）会拒绝 |
-| 图标 | `assets/icon/`：`AppIcon.icns`（打包时由 PNG 组生成）与 macOS 26 起使用的分层图标 `Assets.car` |
+| 图标 | `assets/icon/`：`AppIcon.icns`（打包时由 PNG 组生成）与 macOS 26 起使用的分层图标 `Assets.car`；主窗口窄列的产品标识是同一图标的 32 像素简化版 |
 
 从网上下载的副本第一次打开会被系统拦下：在「系统设置 → 隐私与安全性」中对本应用选择「仍要打开」放行一次即可，不需要也不应该关闭 Gatekeeper。每个新版本的 ad-hoc 签名都不同，升级后第一次使用已保存的 API key 时，macOS 可能请求允许访问钥匙串项；拒绝时密钥无法解密，需要在设置中重新填写。
 

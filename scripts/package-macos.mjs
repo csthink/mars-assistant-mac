@@ -189,7 +189,7 @@ try {
     if (
       file.isFile() &&
       (file.name === "codex-process" ||
-        /\.(cjs|mjs|js|css|html|png|map|node)$/.test(file.name))
+        /\.(cjs|mjs|js|css|html|png|svg|map|node)$/.test(file.name))
     )
       await cp(join("dist", file.name), join(stage, "dist", file.name));
   }
