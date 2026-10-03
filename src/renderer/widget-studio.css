@@ -43,6 +43,19 @@
   width: 32px;
   height: 32px;
 }
+.widget-canvas-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+.widget-canvas-empty-icon > .icon {
+  width: 32px;
+  height: 32px;
+}
 .widget-empty h2 {
   font-size: 18px;
   color: var(--c-text);

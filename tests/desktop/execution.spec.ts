@@ -1118,10 +1118,7 @@ test("quit confirmation in plain words: with an Implementer execution running th
           args: {
             profileId: claudeImplementerProfileId,
             preflight: true,
-            // The graph fake runs executions on one worker and polls each one for waitSeconds (default 60)
-            // before it takes the next. The first execution stays stopping (its escaped process lingers),
-            // so the second one starts only when that poll ends; 15 s keeps the start well inside the 60 s
-            // this test waits for it, instead of a fraction of a second after it.
+            // Let the graph fake finish its first poll before it checks the capacity-refused request.
             waitSeconds: 15,
             binding: {
               connectionRef: "connection:" + claudeConnection.id,
@@ -1203,73 +1200,48 @@ test("quit confirmation in plain words: with an Implementer execution running th
     expect(lingering_sheet.detail).toContain(
       "1 个已取消执行启动的进程还没退出。Assistant 不会强行结束它，退出后它可能继续运行",
     );
-    // 3. A second execution runs while the first waits; 停止并退出 stops the running one and exits.
-    const second = await request();
-    void second;
-    const secondRecord = (await until(
+    // A stopping domain execution still owns the active slot; a second start must be refused.
+    const blocked = await request();
+    const refused = await until(
       async () =>
-        (await records()).runtimeExecutions.find(
-          (r) =>
-            r.profileId === claudeImplementerProfileId &&
-            r.executionRef !== running.executionRef,
+        (await records()).runtimeOperations.find(
+          (o) => o.operationId === blocked.operationId,
         ) ?? null,
-      (r) => !!r && r.state === "running" && r.target !== null,
-    )) as HostExecutionRecord;
-    const secondPid = secondRecord.target!.pid;
-    pids.push(secondPid);
-    // The second target leaves its own escaped process as well; it is collected for the cleanup below.
-    const secondEscapedPid = (
-      await until(
-        async () => escapedOf(secondPid),
-        (c) => c.length === 1,
-      )
-    )[0];
-    pids.push(secondEscapedPid);
+      (o) => !!o && o.status === "failed",
+    );
+    expect(refused!.reason).toContain("容量已满");
+    expect((await records()).runtimeExecutions).toHaveLength(1);
+
+    // Leave with only the lingering execution, then prove a restart still watches that same process.
     await answerQuitSheet(1);
-    const closed = app.waitForEvent("close", { timeout: 60_000 });
-    const child = app.process();
+    let closed = app.waitForEvent("close", { timeout: 60_000 });
+    let child = app.process();
     await clickQuit();
     await closed;
     if (child.exitCode === null && child.signalCode === null)
       await new Promise<void>((resolve) => child.once("exit", () => resolve()));
-    expect(alive(secondRecord.target!.pid)).toBe(false);
+    expect(alive(targetPid)).toBe(false);
     expect(alive(escapedPid)).toBe(true);
-    // The next start: the stopped execution is recorded as such, the lingering one is still watched.
-    const relaunched = await launch();
+    let relaunched = await launch();
     app = relaunched.application;
     page = relaunched.window;
-    const after = await until(
-      async () => {
-        const list = (await records()).runtimeExecutions;
-        return {
-          stopped:
-            list.find((r) => r.executionRef === secondRecord.executionRef) ??
-            null,
-          waiting:
-            list.find((r) => r.executionRef === running.executionRef) ?? null,
-        };
-      },
-      (v) =>
-        !!v.stopped &&
-        v.stopped.state !== "running" &&
-        v.stopped.state !== "stopping" &&
-        !!v.waiting,
-      60_000,
+    const waiting = await until(
+      async () =>
+        (await records()).runtimeExecutions.find(
+          (r) => r.executionRef === running.executionRef,
+        ) ?? null,
+      (r) => !!r && r.state === "stopping" && r.stopUnconfirmed !== null,
     );
-    expect(after.stopped!.state).toBe("stopped");
-    expect(after.stopped!.stopReason).toBe("cancelled");
-    expect(after.stopped!.exit?.signal).toBe("SIGTERM");
-    expect(after.waiting!.state).toBe("stopping");
     expect(
-      after.waiting!.stopUnconfirmed?.escaped.map((e) => e.identity.pid),
+      waiting!.stopUnconfirmed!.escaped.map((e) => e.identity.pid),
     ).toEqual([escapedPid]);
     const snapshot = await business();
     expect(
-      snapshot.pendingItems.filter((p) => p.kind === "stop_unconfirmed").length,
-    ).toBe(1);
+      snapshot.pendingItems.filter((p) => p.kind === "stop_unconfirmed"),
+    ).toHaveLength(1);
     expect(
       snapshot.events
-        .filter((e) => e.executionId === after.waiting!.executionId)
+        .filter((e) => e.executionId === waiting!.executionId)
         .map((e) => e.kind),
     ).not.toContain("interrupted");
     await goTo(page, "待处理");
@@ -1280,9 +1252,71 @@ test("quit confirmation in plain words: with an Implementer execution running th
         .filter({ hasText: "有一个进程还没退出" }),
     ).toHaveCount(1);
     await page.screenshot({ path: info.outputPath("pending-after-quit.png") });
+
+    // The fixture owner ends its own escaped process. Only the Host's observed terminal state frees capacity.
+    process.kill(escapedPid, "SIGKILL");
+    const confirmed = await until(
+      async () =>
+        (await records()).runtimeExecutions.find(
+          (r) => r.executionRef === running.executionRef,
+        )!,
+      (r) => r.state === "stopped" && !!r.stopUnconfirmed?.resolvedAt,
+    );
+    expect(confirmed.blockedOperations).toEqual([]);
+    expect(alive(escapedPid)).toBe(false);
+    expect(
+      (await business()).pendingItems.filter(
+        (p) => p.kind === "stop_unconfirmed",
+      ),
+    ).toHaveLength(0);
+
+    // Now a fresh execution can start; 停止并退出 must stop this running target before the exit.
+    f.claude.update({ implementerEscaped: 0 });
+    await request();
+    const secondRecord = (await until(
+      async () =>
+        (await records()).runtimeExecutions.find(
+          (r) =>
+            r.profileId === claudeImplementerProfileId &&
+            r.executionRef !== running.executionRef,
+        ) ?? null,
+      (r) => !!r && r.state === "running" && r.target !== null,
+    )) as HostExecutionRecord;
+    pids.push(secondRecord.target!.pid);
+    await answerQuitSheet(1);
+    closed = app.waitForEvent("close", { timeout: 60_000 });
+    child = app.process();
+    await clickQuit();
+    await closed;
+    if (child.exitCode === null && child.signalCode === null)
+      await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    expect(alive(secondRecord.target!.pid)).toBe(false);
+    relaunched = await launch();
+    app = relaunched.application;
+    page = relaunched.window;
+    const stopped = await until(
+      async () =>
+        (await records()).runtimeExecutions.find(
+          (r) => r.executionRef === secondRecord.executionRef,
+        ) ?? null,
+      (r) => !!r && r.state === "stopped",
+    );
+    expect(stopped!.stopReason).toBe("cancelled");
+    expect(stopped!.exit?.signal).toBe("SIGTERM");
     writeFileSync(
       info.outputPath("quit-sheets.json"),
-      JSON.stringify({ running_sheet, lingering_sheet, after }, null, 2),
+      JSON.stringify(
+        {
+          running_sheet,
+          lingering_sheet,
+          refused,
+          waiting,
+          confirmed,
+          stopped,
+        },
+        null,
+        2,
+      ),
     );
   } finally {
     for (const pid of pids)

@@ -1,3 +1,4 @@
+import { restorePreWidgetGenerationFixture } from "./legacy-codex-schema";
 import { test, expect, type Page } from "@playwright/test";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -160,6 +161,12 @@ test("existing data root: a schema 26 data root opens with every conversation, p
       "SELECT id, title, pinned_at, unread, archived_at FROM conversations ORDER BY id",
     )
     .all();
+  const indexesBefore = db
+    .prepare(
+      "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name",
+    )
+    .all();
+  restorePreWidgetGenerationFixture(db);
   db.exec(`DROP TRIGGER conversation_created_at;
     ALTER TABLE conversations DROP COLUMN created_at;
     DROP TABLE pinned_order;
@@ -168,6 +175,23 @@ test("existing data root: a schema 26 data root opens with every conversation, p
   const { app, page } = await launch(root);
   try {
     const after = await snapshot(page);
+    const migrated = new DatabaseSync(join(root, "state.sqlite"), {
+      readOnly: true,
+    });
+    try {
+      expect(migrated.prepare("PRAGMA user_version").get()!.user_version).toBe(
+        30,
+      );
+      expect(
+        migrated
+          .prepare(
+            "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name",
+          )
+          .all(),
+      ).toEqual(indexesBefore);
+    } finally {
+      migrated.close();
+    }
     for (const row of before as {
       id: string;
       title: string;

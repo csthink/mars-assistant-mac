@@ -400,7 +400,9 @@ export function WidgetStudio({
         </div>
       ) : (
         <div className="widget-empty">
-          <Icon name="grid" />
+          <span className="widget-canvas-empty-icon">
+            <Icon name="grid" />
+          </span>
           <h2>还没有控件</h2>
           <p>从一个想法开始，创建属于自己的小工具。</p>
           <button
