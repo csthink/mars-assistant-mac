@@ -2043,7 +2043,12 @@ if (!instance) {
         };
       if (
         command.type === "retainWidgetCandidate" &&
-        widgetHost?.hasUnconfirmedCandidate(command.candidateId)
+        [
+          command.candidateId,
+          ...(snapshot?.widgetGeneration?.candidates
+            .find((c) => c.id === command.candidateId)
+            ?.members?.map((m) => m.id) ?? []),
+        ].some((id) => widgetHost?.hasUnconfirmedCandidate(id))
       )
         return {
           ok: false,

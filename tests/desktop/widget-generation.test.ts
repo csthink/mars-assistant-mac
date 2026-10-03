@@ -1098,3 +1098,167 @@ test("widget editing: concurrent formal revision or data changes reject retentio
     s.close();
   }
 });
+
+test("widget editing: selected target set is atomic, rejects one conflict, and preserves newer positions", () => {
+  const s = setup();
+  try {
+    for (let i = 0; i < 2; i++) {
+      const c = candidate(s, submit(s, draft(s)).task);
+      assert(
+        s.store.execute(
+          {
+            type: "retainWidgetCandidate",
+            candidateId: c.id,
+            digest: c.digest,
+            requirementRevision: 1,
+          },
+          "main",
+        ).ok,
+      );
+    }
+    const targets = s.store.snapshot().widgetGeneration!.widgets;
+    const id = randomUUID();
+    assert(
+      s.store.execute(
+        {
+          type: "createWidgetEditDraft",
+          id,
+          widgetIds: targets.map((w) => w.id),
+        },
+        "main",
+      ).ok,
+    );
+    assert(
+      s.store.execute(
+        {
+          type: "saveWidgetDraft",
+          id,
+          revision: 0,
+          name: "Pair",
+          input: "Modify both",
+        },
+        "main",
+      ).ok,
+    );
+    const t = submit(s, id).task;
+    assert(claim(s, t).ok);
+    const builds = targets.map((w, n) => ({
+      widgetId: w.id,
+      build: buildWidgetPackage(
+        JSON.stringify({
+          ...built().manifest,
+          name: `Changed ${n}`,
+          view: { html: `<button>${n}</button>`, css: "", js: "" },
+        }),
+      ),
+    }));
+    const beforeCandidate = s.store.snapshot();
+    for (const invalid of [
+      builds.slice(0, 1),
+      [builds[0], builds[0]],
+      [builds[0], { ...builds[1], widgetId: randomUUID() }],
+    ]) {
+      assert(
+        !host(s.store, {
+          type: "receiveWidgetCandidateSet",
+          taskId: t.id,
+          executionId: t.executionId,
+          builds: invalid,
+          layout: null,
+        }).ok,
+      );
+      assert.deepEqual(s.store.snapshot(), beforeCandidate);
+    }
+    assert(
+      !host(s.store, {
+        type: "receiveWidgetCandidateSet",
+        taskId: t.id,
+        executionId: t.executionId,
+        builds,
+        layout: { minWidth: 0, gap: 12, density: "compact" },
+      }).ok,
+    );
+    assert.deepEqual(s.store.snapshot(), beforeCandidate);
+    assert(
+      host(s.store, {
+        type: "receiveWidgetCandidateSet",
+        taskId: t.id,
+        executionId: t.executionId,
+        builds,
+        layout: { minWidth: 300, gap: 12, density: "compact" },
+      } as HostCommand).ok,
+    );
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "completed",
+        error: null,
+      }).ok,
+    );
+    const c = s.store.snapshot().widgetGeneration!.candidates.at(-1)!;
+    const retain: Command = {
+      type: "retainWidgetCandidate",
+      candidateId: c.id,
+      digest: c.digest,
+      requirementRevision: c.requirementRevision,
+    };
+    s.store.db
+      .prepare("UPDATE saved_widgets SET revision=revision+1 WHERE id=?")
+      .run(targets[1].id);
+    const conflicted = s.store.snapshot();
+    assert(!s.store.execute(retain, "main").ok);
+    assert.deepEqual(s.store.snapshot(), conflicted);
+    s.store.db
+      .prepare("UPDATE saved_widgets SET revision=revision-1 WHERE id=?")
+      .run(targets[1].id);
+    s.store.db
+      .prepare("UPDATE saved_widgets SET position=position+10 WHERE id=?")
+      .run(targets[0].id);
+    // A failure during the second update must roll back the first member and all preview revocations.
+    s.store.db.exec(
+      `CREATE TRIGGER reject_second_widget BEFORE UPDATE ON saved_widgets WHEN OLD.id='${targets[1].id}' BEGIN SELECT RAISE(ABORT,'synthetic second write failure'); END`,
+    );
+    const beforeWriteFailure = s.store.snapshot();
+    assert(!s.store.execute(retain, "main").ok);
+    assert.deepEqual(s.store.snapshot(), beforeWriteFailure);
+    s.store.db.exec("DROP TRIGGER reject_second_widget");
+    s.store.db.exec("UPDATE widget_layout SET revision=revision+1 WHERE id=1");
+    const beforeLayoutConflict = s.store.snapshot();
+    assert(!s.store.execute(retain, "main").ok);
+    assert.deepEqual(s.store.snapshot(), beforeLayoutConflict);
+    s.store.db.exec("UPDATE widget_layout SET revision=revision-1 WHERE id=1");
+    assert(s.store.execute(retain, "main").ok);
+    const after = s.store.snapshot().widgetGeneration!;
+    assert.equal(after.widgets.length, 2);
+    assert(after.widgets.every((w) => w.revision === 2));
+    assert.equal(
+      after.widgets.find((w) => w.id === targets[0].id)!.position,
+      targets[0].position + 10,
+    );
+    assert(s.store.execute(retain, "panel").ok);
+    assert(
+      s.store
+        .snapshot()
+        .widgetGeneration!.widgets.every((w) => w.revision === 2),
+    );
+    assert.deepEqual(after.layout?.value, {
+      minWidth: 300,
+      gap: 12,
+      density: "compact",
+    });
+    assert.equal(after.candidates.at(-1)?.members?.length, 2);
+    s.store.db.exec("UPDATE widget_layout SET value='invalid' WHERE id=1");
+    const fallback = s.store.snapshot().widgetGeneration!;
+    assert(fallback.layout?.fallback);
+    assert.deepEqual(fallback.layout?.value, {
+      minWidth: 320,
+      gap: 16,
+      density: "comfortable",
+    });
+    assert.deepEqual(fallback.widgets, after.widgets);
+  } finally {
+    s.close();
+  }
+});

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { StoreError } from "./errors";
 import { selectedModel } from "./models";
 import { applyWidgetHost, readWidgetPreview } from "./widgets";
@@ -9,6 +9,9 @@ import type { BuiltWidget } from "../shared/widget";
 import type { ConnectionSnapshot, Message } from "../shared/protocol";
 import {
   generationLimits,
+  defaultWidgetLayout,
+  validWidgetLayout,
+  type WidgetLayout,
   type WidgetDraft,
   type WidgetEditTarget,
   type GenerationTask,
@@ -210,10 +213,39 @@ function verifyTarget(db: DatabaseSync, target: WidgetEditTarget) {
       `控件 ${target.build.manifest.name} 的配置或数据已改变，整组未保留。`,
     );
 }
+function layoutSnapshot(db: DatabaseSync): {
+  value: WidgetLayout;
+  revision: number;
+  fallback: string | null;
+} {
+  const row = db
+    .prepare("SELECT value,revision FROM widget_layout WHERE id=1")
+    .get()!;
+  let value: unknown;
+  try {
+    value = JSON.parse(String(row.value));
+  } catch {
+    value = null;
+  }
+  const valid = validWidgetLayout(value);
+  return {
+    value: validWidgetLayout(value) ? value : defaultWidgetLayout,
+    revision: Number(row.revision),
+    fallback: valid ? null : "自定义布局无效，已回退默认布局；控件和顺序保持。",
+  };
+}
+function candidateRows(db: DatabaseSync, id: string) {
+  return db
+    .prepare(
+      "SELECT * FROM generated_candidates WHERE id=? OR (group_id=? AND id<>?) ORDER BY rowid",
+    )
+    .all(id, id, id);
+}
 export function widgetGenerationSnapshot(
   db: DatabaseSync,
 ): WidgetGenerationSnapshot {
   return {
+    layout: layoutSnapshot(db),
     drafts: db
       .prepare(
         `SELECT ${draftColumns} FROM widget_drafts ORDER BY updated_at DESC,rowid DESC`,
@@ -235,13 +267,58 @@ export function widgetGenerationSnapshot(
       })) as unknown as GenerationTask[],
     candidates: db
       .prepare(
-        `SELECT ${candidateColumns} FROM generated_candidates ORDER BY rowid`,
+        `SELECT ${candidateColumns} FROM generated_candidates WHERE group_id IS NULL OR group_id=id ORDER BY rowid`,
       )
       .all()
-      .map((c) => ({
-        ...c,
-        differences: JSON.parse(String(c.differences)),
-      })) as unknown as GeneratedCandidate[],
+      .map((c) => {
+        const group = db
+          .prepare("SELECT * FROM widget_candidate_sets WHERE id=?")
+          .get(c.id);
+        const members = group
+          ? candidateRows(db, String(c.id)).map((r) => ({
+              id: String(r.id),
+              widgetId: String(r.widget_id),
+              name: String(r.name),
+              digest: String(r.digest),
+              differences: JSON.parse(String(r.differences)),
+            }))
+          : undefined;
+        return {
+          ...c,
+          effects: candidateRows(db, String(c.id)).reduce<{
+            dataWrites: number;
+            configSaves: number;
+          }>(
+            (total, row) => {
+              const preview = db
+                .prepare(
+                  "SELECT data_revision,config_revision FROM widget_previews WHERE candidate_id=?",
+                )
+                .get(row.id);
+              return {
+                dataWrites:
+                  total.dataWrites + Number(preview?.data_revision ?? 0),
+                configSaves:
+                  total.configSaves + Number(preview?.config_revision ?? 0),
+              };
+            },
+            { dataWrites: 0, configSaves: 0 },
+          ),
+          digest: group?.digest ?? c.digest,
+          members,
+          layout: group?.layout ? JSON.parse(String(group.layout)) : null,
+          differences: members
+            ? members.flatMap((m) =>
+                m.differences.map(
+                  (d: GeneratedCandidate["differences"][number]) => ({
+                    ...d,
+                    path: `${m.name}/${d.path}`,
+                  }),
+                ),
+              )
+            : JSON.parse(String(c.differences)),
+        };
+      }) as unknown as GeneratedCandidate[],
     selected: Object.fromEntries(
       ["main", "panel"].map((surface) => [
         surface,
@@ -379,7 +456,11 @@ export function applyWidgetGeneration(
       ...connection,
       effort: effort?.defaultLevel ?? null,
     } as ConnectionSnapshot;
-    const context = { ...capture(db, d, fixed), widgets: editTargets(db, d) };
+    const context = {
+      ...capture(db, d, fixed),
+      widgets: editTargets(db, d),
+      layoutRevision: layoutSnapshot(db).revision,
+    };
     if (
       JSON.stringify(context).length + requirement.length >
       (contextChars ?? 64000)
@@ -461,9 +542,12 @@ export function applyWidgetGeneration(
   const row = db
     .prepare("SELECT * FROM generated_candidates WHERE id=?")
     .get(c.candidateId);
+  const group = db
+    .prepare("SELECT * FROM widget_candidate_sets WHERE id=?")
+    .get(c.candidateId);
   if (
     !row ||
-    row.digest !== c.digest ||
+    (group?.digest ?? row.digest) !== c.digest ||
     row.requirement_revision !== c.requirementRevision
   )
     refuse("候选身份或版本已改变，请重新核对。");
@@ -472,20 +556,26 @@ export function applyWidgetGeneration(
   if (row.state !== "preview") refuse("候选已处理或没有变化，不能执行此操作。");
   if (
     c.type === "retainWidgetCandidate" &&
+    !group &&
     !JSON.parse(String(row.differences)).length
   )
     refuse("没有实际变化，无需保留。");
+  if (row.group_id && row.group_id !== row.id)
+    refuse("请处理完整修改集合，不能单独保留其中一个控件。");
   const d = draft(db, String(row.draft_id));
+  const rows = candidateRows(db, c.candidateId);
   if (c.type === "discardWidgetCandidate") {
-    db.prepare(
-      "UPDATE generated_candidates SET state='discarded' WHERE id=?",
-    ).run(c.candidateId);
-    db.prepare("DELETE FROM widget_instances WHERE candidate_id=?").run(
-      c.candidateId,
-    );
-    db.prepare("UPDATE widget_previews SET active=0 WHERE candidate_id=?").run(
-      c.candidateId,
-    );
+    for (const member of rows) {
+      db.prepare(
+        "UPDATE generated_candidates SET state='discarded' WHERE id=?",
+      ).run(member.id);
+      db.prepare("DELETE FROM widget_instances WHERE candidate_id=?").run(
+        member.id,
+      );
+      db.prepare(
+        "UPDATE widget_previews SET active=0 WHERE candidate_id=?",
+      ).run(member.id);
+    }
     event(db, task(db, String(row.task_id)), "discarded", now, {
       candidateId: c.candidateId,
     });
@@ -496,37 +586,54 @@ export function applyWidgetGeneration(
   const t = task(db, String(row.task_id));
   if (t.state !== "completed" || t.candidateId !== c.candidateId)
     refuse("生成尚未成功结束或候选尝试已过期，候选未保留。");
-  const target = generationContext(db, t).widgets?.[0];
-  if (target) verifyTarget(db, target);
-  const widgetId = target?.id ?? randomUUID();
-  if (target) {
+  const context = generationContext(db, t);
+  for (const target of context.widgets ?? []) verifyTarget(db, target);
+  if (
+    group?.layout &&
+    Number(group.layout_revision) !== layoutSnapshot(db).revision
+  )
+    refuse("布局已改变，整组未保留。");
+  for (const member of rows) {
+    const target = context.widgets?.find(
+      (target) => target.id === member.widget_id,
+    );
+    const widgetId = target?.id ?? randomUUID();
+    if (target) {
+      db.prepare(
+        "UPDATE saved_widgets SET name=?,candidate_id=?,digest=?,revision=revision+1 WHERE id=?",
+      ).run(member.name, member.id, member.digest, widgetId);
+      db.prepare("DELETE FROM widget_instances WHERE candidate_id=?").run(
+        target.candidateId,
+      );
+      db.prepare(
+        "UPDATE widget_previews SET active=0 WHERE candidate_id=?",
+      ).run(target.candidateId);
+    } else {
+      if (context.widgets?.length)
+        refuse("候选目标不在本次选择范围，整组未保留。");
+      db.prepare(
+        "INSERT INTO saved_widgets(id,name,candidate_id,digest,position) VALUES(?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM saved_widgets))",
+      ).run(widgetId, member.name, member.id, member.digest);
+      db.prepare(
+        "UPDATE widget_drafts SET widget_id=?,target_ids=?,updated_at=? WHERE id=?",
+      ).run(widgetId, JSON.stringify([widgetId]), now, d.id);
+    }
     db.prepare(
-      "UPDATE saved_widgets SET name=?,candidate_id=?,digest=?,revision=revision+1 WHERE id=?",
-    ).run(row.name, c.candidateId, c.digest, widgetId);
+      "UPDATE generated_candidates SET state='retained',widget_id=? WHERE id=?",
+    ).run(widgetId, member.id);
+    db.prepare(
+      "UPDATE widget_previews SET widget_id=? WHERE candidate_id=?",
+    ).run(widgetId, member.id);
     db.prepare("DELETE FROM widget_instances WHERE candidate_id=?").run(
-      target.candidateId,
+      member.id,
     );
-    db.prepare("UPDATE widget_previews SET active=0 WHERE candidate_id=?").run(
-      target.candidateId,
-    );
-  } else
+  }
+  if (group?.layout)
     db.prepare(
-      "INSERT INTO saved_widgets(id,name,candidate_id,digest,position) VALUES(?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM saved_widgets))",
-    ).run(widgetId, row.name, c.candidateId, c.digest);
+      "UPDATE widget_layout SET value=?,revision=revision+1 WHERE id=1",
+    ).run(group.layout);
   db.prepare(
-    "UPDATE widget_drafts SET widget_id=?,target_ids=?,updated_at=? WHERE id=?",
-  ).run(widgetId, JSON.stringify([widgetId]), now, d.id);
-  db.prepare(
-    "UPDATE generated_candidates SET state='retained',widget_id=? WHERE id=?",
-  ).run(widgetId, c.candidateId);
-  // Publish the confirmed configuration/data together with the stable identity.
-  // Revoke preview instance grants so late messages cannot write the formal widget.
-  db.prepare("UPDATE widget_previews SET widget_id=? WHERE candidate_id=?").run(
-    widgetId,
-    c.candidateId,
-  );
-  db.prepare(
-    "DELETE FROM widget_instances WHERE candidate_id IN (SELECT id FROM generated_candidates WHERE draft_id=?)",
+    "DELETE FROM widget_instances WHERE candidate_id IN (SELECT id FROM generated_candidates WHERE draft_id=? AND state='preview')",
   ).run(d.id);
   db.prepare(
     "UPDATE widget_previews SET active=0 WHERE candidate_id IN (SELECT id FROM generated_candidates WHERE draft_id=? AND state='preview')",
@@ -534,7 +641,10 @@ export function applyWidgetGeneration(
   db.prepare(
     "UPDATE generated_candidates SET state='discarded' WHERE draft_id=? AND state='preview'",
   ).run(d.id);
-  event(db, t, "retained", now, { candidateId: c.candidateId, widgetId });
+  event(db, t, "retained", now, {
+    candidateId: c.candidateId,
+    widgets: rows.map((r) => r.widget_id),
+  });
 }
 export function applyWidgetGenerationHost(
   db: DatabaseSync,
@@ -606,22 +716,102 @@ export function applyWidgetGenerationHost(
   if (t.state !== "running") refuse("任务已停止或结束，迟到内容未应用。");
   if (t.requirementRevision !== draft(db, t.draftId).requirementRevision)
     refuse("候选采用旧需求，未进入预览。");
+  const targets = generationContext(db, t).widgets ?? [];
+  const entries =
+    c.type === "receiveWidgetCandidateSet"
+      ? c.builds
+      : [{ widgetId: targets[0]?.id ?? null, build: c.build }];
+  const layout = c.type === "receiveWidgetCandidateSet" ? c.layout : null;
+  if (
+    c.type === "receiveWidgetCandidateSet" &&
+    (!targets.length ||
+      entries.length !== targets.length ||
+      new Set(entries.map((e) => e.widgetId)).size !== entries.length ||
+      entries.some((e) => !targets.some((t) => t.id === e.widgetId)))
+  )
+    refuse("修改集合必须精确覆盖用户选择的目标。");
+  if (c.type === "receiveWidgetCandidate" && targets.length > 1)
+    refuse("请提交完整修改集合，不能只返回一个目标。");
+  if (entries.some((e) => !verifyBuiltWidget(e.build)))
+    refuse("候选产物摘要或包规范无效。");
+  const setDigest =
+    c.type === "receiveWidgetCandidateSet"
+      ? createHash("sha256")
+          .update(
+            JSON.stringify({
+              entries: entries.map((e) => ({
+                id: e.widgetId,
+                digest: e.build.digest,
+              })),
+              layout,
+            }),
+          )
+          .digest("hex")
+      : entries[0].build.digest;
   if (t.candidateId) {
+    const group = db
+      .prepare("SELECT digest FROM widget_candidate_sets WHERE id=?")
+      .get(t.candidateId);
     const old = db
       .prepare("SELECT digest FROM generated_candidates WHERE id=?")
       .get(t.candidateId);
-    if (old?.digest === c.build.digest) return {};
+    if ((group?.digest ?? old?.digest) === setDigest) return {};
     refuse("该尝试已提交候选，不能替换用户看到的版本。");
   }
-  if (!verifyBuiltWidget(c.build)) refuse("候选产物摘要或包规范无效。");
-  const id = randomUUID(),
-    build = c.build;
-  const target = generationContext(db, t).widgets?.[0];
-  const prior = target?.build ?? null;
-  const differences = widgetDifferences(prior, build);
-  const unchanged = differences.length === 0;
+  const changes = entries.map((entry) => ({
+    ...entry,
+    target: targets.find((t) => t.id === entry.widgetId),
+    differences: widgetDifferences(
+      targets.find((t) => t.id === entry.widgetId)?.build ?? null,
+      entry.build,
+    ),
+  }));
+  const unchanged =
+    !changes.some((e) => e.differences.length) &&
+    (!layout ||
+      JSON.stringify(layout) === JSON.stringify(layoutSnapshot(db).value));
+  const rootId = randomUUID();
+  for (let i = 0; i < changes.length; i++)
+    createCandidate(
+      db,
+      t,
+      changes[i].build,
+      changes[i].target,
+      changes[i].differences,
+      i === 0 ? rootId : randomUUID(),
+      c.type === "receiveWidgetCandidateSet" ? rootId : null,
+      unchanged,
+    );
+  if (c.type === "receiveWidgetCandidateSet")
+    db.prepare(
+      "INSERT INTO widget_candidate_sets(id,digest,layout,layout_revision) VALUES(?,?,?,?)",
+    ).run(
+      rootId,
+      setDigest,
+      layout ? JSON.stringify(layout) : null,
+      generationContext(db, t).layoutRevision ?? 0,
+    );
   db.prepare(
-    "INSERT INTO generated_candidates(id,task_id,draft_id,digest,name,requirement_revision,state,build,differences) VALUES(?,?,?,?,?,?,?,?,?)",
+    "UPDATE widget_generation_tasks SET candidate_id=? WHERE id=?",
+  ).run(rootId, t.id);
+  event(db, t, unchanged ? "unchanged" : "candidate", now, {
+    candidateId: rootId,
+    digest: setDigest,
+  });
+  return {};
+}
+function createCandidate(
+  db: DatabaseSync,
+  t: GenerationTask,
+  build: BuiltWidget,
+  target: WidgetEditTarget | undefined,
+  differences: GeneratedCandidate["differences"],
+  id: string,
+  groupId: string | null,
+  unchanged: boolean,
+) {
+  db.prepare(
+    "INSERT INTO generated_candidates(id,task_id,draft_id,digest,name,requirement_revision,state,build,differences,widget_id,group_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     id,
     t.id,
@@ -632,24 +822,23 @@ export function applyWidgetGenerationHost(
     unchanged ? "unchanged" : "preview",
     JSON.stringify(build),
     JSON.stringify(differences),
+    target?.id ?? null,
+    groupId,
   );
-  db.prepare(
-    "UPDATE widget_generation_tasks SET candidate_id=? WHERE id=?",
-  ).run(id, t.id);
-  if (!unchanged)
-    applyWidgetHost(db, {
-      type: "widgetCreate",
-      candidateId: id,
-      widgetId: t.draftId,
-      version: build.digest,
-      definition: {
-        name: build.manifest.name,
-        config: build.manifest.config,
-        draftFields: build.manifest.draftFields,
-        capabilities: build.manifest.capabilities,
-      },
-    });
-  if (!unchanged && target) {
+  if (unchanged) return;
+  applyWidgetHost(db, {
+    type: "widgetCreate",
+    candidateId: id,
+    widgetId: target?.id ?? t.draftId,
+    version: build.digest,
+    definition: {
+      name: build.manifest.name,
+      config: build.manifest.config,
+      draftFields: build.manifest.draftFields,
+      capabilities: build.manifest.capabilities,
+    },
+  });
+  if (target) {
     const previous = readWidgetPreview(db, target.candidateId);
     const config = Object.fromEntries(
       build.manifest.config.map((field) => [
@@ -673,14 +862,5 @@ export function applyWidgetGenerationHost(
       ),
       id,
     );
-    db.prepare("UPDATE generated_candidates SET widget_id=? WHERE id=?").run(
-      target.id,
-      id,
-    );
   }
-  event(db, t, unchanged ? "unchanged" : "candidate", now, {
-    candidateId: id,
-    digest: build.digest,
-  });
-  return {};
 }

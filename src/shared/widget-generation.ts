@@ -56,6 +56,7 @@ export interface WidgetEditTarget {
 }
 export interface GenerationContext {
   widgets?: WidgetEditTarget[];
+  layoutRevision?: number;
   messages: Message[];
   attachments: {
     attachmentId: string;
@@ -65,7 +66,40 @@ export interface GenerationContext {
   }[];
   access: { grantedConnections: string[]; permissionRevision: number };
 }
+export interface WidgetLayout {
+  minWidth: number;
+  gap: number;
+  density: "comfortable" | "compact";
+}
+export const defaultWidgetLayout: WidgetLayout = {
+  minWidth: 320,
+  gap: 16,
+  density: "comfortable",
+};
+export function validWidgetLayout(v: unknown): v is WidgetLayout {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const x = v as Record<string, unknown>;
+  return (
+    Object.keys(x).sort().join(",") === "density,gap,minWidth" &&
+    Number.isInteger(x.minWidth) &&
+    Number(x.minWidth) >= 240 &&
+    Number(x.minWidth) <= 800 &&
+    Number.isInteger(x.gap) &&
+    Number(x.gap) >= 8 &&
+    Number(x.gap) <= 32 &&
+    ["comfortable", "compact"].includes(String(x.density))
+  );
+}
 export interface GeneratedCandidate {
+  effects?: { dataWrites: number; configSaves: number };
+  members?: {
+    id: string;
+    widgetId: string;
+    name: string;
+    digest: string;
+    differences: GeneratedCandidate["differences"];
+  }[];
+  layout?: WidgetLayout | null;
   id: string;
   taskId: string;
   draftId: string;
@@ -90,6 +124,7 @@ export interface SavedWidget {
   position: number;
 }
 export interface WidgetGenerationSnapshot {
+  layout?: { value: WidgetLayout; revision: number; fallback: string | null };
   drafts: WidgetDraft[];
   tasks: GenerationTask[];
   candidates: GeneratedCandidate[];
@@ -149,6 +184,13 @@ export type WidgetGenerationHostCommand =
       taskId: string;
       executionId: string;
       build: BuiltWidget;
+    }
+  | {
+      type: "receiveWidgetCandidateSet";
+      taskId: string;
+      executionId: string;
+      builds: { widgetId: string; build: BuiltWidget }[];
+      layout: WidgetLayout | null;
     }
   | { type: "loadGeneratedWidget"; candidateId: string };
 const object = (v: unknown): v is Record<string, unknown> =>
@@ -253,6 +295,22 @@ export function validWidgetGenerationHostCommand(
           String(v.state),
         ) &&
         (v.error === null || text(v.error, 4096))
+      );
+    case "receiveWidgetCandidateSet":
+      return (
+        exact(v, ["taskId", "executionId", "builds", "layout"]) &&
+        Array.isArray(v.builds) &&
+        v.builds.length > 0 &&
+        v.builds.length <= 20 &&
+        v.builds.every(
+          (b) =>
+            object(b) &&
+            Object.keys(b).sort().join(",") === "build,widgetId" &&
+            id(b.widgetId) &&
+            object(b.build) &&
+            digest(b.build.digest),
+        ) &&
+        (v.layout === null || validWidgetLayout(v.layout))
       );
     case "receiveWidgetCandidate":
       return (

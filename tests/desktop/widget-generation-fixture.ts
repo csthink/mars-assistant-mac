@@ -46,7 +46,9 @@ export function seedWidgetCandidate(root: string, unchanged = false) {
       connectionId,
       model: "offline-only",
     });
-    const task = store.snapshot().widgetGeneration!.tasks[0];
+    const task = store
+      .snapshot()
+      .widgetGeneration!.tasks.find((t) => t.draftId === draftId)!;
     command(
       {
         type: "claimWidgetGeneration",
@@ -89,7 +91,9 @@ export function seedWidgetCandidate(root: string, unchanged = false) {
       },
       true,
     );
-    const candidate = store.snapshot().widgetGeneration!.candidates[0];
+    const candidate = store
+      .snapshot()
+      .widgetGeneration!.candidates.find((c) => c.draftId === draftId)!;
     if (unchanged)
       store.db
         .prepare(
@@ -98,6 +102,104 @@ export function seedWidgetCandidate(root: string, unchanged = false) {
         .run(candidate.id);
     command({ type: "selectWidgetDraft", id: draftId });
     return { draftId, candidateId: candidate.id };
+  } finally {
+    store.close();
+  }
+}
+
+export function seedWidgetCandidateSet(root: string) {
+  const first = seedWidgetCandidate(root),
+    second = seedWidgetCandidate(root);
+  const store = new Store(root);
+  const command = (c: Command | HostCommand, host = false) => {
+    const r = store.execute(c, "main", host ? "host" : "renderer");
+    if (!r.ok) throw new Error(r.message);
+  };
+  try {
+    for (const id of [first.candidateId, second.candidateId]) {
+      const c = store
+        .snapshot()
+        .widgetGeneration!.candidates.find((c) => c.id === id)!;
+      command({
+        type: "retainWidgetCandidate",
+        candidateId: id,
+        digest: c.digest,
+        requirementRevision: c.requirementRevision,
+      });
+    }
+    const targets = store.snapshot().widgetGeneration!.widgets;
+    const draftId = randomUUID();
+    command({
+      type: "createWidgetEditDraft",
+      id: draftId,
+      widgetIds: targets.map((w) => w.id),
+    });
+    command({
+      type: "saveWidgetDraft",
+      id: draftId,
+      revision: 0,
+      name: "两个计数控件",
+      input: "分别改变两项行为，保持顺序，使用紧凑布局",
+    });
+    command({
+      type: "submitWidgetGeneration",
+      draftId,
+      requestId: randomUUID(),
+      revision: 1,
+      connectionId: store.snapshot().connections[0].id,
+      model: "offline-only",
+    });
+    const t = store
+      .snapshot()
+      .widgetGeneration!.tasks.find((t) => t.draftId === draftId)!;
+    command(
+      {
+        type: "claimWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+      },
+      true,
+    );
+    const builds = targets.map((w, i) => ({
+      widgetId: w.id,
+      build: buildWidgetPackage(
+        JSON.stringify({
+          schemaVersion: 1,
+          name: `计数控件 ${i + 1}`,
+          view: {
+            html: `<button>计数 ${i + 1}</button>`,
+            css: "button{font-size:24px;padding:24px;border:0;border-radius:12px;color:#163d27;background:#dff4df}",
+            js: "",
+          },
+          config: [],
+          draftFields: [],
+          capabilities: [],
+          resources: [],
+        }),
+      ),
+    }));
+    command(
+      {
+        type: "receiveWidgetCandidateSet",
+        taskId: t.id,
+        executionId: t.executionId,
+        builds,
+        layout: { minWidth: 300, gap: 12, density: "compact" },
+      },
+      true,
+    );
+    command(
+      {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "completed",
+        error: null,
+      },
+      true,
+    );
+    command({ type: "selectWidgetDraft", id: draftId });
+    return { draftId, targets };
   } finally {
     store.close();
   }

@@ -116,6 +116,7 @@ export function WidgetStudio({
   openSettings: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const [targets, setTargets] = useState<string[]>([]);
   const [search, setSearch] = useState(false);
   const [connection, setConnection] = useState("");
   const draft = snapshot?.widgetGeneration?.drafts.find(
@@ -194,6 +195,20 @@ export function WidgetStudio({
           </span>
         )}
         <div className="widget-studio-actions">
+          {!draft && section === "widgets" && targets.length > 0 && (
+            <button
+              className="button"
+              onClick={async () => {
+                const id = await model.createEdit(targets);
+                if (id) {
+                  setTargets([]);
+                  onSelect(id);
+                }
+              }}
+            >
+              修改所选 {targets.length} 个控件
+            </button>
+          )}
           {!draft && section === "widgets" && (
             <button className="button" onClick={() => onSection("drafts")}>
               草稿 {drafts.length}
@@ -392,33 +407,62 @@ export function WidgetStudio({
           )}
         </>
       ) : (snapshot?.widgetGeneration?.widgets.length ?? 0) ? (
-        <div className="widget-draft-list">
-          {snapshot!.widgetGeneration!.widgets.map((w) => (
-            <article className="widget-saved-card" key={w.id}>
-              <h2>{w.name}</h2>
-              <p>已保留 · 版本 {w.revision}</p>
-              <button
-                className="button"
-                onClick={() => {
-                  const d = snapshot!.widgetGeneration!.drafts.find(
-                    (d) => d.widgetId === w.id,
-                  );
-                  if (d) onSelect(d.id);
-                }}
-              >
-                打开控件
-              </button>
-              <button
-                className="button"
-                onClick={async () => {
-                  const id = await model.createEdit([w.id]);
-                  if (id) onSelect(id);
-                }}
-              >
-                新建修改草稿
-              </button>
-            </article>
-          ))}
+        <div>
+          {snapshot?.widgetGeneration?.layout?.fallback && (
+            <p role="alert" className="error">
+              {snapshot.widgetGeneration.layout.fallback}
+            </p>
+          )}
+          <div
+            className="widget-draft-list widget-formal-grid"
+            style={{
+              gridTemplateColumns: `repeat(auto-fit,minmax(min(100%,${snapshot?.widgetGeneration?.layout?.value.minWidth ?? 320}px),1fr))`,
+              gap: snapshot?.widgetGeneration?.layout?.value.gap ?? 16,
+            }}
+            data-density={snapshot?.widgetGeneration?.layout?.value.density}
+          >
+            {snapshot!.widgetGeneration!.widgets.map((w) => (
+              <article className="widget-saved-card" key={w.id}>
+                <label className="widget-target-choice">
+                  <input
+                    type="checkbox"
+                    aria-label={`选择控件 ${w.name} ${w.id.slice(0, 8)}`}
+                    checked={targets.includes(w.id)}
+                    onChange={(e) =>
+                      setTargets(
+                        e.target.checked
+                          ? [...targets, w.id]
+                          : targets.filter((id) => id !== w.id),
+                      )
+                    }
+                  />
+                  选择修改
+                </label>
+                <h2>{w.name}</h2>
+                <p>已保留 · 版本 {w.revision}</p>
+                <button
+                  className="button"
+                  onClick={() => {
+                    const d = snapshot!.widgetGeneration!.drafts.find(
+                      (d) => d.widgetId === w.id,
+                    );
+                    if (d) onSelect(d.id);
+                  }}
+                >
+                  打开控件
+                </button>
+                <button
+                  className="button"
+                  onClick={async () => {
+                    const id = await model.createEdit([w.id]);
+                    if (id) onSelect(id);
+                  }}
+                >
+                  新建修改草稿
+                </button>
+              </article>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="widget-empty">

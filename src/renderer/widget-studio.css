@@ -336,3 +336,55 @@
 .widget-saved-card > .button + .button {
   margin-left: 8px;
 }
+
+.widget-formal-grid {
+  display: grid;
+  align-items: start;
+}
+.widget-formal-grid[data-density="compact"] .widget-saved-card {
+  padding: 14px;
+}
+.widget-target-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--c-muted);
+  font-size: 12px;
+}
+.widget-targets {
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.widget-layout-preview {
+  padding: 10px;
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+}
+.widget-layout-preview > div {
+  padding: 12px;
+  background: var(--c-raised);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.widget-layout-preview {
+  margin-bottom: 16px;
+}
+.widget-effects {
+  margin-block: 12px;
+  color: var(--c-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.widget-effects summary {
+  cursor: pointer;
+}
+.widget-confirm-target {
+  display: block;
+  margin-top: 8px;
+}
+.widget-studio-actions [aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
