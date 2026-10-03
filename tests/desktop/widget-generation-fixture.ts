@@ -3,7 +3,11 @@ import { Store } from "../../src/service/store";
 import { buildWidgetPackage } from "../../src/main/widget-package";
 import type { Command, HostCommand } from "../../src/shared/protocol";
 /** Offline fixture: a validated artifact enters the real store, never a model acceptance claim. */
-export function seedWidgetCandidate(root: string, unchanged = false) {
+export function seedWidgetCandidate(
+  root: string,
+  unchanged = false,
+  source?: string,
+) {
   const store = new Store(root),
     draftId = randomUUID(),
     connectionId = randomUUID();
@@ -58,19 +62,20 @@ export function seedWidgetCandidate(root: string, unchanged = false) {
       true,
     );
     const build = buildWidgetPackage(
-      JSON.stringify({
-        schemaVersion: 1,
-        name: "Seven counter",
-        view: {
-          html: "<button id='seven'>0</button>",
-          css: "button{font-size:24px;color:#163d27;background:#dff4df;border:0;border-radius:12px;padding:24px}",
-          js: "document.querySelector('#seven').addEventListener('click',()=>{document.querySelector('#seven').textContent='7'});",
-        },
-        config: [],
-        draftFields: [],
-        capabilities: [],
-        resources: [],
-      }),
+      source ??
+        JSON.stringify({
+          schemaVersion: 1,
+          name: "Seven counter",
+          view: {
+            html: "<button id='seven'>0</button>",
+            css: "button{font-size:24px;color:#163d27;background:#dff4df;border:0;border-radius:12px;padding:24px}",
+            js: "document.querySelector('#seven').addEventListener('click',()=>{document.querySelector('#seven').textContent='7'});",
+          },
+          config: [],
+          draftFields: [],
+          capabilities: [],
+          resources: [],
+        }),
     );
     command(
       {

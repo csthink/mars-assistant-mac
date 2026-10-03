@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Snapshot } from "../shared/protocol";
 import type { GenerationTask, WidgetDraft } from "../shared/widget-generation";
 import type { WidgetDraftModel } from "./widget-drafts";
+import { WidgetWorkspace } from "./widgets";
 import { Icon } from "./icons";
 import { openModal } from "./modal-focus";
 import "./widget-studio.css";
@@ -122,6 +123,10 @@ export function WidgetStudio({
   onSelect,
   onSection,
   openSettings,
+  occluded = false,
+  full = false,
+  onFull,
+  panel = false,
 }: {
   snapshot?: Snapshot;
   connected: boolean;
@@ -131,7 +136,38 @@ export function WidgetStudio({
   onSelect: (id?: string) => void;
   onSection: (s: "widgets" | "drafts") => void;
   openSettings: () => void;
+  occluded?: boolean;
+  full?: boolean;
+  onFull?: (value: boolean) => void;
+  panel?: boolean;
 }) {
+  const studio = useRef<HTMLElement>(null);
+  const fullButton = useRef<HTMLButtonElement>(null);
+  const scroll = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const viewport = studio.current?.closest(".viewport");
+    if (!full && viewport && scroll.current !== undefined) {
+      viewport.scrollTop = scroll.current;
+      scroll.current = undefined;
+      fullButton.current?.focus({ preventScroll: true });
+    }
+  }, [full]);
+  useEffect(() => {
+    if (!full) return;
+    const restore = () => onFull?.(false);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        restore();
+      }
+    };
+    window.addEventListener("keydown", key);
+    const off = window.desktop.onWidgetRestore(restore);
+    return () => {
+      window.removeEventListener("keydown", key);
+      off();
+    };
+  }, [full, onFull]);
   const [rowMenu, setRowMenu] = useState<string>();
   const [deletingDraft, setDeletingDraft] = useState<WidgetDraft>();
   const [undo, setUndo] = useState<{ id: string; token: string }>();
@@ -181,7 +217,23 @@ export function WidgetStudio({
     if (id) onSelect(id);
   }
   return (
-    <section className={`widget-studio ${draft ? "widget-editor" : ""}`}>
+    <section
+      ref={studio}
+      className={`widget-studio ${draft ? "widget-editor" : ""}`}
+      data-entry={panel ? "panel" : "main"}
+      data-widget-full={full || undefined}
+    >
+      {full && (
+        <div className="widget-restore-zone">
+          <button
+            className="button widget-restore"
+            aria-label="还原控件 Esc"
+            onClick={() => onFull?.(false)}
+          >
+            还原 <kbd>Esc</kbd>
+          </button>
+        </div>
+      )}
       <div className="widget-studio-heading">
         {(draft || section === "drafts") && (
           <button
@@ -216,7 +268,31 @@ export function WidgetStudio({
               : (snapshot?.widgetGeneration?.widgets.length ?? 0)}
           </span>
         )}
+        {panel && (
+          <button
+            className="button"
+            onClick={() => void window.desktop.openMain()}
+          >
+            打开主窗口编辑
+          </button>
+        )}
         <div className="widget-studio-actions">
+          {!draft &&
+            section === "widgets" &&
+            !!snapshot?.widgetGeneration?.widgets.length &&
+            onFull && (
+              <button
+                ref={fullButton}
+                className="button"
+                onClick={() => {
+                  scroll.current =
+                    studio.current?.closest(".viewport")?.scrollTop ?? 0;
+                  onFull(true);
+                }}
+              >
+                控件全屏
+              </button>
+            )}
           {draft &&
             snapshot &&
             (visibleWidgetDraft(draft, snapshot) || !!local?.input) && (
@@ -532,44 +608,59 @@ export function WidgetStudio({
             data-density={snapshot?.widgetGeneration?.layout?.value.density}
           >
             {snapshot!.widgetGeneration!.widgets.map((w) => (
-              <article className="widget-saved-card" key={w.id}>
-                <label className="widget-target-choice">
-                  <input
-                    type="checkbox"
-                    aria-label={`选择控件 ${w.name} ${w.id.slice(0, 8)}`}
-                    checked={targets.includes(w.id)}
-                    onChange={(e) =>
-                      setTargets(
-                        e.target.checked
-                          ? [...targets, w.id]
-                          : targets.filter((id) => id !== w.id),
-                      )
-                    }
-                  />
-                  选择修改
-                </label>
-                <h2>{w.name}</h2>
-                <p>已保留 · 版本 {w.revision}</p>
-                <button
-                  className="button"
-                  onClick={() => {
-                    const d = snapshot!.widgetGeneration!.drafts.find(
-                      (d) => d.widgetId === w.id,
-                    );
-                    if (d) onSelect(d.id);
-                  }}
-                >
-                  打开控件
-                </button>
-                <button
-                  className="button"
-                  onClick={async () => {
-                    const id = await model.createEdit([w.id]);
-                    if (id) onSelect(id);
-                  }}
-                >
-                  新建修改草稿
-                </button>
+              <article
+                className="widget-saved-card"
+                key={w.id}
+                data-formal-widget={w.id}
+              >
+                <div className="widget-formal-controls">
+                  <h2>{w.name}</h2>
+                  <label className="widget-target-choice">
+                    <input
+                      type="checkbox"
+                      aria-label={`选择控件 ${w.name} ${w.id.slice(0, 8)}`}
+                      checked={targets.includes(w.id)}
+                      onChange={(e) =>
+                        setTargets(
+                          e.target.checked
+                            ? [...targets, w.id]
+                            : targets.filter((id) => id !== w.id),
+                        )
+                      }
+                    />
+                    选择修改
+                  </label>
+                  <p>已保留 · 版本 {w.revision}</p>
+                  <button
+                    className="button"
+                    onClick={() => {
+                      const d = snapshot!.widgetGeneration!.drafts.find(
+                        (d) => d.widgetId === w.id,
+                      );
+                      if (d) onSelect(d.id);
+                    }}
+                  >
+                    打开控件
+                  </button>
+                  <button
+                    className="button"
+                    onClick={async () => {
+                      const id = await model.createEdit([w.id]);
+                      if (id) onSelect(id);
+                    }}
+                  >
+                    新建修改草稿
+                  </button>
+                </div>
+                <WidgetWorkspace
+                  key={w.candidateId}
+                  slot={`formal:${w.id}`}
+                  candidateId={w.candidateId}
+                  retained
+                  connected={connected}
+                  occluded={occluded}
+                  contentOnly={full}
+                />
               </article>
             ))}
           </div>

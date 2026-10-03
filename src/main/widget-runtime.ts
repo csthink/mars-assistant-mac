@@ -376,6 +376,7 @@ export class WidgetRuntime {
     owner: BrowserWindow,
     rectangle: Rectangle,
     occluded: boolean,
+    contentOnly = false,
   ) {
     if (
       !instance.active ||
@@ -393,14 +394,14 @@ export class WidgetRuntime {
       instance.view.setVisible(false);
       return;
     }
-    const x = Math.max(16, Math.ceil(rectangle.x));
-    const y = Math.max(96, Math.ceil(rectangle.y));
+    const x = Math.max(contentOnly ? 0 : 16, Math.ceil(rectangle.x));
+    const y = Math.max(contentOnly ? 0 : 96, Math.ceil(rectangle.y));
     const right = Math.min(
-      width - 16,
+      width - (contentOnly ? 0 : 16),
       Math.floor(rectangle.x + rectangle.width),
     );
     const bottom = Math.min(
-      height - 16,
+      height - (contentOnly ? 0 : 16),
       Math.floor(rectangle.y + rectangle.height),
     );
     if (right <= x || bottom <= y) {

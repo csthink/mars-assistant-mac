@@ -1801,9 +1801,14 @@ if (!instance) {
       const entry = sender(event);
       return widgetHost!.control(entry.window, entry.surface, command);
     });
-    ipcMain.on("widget:occlude", (event) => {
+    ipcMain.on("widget:occlude", (event, slot: unknown) => {
       try {
-        widgetHost!.occlude(sender(event).window);
+        if (
+          slot !== undefined &&
+          (typeof slot !== "string" || !/^[a-zA-Z0-9:-]{1,200}$/.test(slot))
+        )
+          throw new Error("Invalid widget slot");
+        widgetHost!.occlude(sender(event).window, slot as string | undefined);
         event.returnValue = true;
       } catch {
         event.returnValue = false;

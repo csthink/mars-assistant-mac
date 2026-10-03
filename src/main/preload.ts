@@ -39,8 +39,8 @@ const interfacePreferences = (() => {
     return undefined;
   }
 })();
-const occlude = () => {
-  ipcRenderer.sendSync("widget:occlude");
+const occlude = (slot?: string) => {
+  ipcRenderer.sendSync("widget:occlude", slot);
 };
 if (widgetEnabled) {
   // Synchronous acknowledgement hides the native child before trusted DOM
@@ -89,6 +89,7 @@ const bridge: DesktopBridge = {
   widgetOcclude: occlude,
   onWidgetStatus: (callback) => listen("widget:status", callback),
   onWidgetVisibility: (callback) => listen("widget:visibility", callback),
+  onWidgetRestore: (callback) => listen("widget:restore", callback),
   onWidgetSearch: (callback) => listen("widget:search", callback),
   prepareClaude: (model) => ipcRenderer.invoke("claude:prepare", model),
   acceptClaude: (token) => ipcRenderer.invoke("claude:accept", token),

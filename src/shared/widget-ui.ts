@@ -1,7 +1,7 @@
 import type { WidgetPreview } from "./widget-store";
-export type WidgetControl =
+export type WidgetControl = { slot?: string } & (
   | { action: "draftConfig"; field: string; revision: number; value: string }
-  | { action: "status" | "open" | "hide" | "recover" }
+  | { action: "status" | "open" | "hide" | "recover" | "suspend" }
   | { action: "openGenerated"; candidateId: string }
   | {
       action: "place";
@@ -10,13 +10,15 @@ export type WidgetControl =
       y: number;
       width: number;
       height: number;
+      contentOnly?: boolean;
     }
   | {
       action: "configure";
       draftRevisions: Record<string, number>;
       revision: number;
       value: Record<string, unknown>;
-    };
+    }
+);
 export type WidgetUIReply =
   | {
       ok: true;

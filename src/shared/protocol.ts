@@ -1037,9 +1037,10 @@ export interface DesktopBridge {
   createProject: (input: ProjectCreateInput) => Promise<Reply>;
   widgetEnabled: boolean;
   widgetControl: (command: WidgetControl) => Promise<WidgetUIReply>;
-  widgetOcclude: () => void;
+  widgetOcclude: (slot?: string) => void;
   onWidgetStatus: (callback: (signal: WidgetSignal) => void) => () => void;
   onWidgetVisibility: (callback: (visible: boolean) => void) => () => void;
+  onWidgetRestore: (callback: () => void) => () => void;
   onWidgetSearch: (callback: () => void) => () => void;
   detectCodex: () => Promise<CodexStatus>;
   detectClaude: () => Promise<ClaudeStatus>;

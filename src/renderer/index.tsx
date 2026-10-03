@@ -118,6 +118,7 @@ function App() {
   const model = useBusiness();
   const { snapshot, status } = model;
   const widgetDrafts = useWidgetDrafts(snapshot, model.setExternalDirty);
+  const [widgetFull, setWidgetFull] = useState(false);
   const widgetSelected =
     snapshot?.widgetGeneration?.selected?.[window.desktop.surface] ?? undefined;
   const [widgetSection, setWidgetSection] = useState<"widgets" | "drafts">(
@@ -1348,8 +1349,26 @@ function App() {
    * The widget page: the main window reaches it from the rail as 控件, the panel from its 工作台 page; the empty
    * state names the page the person is on.
    */
+  useEffect(() => {
+    if (view !== "widgets" || widgetSelected || widgetSection !== "widgets")
+      setWidgetFull(false);
+  }, [view, widgetSelected, widgetSection]);
   function widgetsContent(title: string, detail?: string) {
-    if (panel || window.desktop.widgetEnabled)
+    if (panel && !window.desktop.widgetEnabled)
+      return (
+        <WidgetStudio
+          panel
+          snapshot={snapshot}
+          connected={status.connected}
+          model={widgetDrafts}
+          section="widgets"
+          onSelect={() => void window.desktop.openMain()}
+          onSection={() => void window.desktop.openMain()}
+          openSettings={() => void window.desktop.openMain()}
+          occluded={searchOpen || overlayOpen || overlay}
+        />
+      );
+    if (window.desktop.widgetEnabled)
       return (
         <div className="page">
           <div className="page-heading">
@@ -1388,6 +1407,9 @@ function App() {
         onSelect={selectWidget}
         onSection={setWidgetSection}
         openSettings={() => openSettings("模型")}
+        occluded={searchOpen || overlayOpen || overlay}
+        full={widgetFull}
+        onFull={setWidgetFull}
       />
     );
   }
@@ -1848,6 +1870,7 @@ function App() {
     >
       <div
         className="app four-column"
+        data-widget-full={widgetFull && view === "widgets" ? "true" : undefined}
         data-project-full={projectFull ? "true" : undefined}
         data-sidebar={layout.sidebar}
         data-overlay={overlay ? "true" : undefined}

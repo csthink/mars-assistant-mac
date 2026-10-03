@@ -420,3 +420,129 @@
   border-radius: 8px;
   min-width: 120px;
 }
+
+.widget-formal-controls {
+  margin-bottom: 16px;
+}
+.widget-formal-controls > .button + .button {
+  margin-left: 8px;
+}
+.app[data-widget-full="true"] {
+  display: block;
+}
+.app[data-widget-full="true"] > .rail,
+.app[data-widget-full="true"] > .sidebar,
+.app[data-widget-full="true"] > .right-panel,
+.app[data-widget-full="true"] > .right-resizer,
+.app[data-widget-full="true"] .center > .center-header {
+  display: none;
+}
+.app[data-widget-full="true"] > .center {
+  width: 100%;
+  height: 100%;
+}
+.widget-studio[data-widget-full] > .widget-studio-heading,
+.widget-studio[data-widget-full] .widget-formal-controls {
+  display: none;
+}
+.widget-studio[data-widget-full] .widget-formal-grid {
+  padding: 48px 16px 16px;
+}
+.widget-studio[data-widget-full] .widget-saved-card {
+  padding: 0;
+  border: 0;
+}
+.widget-content-only > .widget-heading,
+.widget-content-only > .widget-scope,
+.widget-content-only > .widget-save-status:not(.error) {
+  display: none;
+}
+.widget-content-only .widget-frame {
+  margin: 0;
+  border: 0;
+}
+.widget-restore-zone {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 132px;
+  height: 48px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.widget-restore {
+  opacity: 0;
+}
+.widget-restore-zone:hover .widget-restore,
+.widget-restore:focus {
+  opacity: 1;
+}
+.widget-restore kbd {
+  color: var(--c-muted);
+  font-size: 11px;
+  margin-left: 8px;
+}
+
+.widget-studio[data-entry="panel"]
+  .widget-studio-heading
+  > .widget-studio-actions,
+.widget-studio[data-entry="panel"] .widget-formal-controls,
+.widget-studio[data-entry="panel"] .widget-empty > .button {
+  display: none;
+}
+.widget-studio[data-entry="panel"] .widget-studio-heading {
+  flex-wrap: wrap;
+}
+.widget-studio[data-entry="panel"] .widget-studio-heading > .button {
+  margin-left: auto;
+}
+.widget-studio[data-entry="panel"] .widget-empty {
+  padding: 24px;
+}
+
+.widget-formal-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.widget-formal-controls h2 {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.widget-formal-controls p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+.widget-formal-controls > .button + .button {
+  margin-left: 0;
+}
+.widget-saved-card .widget-shell {
+  border: 0;
+  border-radius: 0;
+}
+.widget-saved-card .widget-heading {
+  padding: 0;
+  margin-bottom: 12px;
+}
+.widget-studio[data-entry="main"] .widget-retained .widget-heading {
+  justify-content: flex-end;
+}
+.widget-studio[data-entry="main"]
+  .widget-retained
+  .widget-heading
+  > div:first-child,
+.widget-retained .widget-heading p,
+.widget-saved-card .widget-scope {
+  display: none;
+}
+.widget-saved-card .widget-frame {
+  margin: 0;
+}
+.widget-saved-card .widget-save-status {
+  padding: 12px 0 0;
+  min-height: 28px;
+}

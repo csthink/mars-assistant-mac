@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { WidgetControl } from "../shared/widget-ui";
 import type { WidgetPreview } from "../shared/widget-store";
 import "./widgets.css";
 
@@ -8,18 +9,28 @@ export function WidgetWorkspace({
   candidateId,
   retained = false,
   onUnconfirmed,
+  slot,
+  contentOnly = false,
 }: {
   occluded: boolean;
   connected: boolean;
   candidateId?: string;
   retained?: boolean;
+  slot?: string;
+  contentOnly?: boolean;
   onUnconfirmed?: (value: boolean) => void;
 }) {
+  const control = useCallback(
+    (command: WidgetControl) =>
+      window.desktop.widgetControl({ ...command, ...(slot ? { slot } : {}) }),
+    [slot],
+  );
   const [preview, setPreview] = useState<WidgetPreview>();
   const [generation, setGeneration] = useState<string>();
   const [wanted, setWanted] = useState(!!candidateId);
   const [settings, setSettings] = useState(false);
   const [visible, setVisible] = useState(true);
+
   const ownerVisible = useRef(true);
   const [ownerVisibilityRevision, reviseOwnerVisibility] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -69,7 +80,7 @@ export function WidgetWorkspace({
     refreshDrafts();
     while (draft.text !== draft.confirmed && !draft.error) {
       const text = draft.text;
-      const reply = await window.desktop.widgetControl({
+      const reply = await control({
         action: "draftConfig",
         field,
         revision: draft.revision,
@@ -112,15 +123,15 @@ export function WidgetWorkspace({
   const current = useRef<string | undefined>(undefined);
   const opening = useRef(false);
   const serial = useRef(0);
-  const latest = useRef({ wanted, settings, occluded, visible });
-  latest.current = { wanted, settings, occluded, visible };
+  const latest = useRef({ wanted, settings, occluded });
+  latest.current = { wanted, settings, occluded };
   async function open() {
     if (opening.current || !connected || !ownerVisible.current) return;
     const id = ++serial.current;
     opening.current = true;
     setBusy(true);
     setFailed(false);
-    const reply = await window.desktop.widgetControl(
+    const reply = await control(
       candidateId
         ? { action: "openGenerated", candidateId }
         : { action: "open" },
@@ -150,7 +161,7 @@ export function WidgetWorkspace({
     serial.current++;
     opening.current = false;
     setBusy(false);
-    window.desktop.widgetOcclude();
+    window.desktop.widgetOcclude(slot ?? "default");
     current.current = undefined;
     setGeneration(undefined);
   }
@@ -177,15 +188,21 @@ export function WidgetWorkspace({
       off();
       offVisibility();
       serial.current++;
-      window.desktop.widgetOcclude();
+      window.desktop.widgetOcclude(slot ?? "default");
     };
   }, []);
   useEffect(() => {
-    if (wanted && !settings && !occluded && visible && ownerVisible.current) {
+    if (
+      wanted &&
+      !settings &&
+      !occluded &&
+      (retained || visible) &&
+      ownerVisible.current
+    ) {
       if (!current.current) void open();
     } else hide();
     // These transitions are the trusted visibility contract, not widget messages.
-  }, [wanted, settings, occluded, visible, ownerVisibilityRevision]);
+  }, [wanted, settings, occluded, visible, retained, ownerVisibilityRevision]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -203,19 +220,22 @@ export function WidgetWorkspace({
       const height = Math.min(bounds.bottom, viewport.bottom) - y;
       const shown = width >= 40 && height >= 40 && !document.hidden;
       setVisible(shown);
+      if (retained && !shown && current.current)
+        void control({ action: "suspend" });
       if (
         shown &&
         current.current &&
         !latest.current.occluded &&
         !latest.current.settings
       )
-        void window.desktop.widgetControl({
+        void control({
           action: "place",
           generation: current.current,
           x,
           y,
           width,
           height,
+          contentOnly,
         });
     }
     function schedule() {
@@ -234,11 +254,11 @@ export function WidgetWorkspace({
       window.removeEventListener("scroll", schedule, true);
       document.removeEventListener("visibilitychange", schedule);
     };
-  }, [generation, settings]);
+  }, [generation, settings, contentOnly]);
   async function save() {
     if (!preview || busy || draftPending) return;
     setBusy(true);
-    const reply = await window.desktop.widgetControl({
+    const reply = await control({
       action: "configure",
       revision: preview.configRevision,
       draftRevisions: Object.fromEntries(
@@ -276,7 +296,7 @@ export function WidgetWorkspace({
   }
   return (
     <section
-      className="widget-shell"
+      className={`widget-shell ${retained ? "widget-retained" : ""} ${contentOnly ? "widget-content-only" : ""}`}
       data-widget-shell
       aria-label={candidateId ? "控件预览" : "测试候选预览"}
     >
@@ -325,13 +345,15 @@ export function WidgetWorkspace({
         </div>
       </div>
       <p className="widget-scope">
-        仅保存本候选的数据与草稿，无法访问网络或本机文件。
+        {retained
+          ? "配置、数据与草稿按此控件身份保存。"
+          : "仅保存本候选的数据与草稿，无法访问网络或本机文件。"}
       </p>
       {unconfirmed && (
         <button
           className="button"
           onClick={async () => {
-            const reply = await window.desktop.widgetControl({
+            const reply = await control({
               action: "recover",
             });
             if (!reply.ok) {
@@ -358,10 +380,12 @@ export function WidgetWorkspace({
         >
           {preview?.definition.config.map((field) => (
             <div className="widget-config-field" key={field.id}>
-              <label htmlFor={`widget-${field.id}`}>{field.label}</label>
+              <label htmlFor={`widget-${slot ?? "default"}-${field.id}`}>
+                {field.label}
+              </label>
               {field.type === "boolean" ? (
                 <input
-                  id={`widget-${field.id}`}
+                  id={`widget-${slot ?? "default"}-${field.id}`}
                   type="checkbox"
                   checked={drafts.current[field.id]?.text === "true"}
                   onChange={(event) =>
@@ -370,7 +394,7 @@ export function WidgetWorkspace({
                 />
               ) : (
                 <input
-                  id={`widget-${field.id}`}
+                  id={`widget-${slot ?? "default"}-${field.id}`}
                   value={drafts.current[field.id]?.text ?? ""}
                   inputMode={field.type === "number" ? "decimal" : "text"}
                   maxLength={4096}
