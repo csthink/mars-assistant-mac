@@ -1,3 +1,16 @@
+import {
+  widgetGenerationSchema,
+  widgetGenerationSnapshot,
+  applyWidgetGeneration,
+  applyWidgetGenerationHost,
+  recoverWidgetGeneration,
+} from "./widget-generation";
+import {
+  validWidgetGenerationCommand,
+  validWidgetGenerationHostCommand,
+  type WidgetGenerationCommand,
+  type WidgetGenerationHostCommand,
+} from "../shared/widget-generation";
 import { projectWorkSchema, captureProjectTurn } from "./project-work";
 import { widgetSchema, applyWidgetHost } from "./widgets";
 import {
@@ -133,7 +146,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 28;
+export const schemaVersion = 29;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -209,6 +222,7 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     // Version 27: conversation creation times from now on and the manual order of the pinned section.
     26: migrateConversationOrder,
     27: migrateProjectOrganization,
+    28: widgetGenerationSchema,
     17: `ALTER TABLE connection_models ADD COLUMN codex_json TEXT;
       UPDATE connection_models SET codex_json=(SELECT codex_json FROM connections WHERE connections.id=connection_models.connection_id)
       WHERE connection_id IN (SELECT id FROM connections WHERE provider='codex')
@@ -444,6 +458,7 @@ export class Store {
       // A fresh process proves nothing is still executing; leave a trace instead of pretending.
       this.db.exec("BEGIN IMMEDIATE");
       if (
+        recoverWidgetGeneration(this.db, new Date().toISOString()) +
         recoverInterrupted(this.db, new Date().toISOString()) +
         settleCapabilities(this.db, new Date().toISOString())
       )
@@ -477,6 +492,7 @@ export class Store {
       ...meta,
       dataRoot: this.root,
       projects: projectSnapshot(this.db),
+      widgetGeneration: widgetGenerationSnapshot(this.db),
       selected,
       conversations: (
         this.db
@@ -669,6 +685,9 @@ export class Store {
     try {
       this.db.exec("BEGIN IMMEDIATE");
       let toolResult: {
+        generationContext?: import("../shared/widget-generation").GenerationContext;
+        generationTask?: import("../shared/widget-generation").GenerationTask;
+        generatedBuild?: import("../shared/widget").BuiltWidget;
         projectId?: string;
         projectUndo?: ProjectUndo;
         toolOperationId?: string;
@@ -677,7 +696,15 @@ export class Store {
         widgetPreview?: import("../shared/widget-store").WidgetPreview;
         runtimeEvent?: import("../shared/runtime-host").EventOutcome;
       } = {};
-      if (
+      if (host && validWidgetGenerationHostCommand(input))
+        toolResult = applyWidgetGenerationHost(
+          this.db,
+          input,
+          new Date().toISOString(),
+        );
+      else if (!host && validWidgetGenerationCommand(input))
+        applyWidgetGeneration(this.db, input, new Date().toISOString());
+      else if (
         (host && validProjectHostCommand(input)) ||
         (!host && validProjectCommand(input))
       )
@@ -697,6 +724,7 @@ export class Store {
         this.applyHost(
           input as Exclude<
             HostCommand,
+            | WidgetGenerationHostCommand
             | CapabilityHostCommand
             | WidgetHostCommand
             | RuntimeHostCommand
@@ -707,7 +735,9 @@ export class Store {
         this.mutate(
           input as Exclude<
             Command,
-            { type: "snapshot" } | { type: "readAttachmentPreview" }
+            | WidgetGenerationCommand
+            | { type: "snapshot" }
+            | { type: "readAttachmentPreview" }
           >,
           surface,
         );
@@ -736,7 +766,9 @@ export class Store {
   private mutate(
     command: Exclude<
       Command,
-      { type: "snapshot" } | { type: "readAttachmentPreview" }
+      | WidgetGenerationCommand
+      | { type: "snapshot" }
+      | { type: "readAttachmentPreview" }
     >,
     surface: Surface,
   ) {
@@ -963,6 +995,7 @@ export class Store {
   private applyHost(
     command: Exclude<
       HostCommand,
+      | WidgetGenerationHostCommand
       | CapabilityHostCommand
       | WidgetHostCommand
       | RuntimeHostCommand

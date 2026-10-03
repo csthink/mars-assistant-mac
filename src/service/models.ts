@@ -78,6 +78,17 @@ function active(db: DatabaseSync, id: string) {
   if (
     db
       .prepare(
+        "SELECT 1 FROM widget_generation_tasks WHERE json_extract(connection,'$.connectionId')=? AND state NOT IN ('completed','stopped','failed','interrupted')",
+      )
+      .get(id)
+  )
+    throw new StoreError(
+      "CONFLICT",
+      "该连接正被控件生成任务使用，请等待或先停止。",
+    );
+  if (
+    db
+      .prepare(
         "SELECT 1 FROM executions WHERE connection_id=? AND state NOT IN ('completed','stopped','failed','interrupted')",
       )
       .get(id)
