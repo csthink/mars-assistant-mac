@@ -797,6 +797,12 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
       const execOp = await gwait(exec.operationId);
       fault(gdir, {});
       expect(execOp.status).toBe("succeeded");
+      const persisted = await ev((host) => host.executionList(null, false), {});
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].state).toBe("completed");
+      expect(await ev((host) => host.executionList(null, true), {})).toEqual(
+        [],
+      );
       expect((await port((p) => p.executions.size)) as number).toBe(1);
       expect(
         (await records()).runtimeOperations.filter(

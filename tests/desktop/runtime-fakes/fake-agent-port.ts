@@ -12,12 +12,14 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import type {
+  ExecutionContext,
   ExecutionPort,
   ExecutionProfile,
   ExecutionStartRequest,
   PreflightCheck,
   PreflightRequest,
 } from "../../../src/main/runtime-execution-port";
+import type { PhysicalExecution } from "../../../src/shared/runtime-execution";
 import { canonicalJson } from "../../../src/shared/runtime-host";
 
 type Json = Record<string, unknown>;
@@ -66,6 +68,7 @@ export interface Plan {
   observeLoss?: boolean;
 }
 interface Execution {
+  context: ExecutionContext;
   view: Json;
   request: ExecutionStartRequest;
   plan: Plan;
@@ -131,6 +134,7 @@ export class FakeAgentPort implements ExecutionPort {
   async start(
     executionRef: string,
     request: ExecutionStartRequest,
+    context: ExecutionContext,
   ): Promise<Json> {
     if (request.executionBinding.agent !== FAKE_AGENT)
       throw new Error("binding agent is not the program of the profile");
@@ -168,6 +172,7 @@ export class FakeAgentPort implements ExecutionPort {
       reason: "",
     };
     const execution: Execution = {
+      context,
       view,
       request,
       plan,
@@ -326,7 +331,19 @@ export class FakeAgentPort implements ExecutionPort {
   }
   async get(executionRef: string): Promise<Json | null> {
     const execution = this.executions.get(executionRef);
-    return execution ? { ...execution.view } : null;
+    if (!execution) return null;
+    // A query observes the fake target's actual process state. Persist that observation through
+    // the same Host context as production ports before returning it, so completed targets release
+    // their durable reservation and capacity never depends only on the fake's in-memory view.
+    const physical = { ...execution.view } as unknown as PhysicalExecution;
+    const current = await execution.context.current();
+    if (current && current.state !== physical.state)
+      await execution.context.transition({
+        record: { ...current, ...physical, updatedAt: nowIso() },
+        event: null,
+        pending: null,
+      });
+    return { ...physical };
   }
   async cancel(executionRef: string, _operationId: string): Promise<Json> {
     void _operationId;
