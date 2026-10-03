@@ -6,6 +6,7 @@ import {
   type WidgetGenerationSnapshot,
   type GenerationContext,
   type GenerationTask,
+  type WidgetStopEvidence,
 } from "./widget-generation";
 import type { BuiltWidget } from "./widget";
 import type {
@@ -980,6 +981,7 @@ export type Reply =
       generationContext?: GenerationContext;
       generationTask?: GenerationTask;
       generatedBuild?: BuiltWidget;
+      generationStopEvidence?: WidgetStopEvidence;
       widget?: WidgetReply;
       widgetPreview?: WidgetPreview;
       messages?: Message[];

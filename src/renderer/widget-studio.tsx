@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Snapshot } from "../shared/protocol";
 import type { GenerationTask, WidgetDraft } from "../shared/widget-generation";
 import type { WidgetDraftModel } from "./widget-drafts";
 import { Icon } from "./icons";
+import { openModal } from "./modal-focus";
 import "./widget-studio.css";
 export const generationLabels = {
   queued: "等待生成",
@@ -41,7 +42,9 @@ export function WidgetTaskCard({
     <article className="widget-task-card" data-widget-task={task.id}>
       <div className="widget-task-title">
         <Icon name="grid" />
-        <strong>{generationLabels[task.state]}</strong>
+        <strong>
+          {task.stopUnconfirmed ? "停止尚未确认" : generationLabels[task.state]}
+        </strong>
         <span>
           {task.connection.name} · {task.connection.model}
         </span>
@@ -59,6 +62,19 @@ export function WidgetTaskCard({
         </p>
       )}
       <div className="widget-studio-actions">
+        {task.stopUnconfirmed && (
+          <button
+            className="button"
+            onClick={() =>
+              void model.command({
+                type: "checkWidgetGenerationStop",
+                taskId: task.id,
+              })
+            }
+          >
+            核对停止
+          </button>
+        )}
         {["queued", "running"].includes(task.state) && (
           <button
             className="button"
@@ -73,6 +89,7 @@ export function WidgetTaskCard({
           </button>
         )}
         {["failed", "interrupted", "stopped"].includes(task.state) &&
+          !task.stopUnconfirmed &&
           task.attempt < 3 && (
             <button
               className="button"
@@ -115,6 +132,9 @@ export function WidgetStudio({
   onSection: (s: "widgets" | "drafts") => void;
   openSettings: () => void;
 }) {
+  const [rowMenu, setRowMenu] = useState<string>();
+  const [deletingDraft, setDeletingDraft] = useState<WidgetDraft>();
+  const [undo, setUndo] = useState<{ id: string; token: string }>();
   const [query, setQuery] = useState("");
   const [targets, setTargets] = useState<string[]>([]);
   const [search, setSearch] = useState(false);
@@ -150,10 +170,12 @@ export function WidgetStudio({
       .includes(query.toLocaleLowerCase()),
   );
   async function leave() {
+    setUndo(undefined);
     if (selected && !(await model.confirmed(selected))) return;
     onSelect();
   }
   async function create() {
+    setUndo(undefined);
     if (selected && !(await model.confirmed(selected))) return;
     const id = await model.create();
     if (id) onSelect(id);
@@ -195,6 +217,17 @@ export function WidgetStudio({
           </span>
         )}
         <div className="widget-studio-actions">
+          {draft &&
+            snapshot &&
+            (visibleWidgetDraft(draft, snapshot) || !!local?.input) && (
+              <button
+                className="button"
+                disabled={!connected}
+                onClick={() => setDeletingDraft(draft)}
+              >
+                删除草稿
+              </button>
+            )}
           {!draft && section === "widgets" && targets.length > 0 && (
             <button
               className="button"
@@ -260,6 +293,42 @@ export function WidgetStudio({
           )}
         </div>
       </div>
+      {undo && (
+        <div className="widget-undo" role="status">
+          <span>草稿已删除。</span>
+          <button
+            className="button"
+            onClick={async () => {
+              if (await model.undoRemoval(undo.id, undo.token)) {
+                setUndo(undefined);
+                onSelect(undo.id);
+              }
+            }}
+          >
+            撤销删除
+          </button>
+          <button
+            className="icon-button"
+            aria-label="关闭撤销删除提示"
+            onClick={() => setUndo(undefined)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {deletingDraft && (
+        <DraftDeletion
+          draft={deletingDraft}
+          model={model}
+          close={() => setDeletingDraft(undefined)}
+          deleted={(token) => {
+            setUndo({ id: deletingDraft.id, token });
+            setDeletingDraft(undefined);
+            onSelect();
+            onSection("drafts");
+          }}
+        />
+      )}
       {model.error && (
         <p className="error" role="alert">
           {model.error}
@@ -384,23 +453,64 @@ export function WidgetStudio({
                   .filter((t) => t.draftId === d.id)
                   .at(-1);
                 return (
-                  <button
-                    key={d.id}
-                    className="widget-draft-row"
-                    aria-label={`编辑草稿 ${d.id.slice(0, 8)}`}
-                    onClick={() => onSelect(d.id)}
-                  >
-                    <Icon name="grid" />
-                    <span>
-                      <strong>{d.name}</strong>
-                      <small>
-                        {d.widgetId ? "修改控件" : "新建控件"} ·{" "}
-                        {d.id.slice(0, 8)}
-                      </small>
-                      <p>{d.input || t?.requirement || "尚未输入需求"}</p>
-                    </span>
-                    <small>{t ? generationLabels[t.state] : "未生成"}</small>
-                  </button>
+                  <article className="widget-draft-entry" key={d.id}>
+                    <button
+                      className="widget-draft-row"
+                      aria-label={`编辑草稿 ${d.id.slice(0, 8)}`}
+                      onClick={() => {
+                        setUndo(undefined);
+                        onSelect(d.id);
+                      }}
+                    >
+                      <Icon name="grid" />
+                      <span>
+                        <strong>{d.name}</strong>
+                        <small>
+                          {d.widgetId ? "修改控件" : "新建控件"} ·{" "}
+                          {d.id.slice(0, 8)}
+                        </small>
+                        <p>{d.input || t?.requirement || "尚未输入需求"}</p>
+                      </span>
+                      <small>{t ? generationLabels[t.state] : "未生成"}</small>
+                    </button>
+                    <div className="widget-draft-menu-anchor">
+                      <button
+                        className="icon-button"
+                        aria-label={`草稿操作 ${d.id.slice(0, 8)}`}
+                        aria-expanded={rowMenu === d.id}
+                        onClick={() =>
+                          setRowMenu(rowMenu === d.id ? undefined : d.id)
+                        }
+                      >
+                        ···
+                      </button>
+                      {rowMenu === d.id && (
+                        <div
+                          className="widget-draft-menu"
+                          role="menu"
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              e.stopPropagation();
+                              setRowMenu(undefined);
+                            }
+                          }}
+                        >
+                          <button
+                            className="button"
+                            role="menuitem"
+                            autoFocus
+                            disabled={!connected}
+                            onClick={() => {
+                              setRowMenu(undefined);
+                              setDeletingDraft(d);
+                            }}
+                          >
+                            删除草稿
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </article>
                 );
               })}
             </div>
@@ -481,5 +591,73 @@ export function WidgetStudio({
         </div>
       )}
     </section>
+  );
+}
+
+function DraftDeletion({
+  draft,
+  model,
+  close,
+  deleted,
+}: {
+  draft: WidgetDraft;
+  model: WidgetDraftModel;
+  close: () => void;
+  deleted: (token: string) => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null),
+    [busy, setBusy] = useState(false),
+    [failed, setFailed] = useState(false);
+  useEffect(() => openModal(dialog.current!), []);
+  return (
+    <dialog
+      ref={dialog}
+      className="rename-dialog widget-confirmation"
+      aria-label="确认删除控件草稿"
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!busy) close();
+      }}
+    >
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (busy) return;
+          setBusy(true);
+          const token = await model.remove(draft.id);
+          setBusy(false);
+          if (token) deleted(token);
+          else setFailed(true);
+        }}
+      >
+        <h2>删除这个草稿？</h2>
+        <p>
+          {draft.name} · {draft.id.slice(0, 8)}
+        </p>
+        <p>
+          将先停止生成，再清理本草稿的候选和未提交输入。正式控件及编辑历史保留，草稿不进入最近删除。
+        </p>
+        <p>删除后可即时撤销，恢复候选和输入。恢复不会重新开始生成。</p>
+        {busy && <p role="status">正在确认停止并删除草稿…</p>}
+        {failed && (
+          <p className="error" role="alert">
+            {model.error || "删除未完成，草稿仍保留。"}
+          </p>
+        )}
+        <div className="widget-studio-actions">
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={close}
+          >
+            取消
+          </button>
+          <button className="button" disabled={busy}>
+            确认删除
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }

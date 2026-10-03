@@ -2055,6 +2055,14 @@ if (!instance) {
           code: "CONFLICT",
           message: "控件输入尚未确认保存，请先处理保存状态。",
         };
+      if (command.type === "checkWidgetGenerationStop") {
+        const task = snapshot?.widgetGeneration?.tasks.find(
+          (t) => t.id === command.taskId,
+        );
+        if (!task)
+          return { ok: false, code: "NOT_FOUND", message: "生成任务不存在。" };
+        return widgetGenerationRunner.confirmStop(task);
+      }
       const reply = await request(command, entry.surface);
       // The business service records "stopping" first; only then does the host abort the request.
       if (reply.ok && command.type === "stopExecution")

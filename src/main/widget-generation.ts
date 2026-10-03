@@ -15,7 +15,7 @@ import {
   widgetToolWireLimit,
 } from "../shared/widget-generation-tool";
 import { compileWidget } from "./widget-build";
-import { CodexProcessError } from "./codex-process";
+import { CodexProcessError, checkOwnedProcessExit } from "./codex-process";
 import { generationLimits } from "../shared/widget-generation";
 import {
   streamChat,
@@ -95,7 +95,27 @@ export class WidgetGenerationRunner {
     private run: (options: GenerationExecution) => Promise<void>,
     private changed: () => void,
     private build: typeof compileWidget = compileWidget,
+    private checkStop = checkOwnedProcessExit,
   ) {}
+  async confirmStop(task: GenerationTask): Promise<Reply> {
+    const identity = { taskId: task.id, executionId: task.executionId };
+    const loaded = await this.request({
+      type: "loadWidgetGenerationStop",
+      ...identity,
+    });
+    if (!loaded.ok) return loaded;
+    if (
+      !loaded.generationStopEvidence ||
+      !(await this.checkStop(loaded.generationStopEvidence))
+    )
+      return {
+        ok: false,
+        code: "CONFLICT",
+        message:
+          "仍无法确认生成进程已停止，草稿继续保留。只有完整的本任务进程身份都已退出才能恢复；重启不会解除此限制。",
+      };
+    return this.request({ type: "confirmWidgetGenerationStop", ...identity });
+  }
   get active() {
     return this.current ? 1 : 0;
   }
@@ -307,6 +327,14 @@ export class WidgetGenerationRunner {
         await this.request({
           type: "finishWidgetGeneration",
           ...identity,
+          ...(error instanceof CodexProcessError
+            ? {
+                stopUnconfirmed: true,
+                ...(error.stopEvidence
+                  ? { stopEvidence: error.stopEvidence }
+                  : {}),
+              }
+            : {}),
           state:
             error instanceof CodexProcessError
               ? "interrupted"

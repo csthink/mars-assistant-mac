@@ -29,7 +29,32 @@ export interface WidgetDraft {
   createdAt: string;
   updatedAt: string;
 }
+export interface WidgetStopEvidence {
+  complete: boolean;
+  processes: { pid: number; startSeconds: number; startMicros: number }[];
+}
+export function validWidgetStopEvidence(v: unknown): v is WidgetStopEvidence {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const x = v as Record<string, unknown>;
+  return (
+    Object.keys(x).sort().join(",") === "complete,processes" &&
+    typeof x.complete === "boolean" &&
+    Array.isArray(x.processes) &&
+    x.processes.length <= 128 &&
+    x.processes.every(
+      (p) =>
+        p &&
+        typeof p === "object" &&
+        Object.keys(p).sort().join(",") === "pid,startMicros,startSeconds" &&
+        [p.pid, p.startSeconds, p.startMicros].every(
+          (n) => Number.isSafeInteger(n) && n >= 0,
+        ) &&
+        p.pid > 0,
+    )
+  );
+}
 export interface GenerationTask {
+  stopUnconfirmed?: boolean;
   id: string;
   draftId: string;
   requestId: string;
@@ -132,6 +157,16 @@ export interface WidgetGenerationSnapshot {
   selected?: { main: string | null; panel: string | null };
 }
 export type WidgetGenerationCommand =
+  | { type: "checkWidgetGenerationStop"; taskId: string }
+  | {
+      type: "deleteWidgetDraft";
+      id: string;
+      revision: number;
+      name: string;
+      input: string;
+      undoToken: string;
+    }
+  | { type: "undoWidgetDraftDeletion"; id: string; undoToken: string }
   | { type: "createWidgetEditDraft"; id: string; widgetIds: string[] }
   | { type: "selectWidgetDraft"; id: string | null }
   | {
@@ -164,6 +199,12 @@ export type WidgetGenerationCommand =
       requirementRevision: number;
     };
 export type WidgetGenerationHostCommand =
+  | {
+      type: "loadWidgetGenerationStop";
+      taskId: string;
+      executionId: string;
+    }
+  | { type: "confirmWidgetGenerationStop"; taskId: string; executionId: string }
   | { type: "claimWidgetGeneration"; taskId: string; executionId: string }
   | { type: "loadWidgetGeneration"; taskId: string; executionId: string }
   | {
@@ -174,6 +215,8 @@ export type WidgetGenerationHostCommand =
     }
   | {
       type: "finishWidgetGeneration";
+      stopUnconfirmed?: boolean;
+      stopEvidence?: WidgetStopEvidence;
       taskId: string;
       executionId: string;
       state: "completed" | "stopped" | "failed" | "interrupted";
@@ -213,6 +256,17 @@ export function validWidgetGenerationCommand(
 ): v is WidgetGenerationCommand {
   if (!object(v)) return false;
   switch (v.type) {
+    case "deleteWidgetDraft":
+      return (
+        exact(v, ["id", "revision", "name", "input", "undoToken"]) &&
+        id(v.id) &&
+        revision(v.revision) &&
+        text(v.name, 160) &&
+        text(v.input, 64000) &&
+        id(v.undoToken)
+      );
+    case "undoWidgetDraftDeletion":
+      return exact(v, ["id", "undoToken"]) && id(v.id) && id(v.undoToken);
     case "createWidgetEditDraft":
       return (
         exact(v, ["id", "widgetIds"]) &&
@@ -257,6 +311,7 @@ export function validWidgetGenerationCommand(
         text(v.model, 256) &&
         !!v.model
       );
+    case "checkWidgetGenerationStop":
     case "stopWidgetGeneration":
       return exact(v, ["taskId"]) && id(v.taskId);
     case "retryWidgetGeneration":
@@ -283,6 +338,8 @@ export function validWidgetGenerationHostCommand(
     return exact(v, ["candidateId"]) && id(v.candidateId);
   if (!id(v.taskId) || !id(v.executionId)) return false;
   switch (v.type) {
+    case "loadWidgetGenerationStop":
+    case "confirmWidgetGenerationStop":
     case "claimWidgetGeneration":
     case "loadWidgetGeneration":
       return exact(v, ["taskId", "executionId"]);
@@ -290,7 +347,20 @@ export function validWidgetGenerationHostCommand(
       return exact(v, ["taskId", "executionId", "text"]) && text(v.text, 64000);
     case "finishWidgetGeneration":
       return (
-        exact(v, ["taskId", "executionId", "state", "error"]) &&
+        exact(v, [
+          "taskId",
+          "executionId",
+          "state",
+          "error",
+          ...(Object.hasOwn(v, "stopUnconfirmed") ? ["stopUnconfirmed"] : []),
+          ...(Object.hasOwn(v, "stopEvidence") ? ["stopEvidence"] : []),
+        ]) &&
+        (v.stopEvidence === undefined ||
+          (v.stopUnconfirmed === true &&
+            validWidgetStopEvidence(v.stopEvidence))) &&
+        (v.stopUnconfirmed === undefined ||
+          (typeof v.stopUnconfirmed === "boolean" &&
+            v.state === "interrupted")) &&
         ["completed", "stopped", "failed", "interrupted"].includes(
           String(v.state),
         ) &&

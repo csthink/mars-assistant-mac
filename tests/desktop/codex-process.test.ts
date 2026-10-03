@@ -8,6 +8,7 @@ import { once } from "node:events";
 import { setTimeout as wait } from "node:timers/promises";
 import {
   CodexProcessOwner,
+  checkOwnedProcessExit,
   configureCodexProcessHelper,
 } from "../../src/main/codex-process";
 import { buildProcessHelper } from "./process-helper";
@@ -52,7 +53,36 @@ test("macOS ownership includes a detached child and refuses a changed process bi
     ).trim();
     assert.equal(response, "false");
     assert.doesNotThrow(() => process.kill(descendant, 0));
+    const processes = owner
+      .identities()
+      .map(({ pid, startSeconds, startMicros }) => ({
+        pid,
+        startSeconds,
+        startMicros,
+      }));
+    assert.equal(
+      await checkOwnedProcessExit({ complete: true, processes }),
+      false,
+    );
+    assert.equal(
+      await checkOwnedProcessExit({
+        complete: true,
+        processes: [
+          {
+            pid: identity.pid,
+            startSeconds: identity.startSeconds,
+            startMicros: identity.startMicros + 1,
+          },
+        ],
+      }),
+      true,
+    );
+    assert.doesNotThrow(() => process.kill(descendant, 0));
     await owner.close();
+    assert.equal(
+      await checkOwnedProcessExit({ complete: true, processes }),
+      true,
+    );
     assert.throws(() => process.kill(descendant, 0));
     assert.doesNotThrow(() => process.kill(spectator.pid!, 0));
   } finally {
@@ -61,4 +91,41 @@ test("macOS ownership includes a detached child and refuses a changed process bi
     await wait(30);
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("widget stop verification: incomplete evidence, empty identities and helper failure never confirm exit", async () => {
+  let calls = 0;
+  const inspect = async (args: string[]) => {
+    calls++;
+    assert.equal(args[0], "check");
+    return false;
+  };
+  assert.equal(
+    await checkOwnedProcessExit(
+      {
+        complete: false,
+        processes: [{ pid: 1, startSeconds: 2, startMicros: 3 }],
+      },
+      inspect,
+    ),
+    false,
+  );
+  assert.equal(
+    await checkOwnedProcessExit({ complete: true, processes: [] }, inspect),
+    false,
+  );
+  assert.equal(calls, 0);
+  const evidence = {
+    complete: true,
+    processes: [{ pid: 1, startSeconds: 2, startMicros: 3 }],
+  };
+  assert.equal(
+    await checkOwnedProcessExit(evidence, async () => {
+      throw new Error("helper failed");
+    }),
+    false,
+  );
+  assert.equal(await checkOwnedProcessExit(evidence, async () => null), false);
+  assert.equal(await checkOwnedProcessExit(evidence, inspect), true);
+  assert.equal(calls, 1);
 });

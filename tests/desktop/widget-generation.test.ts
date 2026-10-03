@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { WidgetGenerationRunner } from "../../src/main/widget-generation";
 import {
   widgetRealAuthorization,
   runWidgetProviderChecks,
@@ -1260,5 +1261,266 @@ test("widget editing: selected target set is atomic, rejects one conflict, and p
     assert.deepEqual(fallback.widgets, after.widgets);
   } finally {
     s.close();
+  }
+});
+
+test("widget draft deletion: stopped-only atomic removal and one-shot undo restore candidates and input without restarting", () => {
+  const s = setup();
+  try {
+    const id = draft(s),
+      t = submit(s, id).task;
+    assert(claim(s, t).ok);
+    const token = randomUUID(),
+      remove: Command = {
+        type: "deleteWidgetDraft",
+        id,
+        revision: 2,
+        name: "同名草稿",
+        input: "unsaved supplement",
+        undoToken: token,
+      };
+    const before = s.store.snapshot();
+    assert.equal(s.store.execute(remove, "main").ok, false);
+    assert.deepEqual(s.store.snapshot(), before);
+    assert(
+      s.store.execute({ type: "stopWidgetGeneration", taskId: t.id }, "main")
+        .ok,
+    );
+    assert.equal(s.store.execute(remove, "main").ok, false);
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "stopped",
+        error: null,
+      }).ok,
+    );
+    assert(s.store.execute(remove, "main").ok);
+    assert.equal(s.store.snapshot().widgetGeneration!.drafts.length, 0);
+    assert.equal(
+      s.store.db.prepare("SELECT input FROM widget_drafts WHERE id=?").get(id)!
+        .input,
+      "",
+    );
+    assert.equal(
+      s.store.execute(
+        { type: "undoWidgetDraftDeletion", id, undoToken: token },
+        "panel",
+      ).ok,
+      false,
+    );
+    assert(
+      s.store.execute(
+        { type: "undoWidgetDraftDeletion", id, undoToken: token },
+        "main",
+      ).ok,
+    );
+    let snap = s.store.snapshot().widgetGeneration!;
+    assert.equal(snap.drafts[0].input, "unsaved supplement");
+    assert.equal(snap.tasks[0].state, "stopped");
+    assert.equal(snap.tasks[0].attempt, 1);
+    assert.equal(
+      s.store.execute(
+        { type: "undoWidgetDraftDeletion", id, undoToken: token },
+        "main",
+      ).ok,
+      false,
+    );
+    const id2 = draft(s, "candidate"),
+      c = candidate(s, submit(s, id2).task);
+    s.store.db
+      .prepare("UPDATE widget_previews SET drafts=? WHERE candidate_id=?")
+      .run('{"text":"unsubmitted"}', c.id);
+    const del: Command = {
+      type: "deleteWidgetDraft",
+      id: id2,
+      revision: 2,
+      name: "candidate",
+      input: "",
+      undoToken: randomUUID(),
+    };
+    s.store.db.exec(
+      "CREATE TRIGGER reject_delete_draft BEFORE UPDATE OF deleted ON widget_drafts BEGIN SELECT RAISE(ABORT,'injected failure'); END",
+    );
+    const stable = s.store.snapshot();
+    assert.equal(s.store.execute(del, "main").ok, false);
+    assert.deepEqual(s.store.snapshot(), stable);
+    assert.equal(
+      s.store.db
+        .prepare("SELECT drafts FROM widget_previews WHERE candidate_id=?")
+        .get(c.id)!.drafts,
+      '{"text":"unsubmitted"}',
+    );
+    s.store.db.exec("DROP TRIGGER reject_delete_draft");
+    assert(s.store.execute(del, "main").ok);
+    assert.equal(
+      s.store.db
+        .prepare("SELECT drafts FROM widget_previews WHERE candidate_id=?")
+        .get(c.id)!.drafts,
+      "{}",
+    );
+    assert.equal(
+      s.store
+        .snapshot()
+        .widgetGeneration!.candidates.find((x) => x.id === c.id)!.state,
+      "discarded",
+    );
+    assert(
+      s.store.execute(
+        { type: "undoWidgetDraftDeletion", id: id2, undoToken: del.undoToken },
+        "main",
+      ).ok,
+    );
+    snap = s.store.snapshot().widgetGeneration!;
+    assert.equal(snap.candidates.find((x) => x.id === c.id)!.state, "preview");
+    assert.equal(
+      s.store.db
+        .prepare("SELECT drafts FROM widget_previews WHERE candidate_id=?")
+        .get(c.id)!.drafts,
+      '{"text":"unsubmitted"}',
+    );
+    assert.equal(snap.tasks.find((x) => x.id === c.taskId)!.state, "completed");
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: c.id,
+          digest: c.digest,
+          requirementRevision: c.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    const formal = s.store.snapshot().widgetGeneration!,
+      formalDraft = formal.drafts.find((x) => x.id === id2)!;
+    assert.equal(
+      s.store.execute(
+        { ...del, revision: formalDraft.revision, undoToken: randomUUID() },
+        "main",
+      ).ok,
+      false,
+    );
+    assert.deepEqual(s.store.snapshot().widgetGeneration, formal);
+    const deletion = {
+      ...del,
+      revision: formalDraft.revision,
+      input: "unfinished change",
+      undoToken: randomUUID(),
+    };
+    assert(s.store.execute(deletion, "main").ok);
+    assert.deepEqual(
+      s.store.snapshot().widgetGeneration!.widgets,
+      formal.widgets,
+    );
+    assert.deepEqual(s.store.snapshot().widgetGeneration!.tasks, formal.tasks);
+    assert(
+      s.store.execute(
+        {
+          type: "undoWidgetDraftDeletion",
+          id: id2,
+          undoToken: deletion.undoToken,
+        },
+        "main",
+      ).ok,
+    );
+    assert.deepEqual(
+      s.store.snapshot().widgetGeneration!.widgets,
+      formal.widgets,
+    );
+  } finally {
+    s.close();
+  }
+});
+
+test("widget stop recovery: owned evidence survives restart, explicit confirmation preserves expired attempt and enables deletion", async () => {
+  const s = setup();
+  let reopened: Store | undefined,
+    closed = false;
+  try {
+    const id = draft(s),
+      t = submit(s, id).task;
+    assert(claim(s, t).ok);
+    const evidence = {
+      complete: true,
+      processes: [{ pid: 123, startSeconds: 456, startMicros: 789 }],
+    };
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "interrupted",
+        error: "unconfirmed",
+        stopUnconfirmed: true,
+        stopEvidence: evidence,
+      }).ok,
+    );
+    const request = {
+      type: "loadWidgetGenerationStop",
+      taskId: t.id,
+      executionId: t.executionId,
+    } as const;
+    assert.equal(s.store.execute(request as never, "main").ok, false);
+    s.store.close();
+    closed = true;
+    reopened = new Store(s.root);
+    const store = reopened;
+    const read = host(store, request);
+    assert(read.ok);
+    assert.deepEqual(read.generationStopEvidence, evidence);
+    const saved = store.snapshot().widgetGeneration!.tasks[0];
+    assert.equal(saved.stopUnconfirmed, true);
+    let confirmed = false;
+    const runner = new WidgetGenerationRunner(
+      async (c) => host(store, c),
+      async () => {
+        throw new Error("must not generate");
+      },
+      () => {},
+      undefined,
+      async (e) => {
+        assert.deepEqual(e, evidence);
+        return confirmed;
+      },
+    );
+    assert.equal((await runner.confirmStop(saved)).ok, false);
+    assert.equal(
+      store.snapshot().widgetGeneration!.tasks[0].stopUnconfirmed,
+      true,
+    );
+    confirmed = true;
+    assert((await runner.confirmStop(saved)).ok);
+    const current = store.snapshot().widgetGeneration!.tasks[0];
+    assert.equal(current.state, "stopped");
+    assert.equal(current.stopUnconfirmed, false);
+    assert.equal(current.attempt, 1);
+    assert.equal(
+      host(store, {
+        type: "receiveWidgetCandidate",
+        taskId: t.id,
+        executionId: t.executionId,
+        build: built(),
+      }).ok,
+      false,
+    );
+    const d = store.snapshot().widgetGeneration!.drafts[0];
+    assert(
+      store.execute(
+        {
+          type: "deleteWidgetDraft",
+          id,
+          revision: d.revision,
+          name: d.name,
+          input: "",
+          undoToken: randomUUID(),
+        },
+        "main",
+      ).ok,
+    );
+  } finally {
+    if (reopened) reopened.close();
+    if (!closed) s.store.close();
+    rmSync(s.root, { recursive: true, force: true });
   }
 });

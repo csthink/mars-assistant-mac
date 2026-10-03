@@ -40,7 +40,7 @@ function refuse(message: string): never {
 const draftColumns =
   "id,name,input,revision,requirement_revision AS requirementRevision,source_conversation_id AS sourceConversationId,widget_id AS widgetId,target_ids AS targetIds,deleted,created_at AS createdAt,updated_at AS updatedAt";
 const taskColumns =
-  "id,draft_id AS draftId,request_id AS requestId,execution_id AS executionId,attempt,requirement,requirement_revision AS requirementRevision,state,connection,partial_text AS partialText,error,candidate_id AS candidateId,created_at AS createdAt,ended_at AS endedAt";
+  "id,draft_id AS draftId,request_id AS requestId,execution_id AS executionId,attempt,requirement,requirement_revision AS requirementRevision,state,stop_unconfirmed AS stopUnconfirmed,connection,partial_text AS partialText,error,candidate_id AS candidateId,created_at AS createdAt,ended_at AS endedAt";
 const candidateColumns =
   "id,task_id AS taskId,draft_id AS draftId,digest,name,requirement_revision AS requirementRevision,state,differences,widget_id AS widgetId";
 function draft(db: DatabaseSync, id: string): WidgetDraft {
@@ -61,6 +61,7 @@ function task(db: DatabaseSync, id: string): GenerationTask {
   if (!t) refuse("生成任务不存在。");
   return {
     ...t,
+    stopUnconfirmed: !!t.stopUnconfirmed,
     connection: JSON.parse(String(t.connection)),
   } as unknown as GenerationTask;
 }
@@ -248,7 +249,7 @@ export function widgetGenerationSnapshot(
     layout: layoutSnapshot(db),
     drafts: db
       .prepare(
-        `SELECT ${draftColumns} FROM widget_drafts ORDER BY updated_at DESC,rowid DESC`,
+        `SELECT ${draftColumns} FROM widget_drafts WHERE deleted=0 OR widget_id IS NOT NULL ORDER BY updated_at DESC,rowid DESC`,
       )
       .all()
       .map((d) => ({
@@ -263,6 +264,7 @@ export function widgetGenerationSnapshot(
       .all()
       .map((t) => ({
         ...t,
+        stopUnconfirmed: !!t.stopUnconfirmed,
         connection: JSON.parse(String(t.connection)),
       })) as unknown as GenerationTask[],
     candidates: db
@@ -337,6 +339,7 @@ export function widgetGenerationSnapshot(
   };
 }
 export function recoverWidgetGeneration(db: DatabaseSync, now: string) {
+  db.prepare("DELETE FROM widget_draft_undo").run();
   const tasks = db
     .prepare(
       "SELECT id FROM widget_generation_tasks WHERE state IN ('queued','running','stopping')",
@@ -358,6 +361,90 @@ export function applyWidgetGeneration(
   now: string,
   surface: "main" | "panel" = "main",
 ) {
+  if (c.type === "undoWidgetDraftDeletion") {
+    const undo = db
+      .prepare(
+        "SELECT * FROM widget_draft_undo WHERE surface=? AND token=? AND draft_id=?",
+      )
+      .get(surface, c.undoToken, c.id);
+    const d = db
+      .prepare("SELECT revision,deleted FROM widget_drafts WHERE id=?")
+      .get(c.id);
+    if (!undo || !d?.deleted || d.revision !== undo.revision)
+      refuse("撤销已失效，草稿未改变。");
+    const saved = JSON.parse(String(undo.payload)) as {
+      name: string;
+      input: string;
+      candidates: { id: string; state: string; drafts: string }[];
+    };
+    db.prepare(
+      "UPDATE widget_drafts SET deleted=0,name=?,input=?,revision=revision+1,updated_at=? WHERE id=?",
+    ).run(saved.name, saved.input, now, c.id);
+    for (const row of saved.candidates) {
+      db.prepare("UPDATE generated_candidates SET state=? WHERE id=?").run(
+        row.state,
+        row.id,
+      );
+      db.prepare(
+        "UPDATE widget_previews SET active=?,drafts=? WHERE candidate_id=?",
+      ).run(row.state === "preview" ? 1 : 0, row.drafts, row.id);
+    }
+    db.prepare("DELETE FROM widget_draft_undo WHERE token=?").run(c.undoToken);
+    return;
+  }
+  if (c.type === "deleteWidgetDraft") {
+    const old = db
+      .prepare(
+        "SELECT * FROM widget_draft_undo WHERE surface=? AND token=? AND draft_id=?",
+      )
+      .get(surface, c.undoToken, c.id);
+    if (old) return;
+    const d = draft(db, c.id);
+    if (d.revision !== c.revision)
+      refuse("草稿已在另一入口改变，未删除。请核对当前输入。");
+    if (
+      db
+        .prepare(
+          "SELECT 1 FROM widget_generation_tasks WHERE draft_id=? AND (state IN ('queued','running','stopping') OR stop_unconfirmed=1)",
+        )
+        .get(c.id)
+    )
+      refuse("生成停止尚未确认，草稿未删除。请核对生成进程状态。");
+    const rows = db
+      .prepare(
+        "SELECT c.id,c.state,p.drafts FROM generated_candidates c JOIN widget_previews p ON p.candidate_id=c.id WHERE c.draft_id=? AND c.state IN ('preview','unchanged')",
+      )
+      .all(c.id);
+    if (d.widgetId && !c.input.trim() && !rows.length)
+      refuse("正式控件没有可删除的草稿，正式内容和编辑历史已保留。");
+    db.prepare(
+      "INSERT INTO widget_draft_undo(surface,token,draft_id,revision,payload) VALUES(?,?,?,?,?) ON CONFLICT(surface) DO UPDATE SET token=excluded.token,draft_id=excluded.draft_id,revision=excluded.revision,payload=excluded.payload",
+    ).run(
+      surface,
+      c.undoToken,
+      c.id,
+      d.revision + 1,
+      JSON.stringify({ name: c.name, input: c.input, candidates: rows }),
+    );
+    for (const row of rows) {
+      db.prepare(
+        "UPDATE generated_candidates SET state='discarded' WHERE id=?",
+      ).run(row.id);
+      db.prepare("DELETE FROM widget_instances WHERE candidate_id=?").run(
+        row.id,
+      );
+      db.prepare(
+        "UPDATE widget_previews SET active=0,drafts='{}' WHERE candidate_id=?",
+      ).run(row.id);
+    }
+    db.prepare(
+      "UPDATE widget_drafts SET deleted=1,input='',revision=revision+1,updated_at=? WHERE id=?",
+    ).run(now, c.id);
+    db.prepare(
+      "UPDATE widget_draft_selection SET draft_id=NULL WHERE draft_id=?",
+    ).run(c.id);
+    return;
+  }
   if (c.type === "createWidgetEditDraft") {
     if (db.prepare("SELECT 1 FROM widget_drafts WHERE id=?").get(c.id)) return;
     const rows = c.widgetIds.map((id) =>
@@ -380,7 +467,17 @@ export function applyWidgetGeneration(
     return;
   }
   if (c.type === "selectWidgetDraft") {
-    if (c.id) draft(db, c.id);
+    if (c.id) {
+      // Opening a formal widget starts an empty edit while keeping its history.
+      const saved = db
+        .prepare("SELECT deleted,widget_id FROM widget_drafts WHERE id=?")
+        .get(c.id);
+      if (saved?.deleted && saved.widget_id)
+        db.prepare(
+          "UPDATE widget_drafts SET deleted=0,revision=revision+1 WHERE id=?",
+        ).run(c.id);
+      draft(db, c.id);
+    }
     db.prepare(
       "INSERT INTO widget_draft_selection(surface,draft_id) VALUES(?,?) ON CONFLICT(surface) DO UPDATE SET draft_id=excluded.draft_id",
     ).run(surface, c.id);
@@ -428,6 +525,14 @@ export function applyWidgetGeneration(
     if (d.revision !== c.revision)
       refuse("草稿修订已改变，生成未接收，输入已保留。");
     if (!d.input.trim()) refuse("请输入控件需求。");
+    if (
+      db
+        .prepare(
+          "SELECT 1 FROM widget_generation_tasks WHERE draft_id=? AND stop_unconfirmed=1",
+        )
+        .get(d.id)
+    )
+      refuse("上次生成进程停止尚未确认，新需求未发送。");
     const active = db
       .prepare(
         "SELECT id FROM widget_generation_tasks WHERE draft_id=? AND state IN ('queued','running','stopping')",
@@ -509,6 +614,7 @@ export function applyWidgetGeneration(
   if (c.type === "retryWidgetGeneration") {
     const t = task(db, c.taskId),
       d = draft(db, t.draftId);
+    if (t.stopUnconfirmed) refuse("上次生成进程停止尚未确认，不能重试。");
     if (c.attempt < t.attempt) return;
     if (
       c.attempt !== t.attempt ||
@@ -651,6 +757,7 @@ export function applyWidgetGenerationHost(
   c: WidgetGenerationHostCommand,
   now: string,
 ): {
+  generationStopEvidence?: import("../shared/widget-generation").WidgetStopEvidence;
   generationContext?: GenerationContext;
   generationTask?: GenerationTask;
   generatedBuild?: BuiltWidget;
@@ -667,6 +774,27 @@ export function applyWidgetGenerationHost(
   const t = task(db, c.taskId);
   if (t.executionId !== c.executionId)
     refuse("执行尝试已过期，迟到结果未应用。");
+  if (c.type === "loadWidgetGenerationStop") {
+    if (!t.stopUnconfirmed) refuse("任务无需核对停止。");
+    const row = db
+      .prepare("SELECT stop_evidence FROM widget_generation_tasks WHERE id=?")
+      .get(t.id);
+    return {
+      generationStopEvidence: row?.stop_evidence
+        ? JSON.parse(String(row.stop_evidence))
+        : undefined,
+    };
+  }
+  if (c.type === "confirmWidgetGenerationStop") {
+    if (!t.stopUnconfirmed || t.state !== "interrupted")
+      refuse("停止核对已过期。");
+    db.prepare(
+      "UPDATE widget_generation_tasks SET stop_unconfirmed=0 WHERE id=?",
+    ).run(t.id);
+    state(db, t, "stopped", now, null);
+    event(db, t, "stop-confirmed", now);
+    return {};
+  }
   if (c.type === "loadWidgetGeneration") {
     if (t.state !== "running") refuse("生成尚未领取或已结束。");
     return {
@@ -701,6 +829,10 @@ export function applyWidgetGenerationHost(
     if (c.state === "completed" && !t.candidateId)
       refuse("没有通过校验的候选，不能标记生成完成。");
     state(db, t, c.state, now, c.error);
+    if (c.stopUnconfirmed)
+      db.prepare(
+        "UPDATE widget_generation_tasks SET stop_unconfirmed=1,stop_evidence=? WHERE id=?",
+      ).run(c.stopEvidence ? JSON.stringify(c.stopEvidence) : null, t.id);
     return {};
   }
   if (c.type === "widgetGenerationDelta") {

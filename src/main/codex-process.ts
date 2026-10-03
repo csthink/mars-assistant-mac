@@ -1,3 +1,7 @@
+import {
+  validWidgetStopEvidence,
+  type WidgetStopEvidence,
+} from "../shared/widget-generation";
 import { execFile } from "node:child_process";
 import { setTimeout as wait } from "node:timers/promises";
 export interface CodexProcessIdentity {
@@ -10,7 +14,10 @@ export interface CodexProcessIdentity {
 }
 export class CodexProcessError extends Error {
   /** The underlying failure (exit status, timeout or malformed output) for diagnostics; never interpreted. */
-  constructor(cause?: unknown) {
+  constructor(
+    cause?: unknown,
+    readonly stopEvidence?: WidgetStopEvidence,
+  ) {
     super("Codex process identity or exit could not be confirmed", { cause });
   }
 }
@@ -129,6 +136,22 @@ export class CodexProcessOwner {
     return [...this.entries.values()];
   }
   async close() {
+    try {
+      await this.finishClose();
+    } catch (error) {
+      throw new CodexProcessError(error, {
+        complete: !this.failed && this.entries.size > 0,
+        processes: [...this.entries.values()].map(
+          ({ pid, startSeconds, startMicros }) => ({
+            pid,
+            startSeconds,
+            startMicros,
+          }),
+        ),
+      });
+    }
+  }
+  private async finishClose() {
     clearInterval(this.timer);
     await this.scan;
     const args = (row: CodexProcessIdentity) => [
@@ -153,5 +176,34 @@ export class CodexProcessOwner {
       if (Date.now() > deadline) throw new CodexProcessError();
       await wait(30);
     }
+  }
+}
+
+/** A check of exact owned identities only. It never sends signals or scans unrelated processes. */
+export async function checkOwnedProcessExit(
+  evidence: WidgetStopEvidence,
+  inspect: (args: string[]) => Promise<unknown> = (args) =>
+    helper ? invoke(helper, args) : Promise.reject(new CodexProcessError()),
+): Promise<boolean> {
+  if (
+    !validWidgetStopEvidence(evidence) ||
+    !evidence.complete ||
+    !evidence.processes.length
+  )
+    return false;
+  try {
+    const results = await Promise.all(
+      evidence.processes.map((p) =>
+        inspect([
+          "check",
+          String(p.pid),
+          String(p.startSeconds),
+          String(p.startMicros),
+        ]),
+      ),
+    );
+    return results.every((value) => value === false);
+  } catch {
+    return false;
   }
 }

@@ -512,3 +512,119 @@ test("widget editing UI: two selected formal targets are previewed and retained 
     await f.close();
   }
 });
+
+test("widget draft deletion UI: cancel, stop before deletion and immediate undo preserve input without another provider call", async () => {
+  const f = await fixture();
+  try {
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await openWidgets(f.page);
+    await expect.poll(() => f.counts.generation).toBe(1);
+    await f.page
+      .getByRole("textbox", { name: "控件需求", exact: true })
+      .fill("Keep this unsubmitted input");
+    await expect(f.page.getByText("草稿已保存", { exact: true })).toBeVisible();
+    await f.page.getByRole("button", { name: "删除草稿", exact: true }).click();
+    await f.page
+      .getByRole("dialog", { name: "确认删除控件草稿" })
+      .getByRole("button", { name: "取消", exact: true })
+      .click();
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "running",
+    );
+    await f.page.getByRole("button", { name: "删除草稿", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "撤销删除", exact: true }),
+    ).toBeVisible();
+    let value = (await snapshot(f.page)).widgetGeneration!;
+    expect(value.drafts).toHaveLength(0);
+    expect(value.tasks[0].state).toBe("stopped");
+    await f.page.getByRole("button", { name: "撤销删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("textbox", { name: "控件需求", exact: true }),
+    ).toHaveValue("Keep this unsubmitted input");
+    expect(f.counts.generation).toBe(1);
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "stopped",
+    );
+    await editRequirement(
+      f.page,
+      "Generate a restorable candidate",
+      "生成控件",
+    );
+    await expect.poll(() => f.counts.generation).toBe(2);
+    f.finish("generation");
+    await expect(
+      f.page.getByRole("button", { name: "保留控件", exact: true }),
+    ).toBeEnabled();
+    const candidate = (await snapshot(f.page)).widgetGeneration!.candidates[0];
+    await f.page.getByRole("button", { name: "删除草稿", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "撤销删除", exact: true }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "撤销删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "保留控件", exact: true }),
+    ).toBeEnabled();
+    value = (await snapshot(f.page)).widgetGeneration!;
+    expect(value.candidates.find((c) => c.id === candidate.id)!.state).toBe(
+      "preview",
+    );
+    expect(f.counts.generation).toBe(2);
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget stop recovery UI: missing evidence stays blocked and exact exited identities require explicit verification", async () => {
+  const f = await fixture();
+  try {
+    await expect.poll(() => f.counts.generation).toBe(1);
+    f.finish("generation");
+    await expect
+      .poll(
+        async () => (await snapshot(f.page)).widgetGeneration!.tasks[0].state,
+      )
+      .toBe("completed");
+    const t = (await snapshot(f.page)).widgetGeneration!.tasks[0];
+    const db = new DatabaseSync(resolve(f.root, "state.sqlite"));
+    db.prepare(
+      "UPDATE widget_generation_tasks SET state='interrupted',stop_unconfirmed=1,error='停止尚未确认' WHERE id=?",
+    ).run(t.id);
+    db.close();
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await openWidgets(f.page);
+    await expect(
+      f.page.getByRole("button", { name: "核对停止", exact: true }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "核对停止", exact: true }).click();
+    await expect(
+      f.page.getByRole("alert").filter({ hasText: "仍无法确认" }),
+    ).toBeVisible();
+    expect(
+      (await snapshot(f.page)).widgetGeneration!.tasks[0].stopUnconfirmed,
+    ).toBe(true);
+    const seeded = new DatabaseSync(resolve(f.root, "state.sqlite"));
+    seeded
+      .prepare("UPDATE widget_generation_tasks SET stop_evidence=? WHERE id=?")
+      .run(
+        JSON.stringify({
+          complete: true,
+          processes: [{ pid: 2147483647, startSeconds: 1, startMicros: 1 }],
+        }),
+        t.id,
+      );
+    seeded.close();
+    await f.page.getByRole("button", { name: "核对停止", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "核对停止", exact: true }),
+    ).toHaveCount(0);
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "stopped",
+    );
+    expect(f.counts.generation).toBe(1);
+  } finally {
+    await f.close();
+  }
+});

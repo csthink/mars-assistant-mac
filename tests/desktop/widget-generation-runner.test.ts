@@ -296,6 +296,35 @@ test("widget runner: unconfirmed process exit is interrupted, never a confirmed 
     await until(() => s.runner.active === 0);
     assert.equal(s.task().state, "interrupted");
     assert.match(s.task().error!, /could not be confirmed/);
+    assert.equal(s.task().stopUnconfirmed, true);
+    const before = s.store.snapshot(),
+      d = before.widgetGeneration!.drafts[0];
+    assert.equal(
+      s.store.execute(
+        {
+          type: "deleteWidgetDraft",
+          id: d.id,
+          revision: d.revision,
+          name: d.name,
+          input: d.input,
+          undoToken: randomUUID(),
+        },
+        "main",
+      ).ok,
+      false,
+    );
+    assert.equal(
+      s.store.execute(
+        {
+          type: "retryWidgetGeneration",
+          taskId: s.task().id,
+          attempt: s.task().attempt,
+        },
+        "main",
+      ).ok,
+      false,
+    );
+    assert.deepEqual(s.store.snapshot(), before);
   } finally {
     await s.close();
   }

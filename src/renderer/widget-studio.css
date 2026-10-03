@@ -388,3 +388,35 @@
   border-color: var(--c-accent);
   background: var(--c-accent-soft);
 }
+
+.widget-draft-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.widget-draft-entry .widget-draft-row {
+  flex: 1;
+  min-width: 0;
+}
+.widget-undo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: var(--c-accent-soft);
+}
+
+.widget-draft-menu-anchor {
+  position: relative;
+}
+.widget-draft-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  padding: 8px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+  min-width: 120px;
+}
