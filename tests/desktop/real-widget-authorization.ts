@@ -69,3 +69,18 @@ export function widgetRealAuthorization(
     return fail();
   return a as WidgetRealAuthorization;
 }
+
+/** A rejected provider must not prevent an independent approved provider from being checked. */
+export async function runWidgetProviderChecks<T>(
+  selections: readonly T[],
+  check: (selection: T) => Promise<void>,
+  failed: (selection: T, error: unknown) => Promise<void>,
+): Promise<void> {
+  for (const selection of selections) {
+    try {
+      await check(selection);
+    } catch (error) {
+      await failed(selection, error);
+    }
+  }
+}

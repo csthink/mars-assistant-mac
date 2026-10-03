@@ -1,5 +1,8 @@
 import { test } from "node:test";
-import { widgetRealAuthorization } from "./real-widget-authorization";
+import {
+  widgetRealAuthorization,
+  runWidgetProviderChecks,
+} from "./real-widget-authorization";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -803,4 +806,25 @@ test("widget generation real authorization accepts explicit subsets and rejects 
     ],
   };
   assert.equal(widgetRealAuthorization(full, "1"), full);
+});
+
+test("widget generation real validation preserves each failed path and continues independent providers without retry", async () => {
+  const visited: string[] = [],
+    failures: string[] = [],
+    completed: string[] = [];
+  await runWidgetProviderChecks(
+    ["codex", "claude", "deepseek"],
+    async (provider) => {
+      visited.push(provider);
+      if (provider !== "claude") throw new Error("unavailable configuration");
+      completed.push(provider);
+    },
+    async (provider, error) => {
+      assert.match((error as Error).message, /unavailable configuration/);
+      failures.push(provider);
+    },
+  );
+  assert.deepEqual(visited, ["codex", "claude", "deepseek"]);
+  assert.deepEqual(completed, ["claude"]);
+  assert.deepEqual(failures, ["codex", "deepseek"]);
 });
