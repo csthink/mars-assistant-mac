@@ -24,6 +24,8 @@ export interface WidgetDraft {
   requirementRevision: number;
   sourceConversationId: string | null;
   widgetId: string | null;
+  targetIds: string[];
+  deleted: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,7 +45,17 @@ export interface GenerationTask {
   createdAt: string;
   endedAt: string | null;
 }
+export interface WidgetEditTarget {
+  id: string;
+  revision: number;
+  candidateId: string;
+  configRevision: number;
+  dataRevision: number;
+  build: BuiltWidget;
+  config: Record<string, string | number | boolean>;
+}
 export interface GenerationContext {
+  widgets?: WidgetEditTarget[];
   messages: Message[];
   attachments: {
     attachmentId: string;
@@ -85,6 +97,7 @@ export interface WidgetGenerationSnapshot {
   selected?: { main: string | null; panel: string | null };
 }
 export type WidgetGenerationCommand =
+  | { type: "createWidgetEditDraft"; id: string; widgetIds: string[] }
   | { type: "selectWidgetDraft"; id: string | null }
   | {
       type: "createWidgetDraft";
@@ -100,7 +113,7 @@ export type WidgetGenerationCommand =
       input: string;
     }
   | {
-      type: "submitWidgetGeneration";
+      type: "submitWidgetGeneration" | "supplementWidgetGeneration";
       draftId: string;
       requestId: string;
       revision: number;
@@ -158,6 +171,16 @@ export function validWidgetGenerationCommand(
 ): v is WidgetGenerationCommand {
   if (!object(v)) return false;
   switch (v.type) {
+    case "createWidgetEditDraft":
+      return (
+        exact(v, ["id", "widgetIds"]) &&
+        id(v.id) &&
+        Array.isArray(v.widgetIds) &&
+        v.widgetIds.length > 0 &&
+        v.widgetIds.length <= 20 &&
+        new Set(v.widgetIds).size === v.widgetIds.length &&
+        v.widgetIds.every(id)
+      );
     case "selectWidgetDraft":
       return exact(v, ["id"]) && (v.id === null || id(v.id));
     case "createWidgetDraft":
@@ -175,6 +198,7 @@ export function validWidgetGenerationCommand(
         name(v.name) &&
         text(v.input, 64000)
       );
+    case "supplementWidgetGeneration":
     case "submitWidgetGeneration":
       return (
         exact(v, [

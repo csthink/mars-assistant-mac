@@ -598,12 +598,26 @@ test("widget generation: empty actual differences are explained and cannot creat
       ).ok,
     );
     const formal = s.store.snapshot().widgetGeneration!.widgets[0];
-    const other = draft(s),
-      next = submit(s, other).task;
-    // Real storage fixture supplies an existing formal baseline without exposing a modification UI.
-    s.store.db
-      .prepare("UPDATE widget_drafts SET widget_id=? WHERE id=?")
-      .run(formal.id, other);
+    const other = randomUUID();
+    assert(
+      s.store.execute(
+        { type: "createWidgetEditDraft", id: other, widgetIds: [formal.id] },
+        "main",
+      ).ok,
+    );
+    assert(
+      s.store.execute(
+        {
+          type: "saveWidgetDraft",
+          id: other,
+          name: formal.name,
+          input: "Keep identical content",
+          revision: 0,
+        },
+        "main",
+      ).ok,
+    );
+    const next = submit(s, other).task;
     const unchanged = candidate(s, next);
     assert.equal(unchanged.state, "unchanged");
     assert.deepEqual(unchanged.differences, []);
@@ -827,4 +841,260 @@ test("widget generation real validation preserves each failed path and continues
   assert.deepEqual(visited, ["codex", "claude", "deepseek"]);
   assert.deepEqual(completed, ["claude"]);
   assert.deepEqual(failures, ["codex", "deepseek"]);
+});
+
+test("widget editing: revision-bound continuation preserves identity, position and formal data", () => {
+  const s = setup();
+  try {
+    const id = draft(s),
+      first = candidate(s, submit(s, id).task);
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: first.id,
+          digest: first.digest,
+          requirementRevision: first.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    const original = s.store.snapshot().widgetGeneration!.widgets[0];
+    const editId = randomUUID();
+    assert(
+      s.store.execute(
+        {
+          type: "createWidgetEditDraft",
+          id: editId,
+          widgetIds: [original.id],
+        } as Command,
+        "main",
+      ).ok,
+    );
+    assert(
+      s.store.execute(
+        {
+          type: "saveWidgetDraft",
+          id: editId,
+          name: original.name,
+          input: "Add subtraction",
+          revision: 0,
+        },
+        "main",
+      ).ok,
+    );
+    const t = submit(s, editId).task;
+    assert(claim(s, t).ok);
+    const context = host(s.store, {
+      type: "loadWidgetGeneration",
+      taskId: t.id,
+      executionId: t.executionId,
+    });
+    assert(context.ok);
+    assert.equal(context.generationContext?.widgets?.[0].id, original.id);
+    const build = buildWidgetPackage(
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "Subtraction",
+        view: { html: "<button>Subtract</button>", css: "", js: "" },
+        config: [],
+        draftFields: [],
+        capabilities: [],
+        resources: [],
+      }),
+    );
+    assert(
+      host(s.store, {
+        type: "receiveWidgetCandidate",
+        taskId: t.id,
+        executionId: t.executionId,
+        build,
+      }).ok,
+    );
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "completed",
+        error: null,
+      }).ok,
+    );
+    const next = s.store.snapshot().widgetGeneration!.candidates.at(-1)!;
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: next.id,
+          digest: next.digest,
+          requirementRevision: next.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    const widgets = s.store.snapshot().widgetGeneration!.widgets;
+    assert.equal(widgets.length, 1);
+    assert.equal(widgets[0].id, original.id);
+    assert.equal(widgets[0].position, original.position);
+    assert.equal(widgets[0].revision, 2);
+  } finally {
+    s.close();
+  }
+});
+
+test("widget editing: explicit supplement cancels old eligibility and freezes the new adopted revision", () => {
+  const s = setup();
+  try {
+    const id = draft(s),
+      old = submit(s, id).task;
+    assert(claim(s, old).ok);
+    assert(
+      s.store.execute(
+        {
+          type: "saveWidgetDraft",
+          id,
+          revision: 2,
+          name: "同名草稿",
+          input: "Use step nine",
+        },
+        "main",
+      ).ok,
+    );
+    assert(
+      s.store.execute(
+        {
+          type: "supplementWidgetGeneration",
+          draftId: id,
+          revision: 3,
+          requestId: randomUUID(),
+          connectionId: s.connectionId,
+          model: "test-model",
+        },
+        "main",
+      ).ok,
+    );
+    const snapshot = s.store.snapshot().widgetGeneration!;
+    assert.equal(snapshot.tasks[0].state, "stopping");
+    assert.equal(snapshot.tasks[1].state, "queued");
+    assert.equal(snapshot.tasks[1].requirementRevision, 2);
+    assert.match(
+      snapshot.tasks[1].requirement,
+      /Make an abacus[\s\S]*Use step nine/,
+    );
+    assert(
+      !host(s.store, {
+        type: "receiveWidgetCandidate",
+        taskId: old.id,
+        executionId: old.executionId,
+        build: built(),
+      }).ok,
+    );
+    assert(!claim(s, snapshot.tasks[1]).ok);
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: old.id,
+        executionId: old.executionId,
+        state: "stopped",
+        error: null,
+      }).ok,
+    );
+    assert(claim(s, snapshot.tasks[1]).ok);
+  } finally {
+    s.close();
+  }
+});
+
+test("widget editing: concurrent formal revision or data changes reject retention without partial mutation", () => {
+  const s = setup();
+  try {
+    const first = candidate(s, submit(s, draft(s)).task);
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: first.id,
+          digest: first.digest,
+          requirementRevision: 1,
+        },
+        "main",
+      ).ok,
+    );
+    const formal = s.store.snapshot().widgetGeneration!.widgets[0];
+    const id = randomUUID();
+    assert(
+      s.store.execute(
+        { type: "createWidgetEditDraft", id, widgetIds: [formal.id] },
+        "main",
+      ).ok,
+    );
+    assert(
+      s.store.execute(
+        {
+          type: "saveWidgetDraft",
+          id,
+          revision: 0,
+          name: formal.name,
+          input: "Add subtraction",
+        },
+        "main",
+      ).ok,
+    );
+    const t = submit(s, id).task;
+    assert(claim(s, t).ok);
+    const build = buildWidgetPackage(
+      JSON.stringify({
+        ...built().manifest,
+        view: { html: "<button>Subtract</button>", css: "", js: "" },
+      }),
+    );
+    assert(
+      host(s.store, {
+        type: "receiveWidgetCandidate",
+        taskId: t.id,
+        executionId: t.executionId,
+        build,
+      }).ok,
+    );
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "completed",
+        error: null,
+      }).ok,
+    );
+    const c = s.store.snapshot().widgetGeneration!.candidates.at(-1)!;
+    s.store.db
+      .prepare(
+        "UPDATE widget_previews SET data_revision=data_revision+1,data=? WHERE candidate_id=?",
+      )
+      .run(JSON.stringify({ newValue: 7 }), formal.candidateId);
+    const before = s.store.snapshot();
+    assert(
+      !s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: c.id,
+          digest: c.digest,
+          requirementRevision: c.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    assert.deepEqual(s.store.snapshot(), before);
+    assert.deepEqual(
+      JSON.parse(
+        String(
+          s.store.db
+            .prepare("SELECT data FROM widget_previews WHERE candidate_id=?")
+            .get(formal.candidateId)!.data,
+        ),
+      ),
+      { newValue: 7 },
+    );
+  } finally {
+    s.close();
+  }
 });

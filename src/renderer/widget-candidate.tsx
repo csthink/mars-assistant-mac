@@ -35,8 +35,16 @@ export function WidgetCandidatePanel({
     snapshot.widgetGeneration?.candidates.filter(
       (c) => c.draftId === draft.id,
     ) ?? [];
+  const formal = snapshot.widgetGeneration?.widgets.find(
+    (w) => w.id === draft.widgetId,
+  );
+  const latest = candidates.at(-1);
   const candidate =
-    candidates.find((c) => c.state === "retained") ?? candidates.at(-1);
+    latest && latest.state !== "discarded"
+      ? latest
+      : (snapshot.widgetGeneration?.candidates.find(
+          (c) => c.id === formal?.candidateId,
+        ) ?? latest);
   const [confirmation, setConfirmation] = useState<{
     candidate: GeneratedCandidate;
     action: "retainWidgetCandidate" | "discardWidgetCandidate";
@@ -68,7 +76,7 @@ export function WidgetCandidatePanel({
               ? "已撤销预览，编辑历史继续保存。"
               : !changed
                 ? "没有实际变化，无需保留。"
-                : `新增 1 个控件 · ${candidate.differences.length} 个文件变化`}
+                : `${draft.widgetId ? "修改" : "新增"} 1 个控件 · ${candidate.differences.length} 个文件变化`}
         </p>
         {stale && candidate.state === "preview" && (
           <p className="error" role="alert">

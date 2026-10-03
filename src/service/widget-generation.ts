@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { StoreError } from "./errors";
 import { selectedModel } from "./models";
-import { applyWidgetHost } from "./widgets";
+import { applyWidgetHost, readWidgetPreview } from "./widgets";
 import { widgetDifferences } from "../shared/widget-diff";
 import { verifyBuiltWidget } from "../main/widget-package";
 import type { BuiltWidget } from "../shared/widget";
@@ -10,6 +10,7 @@ import type { ConnectionSnapshot, Message } from "../shared/protocol";
 import {
   generationLimits,
   type WidgetDraft,
+  type WidgetEditTarget,
   type GenerationTask,
   type GeneratedCandidate,
   type GenerationContext,
@@ -34,7 +35,7 @@ function refuse(message: string): never {
   throw new StoreError("CONFLICT", message);
 }
 const draftColumns =
-  "id,name,input,revision,requirement_revision AS requirementRevision,source_conversation_id AS sourceConversationId,widget_id AS widgetId,created_at AS createdAt,updated_at AS updatedAt";
+  "id,name,input,revision,requirement_revision AS requirementRevision,source_conversation_id AS sourceConversationId,widget_id AS widgetId,target_ids AS targetIds,deleted,created_at AS createdAt,updated_at AS updatedAt";
 const taskColumns =
   "id,draft_id AS draftId,request_id AS requestId,execution_id AS executionId,attempt,requirement,requirement_revision AS requirementRevision,state,connection,partial_text AS partialText,error,candidate_id AS candidateId,created_at AS createdAt,ended_at AS endedAt";
 const candidateColumns =
@@ -43,8 +44,12 @@ function draft(db: DatabaseSync, id: string): WidgetDraft {
   const d = db
     .prepare(`SELECT ${draftColumns} FROM widget_drafts WHERE id=?`)
     .get(id) as unknown as WidgetDraft;
-  if (!d) refuse("草稿不存在，请重新选择。");
-  return d;
+  if (!d || d.deleted) refuse("草稿不存在，请重新选择。");
+  return {
+    ...d,
+    targetIds: JSON.parse(String(d.targetIds)),
+    deleted: !!d.deleted,
+  };
 }
 function task(db: DatabaseSync, id: string): GenerationTask {
   const t = db
@@ -156,6 +161,55 @@ function capture(
     },
   };
 }
+function editTargets(db: DatabaseSync, d: WidgetDraft): WidgetEditTarget[] {
+  const ids = d.targetIds.length ? d.targetIds : d.widgetId ? [d.widgetId] : [];
+  return ids.map((id) => {
+    const w = db.prepare("SELECT * FROM saved_widgets WHERE id=?").get(id);
+    if (!w) refuse(`正式控件 ${id} 已不可用。`);
+    const preview = readWidgetPreview(db, String(w.candidate_id));
+    const row = db
+      .prepare("SELECT build FROM generated_candidates WHERE id=?")
+      .get(String(w.candidate_id))!;
+    return {
+      id,
+      revision: Number(w.revision),
+      candidateId: String(w.candidate_id),
+      configRevision: preview.configRevision,
+      dataRevision: preview.dataRevision,
+      config: preview.config,
+      build: JSON.parse(String(row.build)),
+    };
+  });
+}
+function generationContext(
+  db: DatabaseSync,
+  t: GenerationTask,
+): GenerationContext {
+  return JSON.parse(
+    String(
+      db
+        .prepare("SELECT context FROM widget_generation_tasks WHERE id=?")
+        .get(t.id)!.context,
+    ),
+  );
+}
+function verifyTarget(db: DatabaseSync, target: WidgetEditTarget) {
+  const w = db.prepare("SELECT * FROM saved_widgets WHERE id=?").get(target.id);
+  if (
+    !w ||
+    w.revision !== target.revision ||
+    w.candidate_id !== target.candidateId
+  )
+    refuse(`控件 ${target.build.manifest.name} 的正式版本已改变，整组未保留。`);
+  const preview = readWidgetPreview(db, target.candidateId);
+  if (
+    preview.configRevision !== target.configRevision ||
+    preview.dataRevision !== target.dataRevision
+  )
+    refuse(
+      `控件 ${target.build.manifest.name} 的配置或数据已改变，整组未保留。`,
+    );
+}
 export function widgetGenerationSnapshot(
   db: DatabaseSync,
 ): WidgetGenerationSnapshot {
@@ -164,7 +218,12 @@ export function widgetGenerationSnapshot(
       .prepare(
         `SELECT ${draftColumns} FROM widget_drafts ORDER BY updated_at DESC,rowid DESC`,
       )
-      .all() as unknown as WidgetDraft[],
+      .all()
+      .map((d) => ({
+        ...d,
+        targetIds: JSON.parse(String(d.targetIds)),
+        deleted: !!d.deleted,
+      })) as unknown as WidgetDraft[],
     tasks: db
       .prepare(
         `SELECT ${taskColumns} FROM widget_generation_tasks ORDER BY created_at,rowid`,
@@ -222,6 +281,27 @@ export function applyWidgetGeneration(
   now: string,
   surface: "main" | "panel" = "main",
 ) {
+  if (c.type === "createWidgetEditDraft") {
+    if (db.prepare("SELECT 1 FROM widget_drafts WHERE id=?").get(c.id)) return;
+    const rows = c.widgetIds.map((id) =>
+      db.prepare("SELECT * FROM saved_widgets WHERE id=?").get(id),
+    );
+    if (rows.some((row) => !row)) refuse("正式控件已不存在，未建立修改草稿。");
+    db.prepare(
+      "INSERT INTO widget_drafts(id,name,widget_id,target_ids,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+    ).run(
+      c.id,
+      rows
+        .map((r) => r!.name)
+        .join("、")
+        .slice(0, 160),
+      c.widgetIds[0],
+      JSON.stringify(c.widgetIds),
+      now,
+      now,
+    );
+    return;
+  }
   if (c.type === "selectWidgetDraft") {
     if (c.id) draft(db, c.id);
     db.prepare(
@@ -254,7 +334,10 @@ export function applyWidgetGeneration(
     ).run(c.name, c.input, now, c.id);
     return;
   }
-  if (c.type === "submitWidgetGeneration") {
+  if (
+    c.type === "submitWidgetGeneration" ||
+    c.type === "supplementWidgetGeneration"
+  ) {
     const old = db
       .prepare(
         "SELECT draft_id FROM widget_generation_tasks WHERE request_id=?",
@@ -267,16 +350,22 @@ export function applyWidgetGeneration(
     const d = draft(db, c.draftId);
     if (d.revision !== c.revision)
       refuse("草稿修订已改变，生成未接收，输入已保留。");
-    if (d.widgetId) refuse("此控件已保留；正式控件持续修改尚未开放。");
     if (!d.input.trim()) refuse("请输入控件需求。");
-    if (
-      db
-        .prepare(
-          "SELECT 1 FROM widget_generation_tasks WHERE draft_id=? AND state NOT IN ('completed','stopped','failed','interrupted')",
-        )
-        .get(d.id)
-    )
+    const active = db
+      .prepare(
+        "SELECT id FROM widget_generation_tasks WHERE draft_id=? AND state IN ('queued','running','stopping')",
+      )
+      .all(d.id);
+    if (active.length && c.type !== "supplementWidgetGeneration")
       refuse("此草稿还有生成任务，请先停止再提交新需求。");
+    if (c.type === "supplementWidgetGeneration" && !active.length)
+      refuse("当前没有可补充的生成任务，请提交新需求。");
+    const previous = active.length
+      ? task(db, String(active.at(-1)!.id))
+      : undefined;
+    const requirement = previous
+      ? `${previous.requirement}\n\n补充需求：\n${d.input}`
+      : d.input;
     assertQueueSpace(db);
     const model = selectedModel(db, c.connectionId, c.model);
     const {
@@ -290,12 +379,22 @@ export function applyWidgetGeneration(
       ...connection,
       effort: effort?.defaultLevel ?? null,
     } as ConnectionSnapshot;
-    const context = capture(db, d, fixed);
+    const context = { ...capture(db, d, fixed), widgets: editTargets(db, d) };
     if (
-      JSON.stringify(context).length + d.input.length >
+      JSON.stringify(context).length + requirement.length >
       (contextChars ?? 64000)
     )
       refuse("相关历史与需求超过模型上下文预算，任务未接收。");
+    for (const row of active) {
+      const oldTask = task(db, String(row.id));
+      if (oldTask.state !== "stopping")
+        state(
+          db,
+          oldTask,
+          oldTask.state === "queued" ? "stopped" : "stopping",
+          now,
+        );
+    }
     const id = randomUUID(),
       executionId = randomUUID();
     db.prepare(
@@ -305,7 +404,7 @@ export function applyWidgetGeneration(
       d.id,
       c.requestId,
       executionId,
-      d.input,
+      requirement,
       d.requirementRevision + 1,
       JSON.stringify(fixed),
       JSON.stringify(context),
@@ -335,7 +434,7 @@ export function applyWidgetGeneration(
       !["failed", "stopped", "interrupted"].includes(t.state)
     )
       refuse("任务不能重试，请核对当前状态。");
-    if (t.requirementRevision !== d.requirementRevision || d.widgetId)
+    if (t.requirementRevision !== d.requirementRevision)
       refuse("该需求已过期，请重新提交当前需求。");
     if (t.attempt >= generationLimits.attempts)
       refuse("已达到三次尝试上限，请检查原因后提交新需求。");
@@ -357,6 +456,8 @@ export function applyWidgetGeneration(
     event(db, task(db, t.id), "retry", now);
     return;
   }
+  if (c.type !== "retainWidgetCandidate" && c.type !== "discardWidgetCandidate")
+    refuse("未知控件操作。");
   const row = db
     .prepare("SELECT * FROM generated_candidates WHERE id=?")
     .get(c.candidateId);
@@ -390,18 +491,31 @@ export function applyWidgetGeneration(
     });
     return;
   }
-  if (d.requirementRevision !== c.requirementRevision || d.widgetId)
+  if (d.requirementRevision !== c.requirementRevision)
     refuse("需求或正式版本已变化，候选未保留。");
   const t = task(db, String(row.task_id));
   if (t.state !== "completed" || t.candidateId !== c.candidateId)
     refuse("生成尚未成功结束或候选尝试已过期，候选未保留。");
-  const widgetId = randomUUID();
+  const target = generationContext(db, t).widgets?.[0];
+  if (target) verifyTarget(db, target);
+  const widgetId = target?.id ?? randomUUID();
+  if (target) {
+    db.prepare(
+      "UPDATE saved_widgets SET name=?,candidate_id=?,digest=?,revision=revision+1 WHERE id=?",
+    ).run(row.name, c.candidateId, c.digest, widgetId);
+    db.prepare("DELETE FROM widget_instances WHERE candidate_id=?").run(
+      target.candidateId,
+    );
+    db.prepare("UPDATE widget_previews SET active=0 WHERE candidate_id=?").run(
+      target.candidateId,
+    );
+  } else
+    db.prepare(
+      "INSERT INTO saved_widgets(id,name,candidate_id,digest,position) VALUES(?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM saved_widgets))",
+    ).run(widgetId, row.name, c.candidateId, c.digest);
   db.prepare(
-    "INSERT INTO saved_widgets(id,name,candidate_id,digest,position) VALUES(?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM saved_widgets))",
-  ).run(widgetId, row.name, c.candidateId, c.digest);
-  db.prepare(
-    "UPDATE widget_drafts SET widget_id=?,updated_at=? WHERE id=?",
-  ).run(widgetId, now, d.id);
+    "UPDATE widget_drafts SET widget_id=?,target_ids=?,updated_at=? WHERE id=?",
+  ).run(widgetId, JSON.stringify([widgetId]), now, d.id);
   db.prepare(
     "UPDATE generated_candidates SET state='retained',widget_id=? WHERE id=?",
   ).run(widgetId, c.candidateId);
@@ -502,12 +616,8 @@ export function applyWidgetGenerationHost(
   if (!verifyBuiltWidget(c.build)) refuse("候选产物摘要或包规范无效。");
   const id = randomUUID(),
     build = c.build;
-  const old = db
-    .prepare(
-      "SELECT c.build FROM widget_drafts d JOIN saved_widgets w ON w.id=d.widget_id JOIN generated_candidates c ON c.id=w.candidate_id WHERE d.id=?",
-    )
-    .get(t.draftId);
-  const prior = old ? (JSON.parse(String(old.build)) as BuiltWidget) : null;
+  const target = generationContext(db, t).widgets?.[0];
+  const prior = target?.build ?? null;
   const differences = widgetDifferences(prior, build);
   const unchanged = differences.length === 0;
   db.prepare(
@@ -539,6 +649,35 @@ export function applyWidgetGenerationHost(
         capabilities: build.manifest.capabilities,
       },
     });
+  if (!unchanged && target) {
+    const previous = readWidgetPreview(db, target.candidateId);
+    const config = Object.fromEntries(
+      build.manifest.config.map((field) => [
+        field.id,
+        typeof previous.config[field.id] === typeof field.default
+          ? previous.config[field.id]
+          : field.default,
+      ]),
+    );
+    db.prepare(
+      "UPDATE widget_previews SET config=?,data=?,drafts=? WHERE candidate_id=?",
+    ).run(
+      JSON.stringify(config),
+      JSON.stringify(previous.data),
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(previous.drafts).filter(([key]) =>
+            build.manifest.draftFields.includes(key),
+          ),
+        ),
+      ),
+      id,
+    );
+    db.prepare("UPDATE generated_candidates SET widget_id=? WHERE id=?").run(
+      target.id,
+      id,
+    );
+  }
   event(db, t, unchanged ? "unchanged" : "candidate", now, {
     candidateId: id,
     digest: build.digest,

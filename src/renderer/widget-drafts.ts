@@ -139,14 +139,27 @@ export function useWidgetDrafts(
         ? id
         : null;
     },
-    async submit(id: string, connectionId: string, model: string) {
+    async createEdit(widgetIds: string[]) {
+      const id = crypto.randomUUID();
+      return (await command({ type: "createWidgetEditDraft", id, widgetIds }))
+        ? id
+        : null;
+    },
+    async submit(
+      id: string,
+      connectionId: string,
+      model: string,
+      supplement = false,
+    ) {
       if (!(await confirmed(id))) return false;
       const saved = latest.current?.widgetGeneration?.drafts.find(
         (d) => d.id === id,
       );
       if (!saved) return false;
       return !!(await command({
-        type: "submitWidgetGeneration",
+        type: supplement
+          ? "supplementWidgetGeneration"
+          : "submitWidgetGeneration",
         draftId: id,
         revision: saved.revision,
         requestId: crypto.randomUUID(),

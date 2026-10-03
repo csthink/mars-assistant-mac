@@ -19,14 +19,14 @@ export function visibleWidgetDraft(d: WidgetDraft, snapshot: Snapshot) {
   const candidates =
     snapshot.widgetGeneration?.candidates.filter((c) => c.draftId === d.id) ??
     [];
-  if (d.widgetId) return !!d.input;
+  if (d.deleted) return false;
   if (
     d.input ||
     tasks.some((t) => ["queued", "running", "stopping"].includes(t.state))
   )
     return true;
   if (candidates.length) return candidates.at(-1)?.state === "preview";
-  return true;
+  return !d.widgetId;
 }
 export function WidgetTaskCard({
   task,
@@ -256,8 +256,16 @@ export function WidgetStudio({
             {!tasks.length && (
               <div className="widget-empty">
                 <Icon name="spark" />
-                <h2>你想做一个什么控件？</h2>
-                <p>描述内容与用法，预览后再保留。</p>
+                <h2>
+                  {draft.widgetId
+                    ? "想怎样修改这个控件？"
+                    : "你想做一个什么控件？"}
+                </h2>
+                <p>
+                  {draft.widgetId
+                    ? "描述行为、显示或配置的变化，预览后再保留。"
+                    : "描述内容与用法，预览后再保留。"}
+                </p>
               </div>
             )}
             {tasks.map((t) => (
@@ -285,7 +293,7 @@ export function WidgetStudio({
               aria-label="控件需求"
               placeholder={
                 draft.widgetId
-                  ? "此控件已保留，新的修改将在后续开放"
+                  ? "描述要修改的行为、显示或配置…"
                   : "描述控件，或补充新的需求…"
               }
               value={local.input}
@@ -310,18 +318,20 @@ export function WidgetStudio({
                 className="button primary"
                 disabled={
                   !connected ||
-                  active ||
-                  !!draft.widgetId ||
                   !local.input.trim() ||
                   !!unsaved?.dirty ||
                   !selectedConnection
                 }
                 onClick={() => {
                   const [id, ...rest] = selectedConnection.split("::");
-                  void model.submit(draft.id, id, rest.join("::"));
+                  void model.submit(draft.id, id, rest.join("::"), active);
                 }}
               >
-                生成控件
+                {active
+                  ? "补充需求并重新生成"
+                  : draft.widgetId
+                    ? "生成修改"
+                    : "生成控件"}
               </button>
             </div>
             <div className="widget-save-note" role="status">
@@ -368,7 +378,10 @@ export function WidgetStudio({
                     <Icon name="grid" />
                     <span>
                       <strong>{d.name}</strong>
-                      <small>新建控件 · {d.id.slice(0, 8)}</small>
+                      <small>
+                        {d.widgetId ? "修改控件" : "新建控件"} ·{" "}
+                        {d.id.slice(0, 8)}
+                      </small>
                       <p>{d.input || t?.requirement || "尚未输入需求"}</p>
                     </span>
                     <small>{t ? generationLabels[t.state] : "未生成"}</small>
@@ -394,6 +407,15 @@ export function WidgetStudio({
                 }}
               >
                 打开控件
+              </button>
+              <button
+                className="button"
+                onClick={async () => {
+                  const id = await model.createEdit([w.id]);
+                  if (id) onSelect(id);
+                }}
+              >
+                新建修改草稿
               </button>
             </article>
           ))}
