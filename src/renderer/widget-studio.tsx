@@ -1,0 +1,419 @@
+import { useState } from "react";
+import type { Snapshot } from "../shared/protocol";
+import type { GenerationTask, WidgetDraft } from "../shared/widget-generation";
+import type { WidgetDraftModel } from "./widget-drafts";
+import { Icon } from "./icons";
+import "./widget-studio.css";
+export const generationLabels = {
+  queued: "等待生成",
+  running: "正在生成",
+  stopping: "正在停止",
+  completed: "生成完成",
+  stopped: "已停止",
+  failed: "生成失败",
+  interrupted: "已中断，等待恢复",
+};
+export function visibleWidgetDraft(d: WidgetDraft, snapshot: Snapshot) {
+  const tasks =
+    snapshot.widgetGeneration?.tasks.filter((t) => t.draftId === d.id) ?? [];
+  const candidates =
+    snapshot.widgetGeneration?.candidates.filter((c) => c.draftId === d.id) ??
+    [];
+  if (d.widgetId) return !!d.input;
+  if (
+    d.input ||
+    tasks.some((t) => ["queued", "running", "stopping"].includes(t.state))
+  )
+    return true;
+  if (candidates.length) return candidates.at(-1)?.state === "preview";
+  return true;
+}
+export function WidgetTaskCard({
+  task,
+  model,
+  onOpen,
+}: {
+  task: GenerationTask;
+  model: WidgetDraftModel;
+  onOpen?: () => void;
+}) {
+  return (
+    <article className="widget-task-card" data-widget-task={task.id}>
+      <div className="widget-task-title">
+        <Icon name="grid" />
+        <strong>{generationLabels[task.state]}</strong>
+        <span>
+          {task.connection.name} · {task.connection.model}
+        </span>
+      </div>
+      <p>{task.requirement}</p>
+      <small>
+        需求修订 {task.requirementRevision} · 第 {task.attempt} 次尝试
+      </small>
+      {task.partialText && (
+        <p className="widget-task-output">{task.partialText}</p>
+      )}
+      {task.error && (
+        <p className="error" role="alert">
+          {task.error}
+        </p>
+      )}
+      <div className="widget-studio-actions">
+        {["queued", "running"].includes(task.state) && (
+          <button
+            className="button"
+            onClick={() =>
+              void model.command({
+                type: "stopWidgetGeneration",
+                taskId: task.id,
+              })
+            }
+          >
+            停止生成
+          </button>
+        )}
+        {["failed", "interrupted", "stopped"].includes(task.state) &&
+          task.attempt < 3 && (
+            <button
+              className="button"
+              onClick={() =>
+                void model.command({
+                  type: "retryWidgetGeneration",
+                  taskId: task.id,
+                  attempt: task.attempt,
+                })
+              }
+            >
+              重试生成
+            </button>
+          )}
+        {onOpen && (
+          <button className="button" onClick={onOpen}>
+            打开控件编辑
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+export function WidgetStudio({
+  snapshot,
+  connected,
+  model,
+  selected,
+  section,
+  onSelect,
+  onSection,
+  openSettings,
+}: {
+  snapshot?: Snapshot;
+  connected: boolean;
+  model: WidgetDraftModel;
+  selected?: string;
+  section: "widgets" | "drafts";
+  onSelect: (id?: string) => void;
+  onSection: (s: "widgets" | "drafts") => void;
+  openSettings: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState(false);
+  const [connection, setConnection] = useState("");
+  const draft = snapshot?.widgetGeneration?.drafts.find(
+    (d) => d.id === selected,
+  );
+  const local = selected ? model.value(selected) : undefined;
+  const unsaved = selected ? model.locals.get(selected) : undefined;
+  const tasks =
+    snapshot?.widgetGeneration?.tasks.filter((t) => t.draftId === selected) ??
+    [];
+  const active = tasks.some((t) =>
+    ["queued", "running", "stopping"].includes(t.state),
+  );
+  const connections = (snapshot?.connections ?? [])
+    .filter((c) => c.enabled)
+    .flatMap((c) =>
+      c.models
+        .filter((m) => m.enabled)
+        .map((m) => ({
+          value: `${c.id}::${m.model}`,
+          label: `${c.name} · ${m.model}`,
+        })),
+    );
+  const selectedConnection = connection || connections[0]?.value || "";
+  const drafts = (snapshot?.widgetGeneration?.drafts ?? []).filter(
+    (d) => snapshot && visibleWidgetDraft(d, snapshot),
+  );
+  const filtered = drafts.filter((d) =>
+    `${d.name}\n${d.input}`
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase()),
+  );
+  async function leave() {
+    if (selected && !(await model.confirmed(selected))) return;
+    onSelect();
+  }
+  async function create() {
+    if (selected && !(await model.confirmed(selected))) return;
+    const id = await model.create();
+    if (id) onSelect(id);
+  }
+  return (
+    <section className={`widget-studio ${draft ? "widget-editor" : ""}`}>
+      <div className="widget-studio-heading">
+        {(draft || section === "drafts") && (
+          <button
+            className="icon-button"
+            aria-label={draft ? "返回控件草稿" : "返回控件"}
+            onClick={() => {
+              if (draft) void leave();
+              else onSection("widgets");
+            }}
+          >
+            <span aria-hidden="true">‹</span>
+          </button>
+        )}
+        {draft && local ? (
+          <input
+            aria-label="控件草稿名称"
+            className="widget-name"
+            value={local.name}
+            maxLength={160}
+            disabled={!connected}
+            onChange={(e) => model.edit(draft.id, "name", e.target.value)}
+          />
+        ) : (
+          <h1 tabIndex={-1} data-center-title>
+            {section === "drafts" ? "控件草稿" : "控件"}
+          </h1>
+        )}
+        {!draft && (
+          <span className="quiet">
+            {section === "drafts"
+              ? drafts.length
+              : (snapshot?.widgetGeneration?.widgets.length ?? 0)}
+          </span>
+        )}
+        <div className="widget-studio-actions">
+          {!draft && section === "widgets" && (
+            <button className="button" onClick={() => onSection("drafts")}>
+              草稿 {drafts.length}
+            </button>
+          )}
+          {!draft && section === "drafts" && (
+            <div className="widget-search-anchor">
+              <button
+                className="icon-button"
+                aria-label="搜索控件草稿"
+                aria-expanded={search}
+                onClick={() => setSearch(!search)}
+              >
+                <Icon name="search" />
+              </button>
+              {search && (
+                <div className="widget-search-popover">
+                  <input
+                    autoFocus
+                    aria-label="搜索草稿名称或需求"
+                    placeholder="搜索草稿名称或需求"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setSearch(false);
+                        e.stopPropagation();
+                      }
+                    }}
+                  />
+                  {query && (
+                    <button className="button" onClick={() => setQuery("")}>
+                      清除搜索
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {!draft && (
+            <button
+              className="button"
+              disabled={!connected}
+              onClick={() => void create()}
+            >
+              <Icon name="plus" />
+              新建控件
+            </button>
+          )}
+        </div>
+      </div>
+      {model.error && (
+        <p className="error" role="alert">
+          {model.error}
+        </p>
+      )}
+      {draft && local ? (
+        <>
+          <div className="widget-history" aria-label="控件编辑对话">
+            {!tasks.length && (
+              <div className="widget-empty">
+                <Icon name="spark" />
+                <h2>你想做一个什么控件？</h2>
+                <p>描述内容与用法，预览后再保留。</p>
+              </div>
+            )}
+            {tasks.map((t) => (
+              <WidgetTaskCard key={t.id} task={t} model={model} />
+            ))}
+          </div>
+          <div className="widget-input-box">
+            {unsaved?.error && (
+              <div className="error" role="alert">
+                <p>{unsaved.error} 输入保留在本窗口，尚未保存。</p>
+                <button
+                  className="button"
+                  disabled={!connected || !!unsaved.saving}
+                  onClick={() => void model.retry(draft.id)}
+                >
+                  重试保存
+                </button>
+              </div>
+            )}
+            <label className="widget-input-label" htmlFor="widget-requirement">
+              控件需求
+            </label>
+            <textarea
+              id="widget-requirement"
+              aria-label="控件需求"
+              placeholder={
+                draft.widgetId
+                  ? "此控件已保留，新的修改将在后续开放"
+                  : "描述控件，或补充新的需求…"
+              }
+              value={local.input}
+              disabled={!connected}
+              onChange={(e) => model.edit(draft.id, "input", e.target.value)}
+            />
+            <div className="widget-input-footer">
+              <select
+                aria-label="生成使用的模型"
+                value={selectedConnection}
+                disabled={active || !connected}
+                onChange={(e) => setConnection(e.target.value)}
+              >
+                {!connections.length && <option value="">尚无可用模型</option>}
+                {connections.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="button primary"
+                disabled={
+                  !connected ||
+                  active ||
+                  !!draft.widgetId ||
+                  !local.input.trim() ||
+                  !!unsaved?.dirty ||
+                  !selectedConnection
+                }
+                onClick={() => {
+                  const [id, ...rest] = selectedConnection.split("::");
+                  void model.submit(draft.id, id, rest.join("::"));
+                }}
+              >
+                生成控件
+              </button>
+            </div>
+            <div className="widget-save-note" role="status">
+              <span>
+                {unsaved?.error
+                  ? "尚未保存"
+                  : unsaved?.dirty
+                    ? "正在保存…"
+                    : "草稿已保存"}
+              </span>
+              {!connections.length && (
+                <button onClick={openSettings}>设置模型</button>
+              )}
+            </div>
+          </div>
+        </>
+      ) : section === "drafts" ? (
+        <>
+          {!drafts.length ? (
+            <div className="widget-empty">
+              <Icon name="edit" />
+              <h2>还没有控件草稿</h2>
+              <p>每个新控件都有独立草稿，同名也不会覆盖。</p>
+            </div>
+          ) : !filtered.length ? (
+            <div className="widget-empty">
+              <Icon name="search" />
+              <h2>没有匹配的控件草稿</h2>
+              <p>试试其他关键词，或清除搜索条件。</p>
+            </div>
+          ) : (
+            <div className="widget-draft-list">
+              {filtered.map((d) => {
+                const t = snapshot?.widgetGeneration?.tasks
+                  .filter((t) => t.draftId === d.id)
+                  .at(-1);
+                return (
+                  <button
+                    key={d.id}
+                    className="widget-draft-row"
+                    aria-label={`编辑草稿 ${d.id.slice(0, 8)}`}
+                    onClick={() => onSelect(d.id)}
+                  >
+                    <Icon name="grid" />
+                    <span>
+                      <strong>{d.name}</strong>
+                      <small>新建控件 · {d.id.slice(0, 8)}</small>
+                      <p>{d.input || t?.requirement || "尚未输入需求"}</p>
+                    </span>
+                    <small>{t ? generationLabels[t.state] : "未生成"}</small>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (snapshot?.widgetGeneration?.widgets.length ?? 0) ? (
+        <div className="widget-draft-list">
+          {snapshot!.widgetGeneration!.widgets.map((w) => (
+            <article className="widget-saved-card" key={w.id}>
+              <h2>{w.name}</h2>
+              <p>已保留 · 版本 {w.revision}</p>
+              <button
+                className="button"
+                onClick={() => {
+                  const d = snapshot!.widgetGeneration!.drafts.find(
+                    (d) => d.widgetId === w.id,
+                  );
+                  if (d) onSelect(d.id);
+                }}
+              >
+                打开控件
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="widget-empty">
+          <span className="widget-canvas-empty-icon">
+            <Icon name="grid" />
+          </span>
+          <h2>还没有控件</h2>
+          <p>从一个想法开始，创建属于自己的小工具。</p>
+          <button
+            className="button"
+            disabled={!connected}
+            onClick={() => void create()}
+          >
+            新建控件
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}

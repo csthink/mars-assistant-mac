@@ -51,7 +51,7 @@ import {
   textMediaTypes,
   totalMaterialBytes,
 } from "./execution-adapter";
-import { assertClaudePolicy } from "./claude-policy";
+import { assertClaudePolicy, claudeRestrictedSettings } from "./claude-policy";
 import {
   claudeCommand,
   claudeEnvironment,
@@ -132,7 +132,7 @@ export const claudeImplementerPolicy = {
     "--mcp-config",
     '{"mcpServers":{}}',
     "--settings",
-    '{"disableAllHooks":true,"enabledPlugins":{}}',
+    claudeRestrictedSettings,
     "--disable-slash-commands",
     "--no-chrome",
     "--no-session-persistence",

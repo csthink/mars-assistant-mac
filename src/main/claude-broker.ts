@@ -1,3 +1,8 @@
+import {
+  widgetSubmitToolName,
+  widgetToolWireLimit,
+  validWidgetSubmission,
+} from "../shared/widget-generation-tool";
 import { createServer, type Socket } from "node:net";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,12 +13,15 @@ import {
   toolResultLimit,
 } from "../shared/capabilities";
 import type { ToolCall } from "./transport";
+export const claudeWidgetTool =
+  "mcp__csthink_assistant__submit_widget_candidate";
 export const claudeReadTool = "mcp__csthink_assistant__read_material";
 /** Private local channel owned by one product execution. The model never chooses its identity. */
 export async function createClaudeBroker(
   helper: string,
   runTool: (call: ToolCall, signal: AbortSignal) => Promise<string>,
   signal: AbortSignal,
+  generation = false,
 ) {
   const root = await mkdtemp("/private/tmp/csthink-mcp-");
   await chmod(root, 0o700);
@@ -35,7 +43,10 @@ export async function createClaudeBroker(
     let buffer = "";
     socket.on("data", (chunk: string) => {
       buffer += chunk;
-      if (Buffer.byteLength(buffer) > 64 * 1024) {
+      if (
+        Buffer.byteLength(buffer) >
+        (generation ? widgetToolWireLimit : 64 * 1024)
+      ) {
         socket.destroy();
         return;
       }
@@ -51,12 +62,15 @@ export async function createClaudeBroker(
               !active ||
               signal.aborted ||
               !value ||
-              Object.keys(value).sort().join(",") !== "attachmentId,id,token" ||
+              Object.keys(value).sort().join(",") !==
+                (generation ? "id,package,token" : "attachmentId,id,token") ||
               value.token !== token ||
               typeof value.id !== "string" ||
               value.id.length > 200 ||
-              typeof value.attachmentId !== "string" ||
-              !/^[a-zA-Z0-9_-]{1,200}$/.test(value.attachmentId) ||
+              (generation
+                ? !validWidgetSubmission({ package: value.package })
+                : typeof value.attachmentId !== "string" ||
+                  !/^[a-zA-Z0-9_-]{1,200}$/.test(value.attachmentId)) ||
               seen.has(value.id) ||
               ++calls > toolRoundsLimit
             )
@@ -68,10 +82,12 @@ export async function createClaudeBroker(
                 id: randomUUID(),
                 type: "function",
                 function: {
-                  name: readToolName,
-                  arguments: JSON.stringify({
-                    attachmentId: value.attachmentId,
-                  }),
+                  name: generation ? widgetSubmitToolName : readToolName,
+                  arguments: JSON.stringify(
+                    generation
+                      ? { package: value.package }
+                      : { attachmentId: value.attachmentId },
+                  ),
                 },
               },
               signal,
@@ -118,6 +134,7 @@ export async function createClaudeBroker(
             helper,
             path,
             token,
+            ...(generation ? ["generation"] : []),
           ],
         },
       },

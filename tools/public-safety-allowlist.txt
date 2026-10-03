@@ -76,3 +76,8 @@
 ^tests/desktop/runtime-store\.test\.ts:      \["last not final", \[page\(\{ nextPageToken[:] "page:1:1" \}\)\]\],$
 # tests/desktop/runtime-store.test.ts：第二页的游标
 ^tests/desktop/runtime-store\.test\.ts:          nextPageToken[:] "page:2:1",$
+
+# tests/desktop/widget-generation-runner.test.ts：仅发往本机模拟提供方的明确合成密钥
+^tests/desktop/widget-generation-runner\.test\.ts:      apiKey[:] "synthetic-generation-key",$
+# src/main/claude-broker.ts：严格比较允许的字段名列表，token 是字段名而不是凭据值
+^src/main/claude-broker\.ts:                \(generation \? "id,package,token" [:] "attachmentId,id,token"\) \|\|$

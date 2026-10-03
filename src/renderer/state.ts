@@ -29,9 +29,13 @@ export function useBusiness() {
   const [switching, setSwitching] = useState(false);
   const selectionBusy = useRef(false);
   const drafts = useRef(new Map<string, LocalDraft>());
+  const externalDirty = useRef(new Set<string>());
   const [, render] = useReducer((n) => n + 1, 0);
   function refresh() {
-    bridge.reportDirty([...drafts.current.values()].some((d) => d.dirty));
+    bridge.reportDirty(
+      externalDirty.current.size > 0 ||
+        [...drafts.current.values()].some((d) => d.dirty),
+    );
     render();
   }
   function accept(value: Snapshot) {
@@ -216,6 +220,12 @@ export function useBusiness() {
   }
   return {
     snapshot,
+    setExternalDirty(key: string, dirty: boolean) {
+      const before = externalDirty.current.has(key);
+      if (dirty) externalDirty.current.add(key);
+      else externalDirty.current.delete(key);
+      if (before !== dirty) refresh();
+    },
     status,
     actionError,
     clearActionError: () => setActionError(""),

@@ -1,3 +1,13 @@
+import {
+  validWidgetGenerationCommand,
+  validWidgetGenerationHostCommand,
+  type WidgetGenerationCommand,
+  type WidgetGenerationHostCommand,
+  type WidgetGenerationSnapshot,
+  type GenerationContext,
+  type GenerationTask,
+} from "./widget-generation";
+import type { BuiltWidget } from "./widget";
 import type {
   ProjectEvidenceRequest,
   ProjectEvidenceReply,
@@ -684,6 +694,7 @@ export interface MessageAttachment {
   position: number;
 }
 export interface Snapshot {
+  widgetGeneration?: WidgetGenerationSnapshot;
   projects: Project[];
   permissions: Permission[];
   toolOperations: ToolOperation[];
@@ -738,6 +749,7 @@ export interface ConnectionInput {
   clearDefault?: boolean;
 }
 export type Command =
+  | WidgetGenerationCommand
   | ProjectCommand
   | CapabilityCommand
   | {
@@ -882,6 +894,7 @@ export interface TurnAttachment {
 }
 /** Adapter reports from the host process; never accepted from a renderer. */
 export type HostCommand =
+  | WidgetGenerationHostCommand
   | ProjectHostCommand
   | WidgetHostCommand
   | CapabilityHostCommand
@@ -964,6 +977,9 @@ export type Reply =
   | {
       ok: true;
       snapshot: Snapshot;
+      generationContext?: GenerationContext;
+      generationTask?: GenerationTask;
+      generatedBuild?: BuiltWidget;
       widget?: WidgetReply;
       widgetPreview?: WidgetPreview;
       messages?: Message[];
@@ -1021,6 +1037,7 @@ export interface DesktopBridge {
   widgetControl: (command: WidgetControl) => Promise<WidgetUIReply>;
   widgetOcclude: () => void;
   onWidgetStatus: (callback: (signal: WidgetSignal) => void) => () => void;
+  onWidgetVisibility: (callback: (visible: boolean) => void) => () => void;
   onWidgetSearch: (callback: () => void) => () => void;
   detectCodex: () => Promise<CodexStatus>;
   detectClaude: () => Promise<ClaudeStatus>;
@@ -1152,6 +1169,7 @@ export function validConnectionInput(value: unknown): value is ConnectionInput {
   );
 }
 export function validCommand(value: unknown): value is Command {
+  if (validWidgetGenerationCommand(value)) return true;
   if (validProjectCommand(value)) return true;
   if (validCapabilityCommand(value)) return true;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -1356,6 +1374,7 @@ export function validCommand(value: unknown): value is Command {
   );
 }
 export function validHostCommand(value: unknown): value is HostCommand {
+  if (validWidgetGenerationHostCommand(value)) return true;
   if (validProjectHostCommand(value)) return true;
   if (validWidgetHostCommand(value)) return true;
   if (validCapabilityHostCommand(value)) return true;

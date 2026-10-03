@@ -1,3 +1,4 @@
+import { restorePreWidgetGenerationFixture } from "./legacy-codex-schema";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -167,6 +168,7 @@ test("interface preferences: schema 25 data upgrades to 26 with the defaults and
   );
   seed.close();
   const legacy = new DatabaseSync(join(dir, "state.sqlite"));
+  restorePreWidgetGenerationFixture(legacy);
   legacy.exec(
     "ALTER TABLE settings DROP COLUMN interface_preferences; PRAGMA user_version=25",
   );

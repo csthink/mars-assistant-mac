@@ -10,6 +10,7 @@ import type {
   WidgetUIReply,
 } from "../shared/widget-ui";
 import type { WidgetHostCommand, WidgetPreview } from "../shared/widget-store";
+import type { WidgetGenerationHostCommand } from "../shared/widget-generation";
 import type { Reply, Surface } from "../shared/protocol";
 interface PendingInput {
   revision: number;
@@ -40,7 +41,7 @@ export class WidgetHost {
   constructor(
     readonly enabled: boolean,
     private request: (
-      command: WidgetHostCommand,
+      command: WidgetHostCommand | WidgetGenerationHostCommand,
       surface: Surface,
     ) => Promise<Reply>,
   ) {
@@ -122,6 +123,12 @@ export class WidgetHost {
   hasUnconfirmed() {
     return [...this.buffers.values()].some((buffer) => buffer.size > 0);
   }
+  hasUnconfirmedCandidate(candidateId: string) {
+    return (["main", "panel"] as const).some(
+      (surface) =>
+        (this.buffers.get(`${surface}:${candidateId}`)?.size ?? 0) > 0,
+    );
+  }
   private signal(
     identity: WidgetIdentity,
     state: WidgetSignal["state"],
@@ -159,15 +166,17 @@ export class WidgetHost {
     surface: Surface,
     raw: unknown,
   ): Promise<WidgetUIReply> {
-    if (!this.enabled) return { ok: true, enabled: false };
     if (!raw || typeof raw !== "object" || Array.isArray(raw))
       return { ok: false, message: "控件操作无效。" };
     const command = raw as WidgetControl;
+    if (!this.enabled && command.action === "open")
+      return { ok: true, enabled: false };
     const keys = Object.keys(command).sort().join(",");
     if (
       ![
         "status",
         "open",
+        "openGenerated",
         "hide",
         "place",
         "configure",
@@ -181,7 +190,25 @@ export class WidgetHost {
       entry = { token: 0, owner, unconfirmed: new Map() };
       this.entries.set(owner.webContents.id, entry);
       const id = owner.webContents.id;
+      let visible = owner.isVisible();
+      const visibility = () => {
+        const next = owner.isVisible();
+        // macOS also emits hide for occlusion. Only native visibility revokes the preview.
+        if (next === visible) return;
+        visible = next;
+        if (!next) this.occlude(owner);
+        if (!owner.webContents.isDestroyed())
+          owner.webContents.send("widget:visibility", next);
+      };
+      owner.on("hide", visibility);
+      owner.on("show", visibility);
+      owner.on("minimize", visibility);
+      owner.on("restore", visibility);
       owner.once("closed", () => {
+        owner.removeListener("hide", visibility);
+        owner.removeListener("show", visibility);
+        owner.removeListener("minimize", visibility);
+        owner.removeListener("restore", visibility);
         this.entries.delete(id);
       });
     }
@@ -206,7 +233,7 @@ export class WidgetHost {
         );
       } else if (command.action === "draftConfig") {
         if (keys !== "action,field,revision,value" || !entry.preview)
-          throw new Error("测试候选未载入。");
+          throw new Error("控件候选未载入。");
         if (
           !entry.preview.definition.config.some(
             (field) => field.id === command.field,
@@ -242,7 +269,7 @@ export class WidgetHost {
         entry.preview = result.widgetPreview;
       } else if (command.action === "configure") {
         if (keys !== "action,draftRevisions,revision,value" || !entry.preview)
-          throw new Error("测试候选未载入。");
+          throw new Error("控件候选未载入。");
         const result = await this.request(
           {
             type: "widgetConfigure",
@@ -256,7 +283,14 @@ export class WidgetHost {
         if (!result.ok) throw new Error(result.message);
         entry.preview = result.widgetPreview;
       } else {
-        if (keys !== "action") throw new Error("控件操作无效。");
+        if (command.action === "openGenerated") {
+          if (
+            keys !== "action,candidateId" ||
+            typeof command.candidateId !== "string" ||
+            !/^[a-zA-Z0-9-]{1,160}$/.test(command.candidateId)
+          )
+            throw new Error("候选身份无效。");
+        } else if (keys !== "action") throw new Error("控件操作无效。");
         if (command.action === "recover") {
           if ([...entry.unconfirmed.values()].some((input) => input.pending))
             throw new Error("写入尚未结束，请稍后再核对。");
@@ -272,16 +306,40 @@ export class WidgetHost {
           if (!reply.ok) throw new Error(reply.message);
           entry.preview = reply.widgetPreview;
         }
-        if (command.action === "open") {
+        if (command.action === "open" || command.action === "openGenerated") {
           this.occlude(owner);
           const token = entry.token;
-          const built = await compileWidget(widgetFixture);
-          const candidateId = `acceptance-${built.digest}`;
+          const generated =
+            command.action === "openGenerated"
+              ? await this.request(
+                  {
+                    type: "loadGeneratedWidget",
+                    candidateId: command.candidateId,
+                  },
+                  surface,
+                )
+              : undefined;
+          if (generated && (!generated.ok || !generated.generatedBuild))
+            throw new Error(
+              generated.ok ? "候选产物读取失败。" : generated.message,
+            );
+          const built =
+            generated?.ok && generated.generatedBuild
+              ? generated.generatedBuild
+              : await compileWidget(widgetFixture);
+          const candidateId =
+            command.action === "openGenerated"
+              ? command.candidateId
+              : `acceptance-${built.digest}`;
           let reply = await this.request(
             { type: "widgetInspect", candidateId },
             surface,
           );
-          if (!reply.ok && reply.code === "INVALID_COMMAND")
+          if (
+            command.action === "open" &&
+            !reply.ok &&
+            reply.code === "INVALID_COMMAND"
+          )
             reply = await this.request(
               {
                 type: "widgetCreate",

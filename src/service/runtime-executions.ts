@@ -7,6 +7,8 @@
  * creates the business `executions` row (kind agent_execution) the events and pending
  * items hang on; run events stay append-only.
  */
+import { activeModelCount, assertQueueSpace } from "./widget-generation";
+import { generationLimits } from "../shared/widget-generation";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { StoreError } from "./errors";
@@ -214,6 +216,28 @@ export function applyExecutionUpsert(
   )
     throw new StoreError("NOT_FOUND", "执行所属的实例不存在。");
   const existing = readExecution(db, record.executionRef);
+  const occupied = ["reserved", "running", "stopping"];
+  if (
+    occupied.includes(record.state) &&
+    (!existing || !occupied.includes(existing.state))
+  ) {
+    const domain = Number(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM runtime_executions WHERE state IN ('reserved','running','stopping')",
+        )
+        .get()!.n,
+    );
+    if (
+      domain >= generationLimits.domain ||
+      activeModelCount(db) >= generationLimits.active
+    )
+      throw new StoreError(
+        "CONFLICT",
+        "领域执行或全局模型容量已满，执行未接受。",
+      );
+  }
+  if (!existing && record.state === "queued") assertQueueSpace(db);
   if (existing) {
     // The identity of an execution never moves: same instance, operation, business row and request identity.
     if (

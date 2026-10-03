@@ -1,3 +1,6 @@
+import { generationLimits } from "../shared/widget-generation";
+import { assertQueueSpace, activeModelCount } from "./widget-generation";
+import type { WidgetGenerationHostCommand } from "../shared/widget-generation";
 import { validateProjectTurn } from "./project-work";
 import type { RuntimeHostCommand } from "../shared/runtime-host";
 import type { WidgetHostCommand } from "../shared/widget-store";
@@ -228,6 +231,7 @@ export function mutateTurn(
       .get(command.requestId);
     // A retried submission after a lost acknowledgement confirms the recorded turn.
     if (existing) return;
+    assertQueueSpace(db);
     const conversation = db
       .prepare("SELECT id,effort FROM conversations WHERE id=?")
       .get(command.conversationId);
@@ -468,6 +472,7 @@ export function applyHostCommand(
   command: Exclude<
     HostCommand,
     | CapabilityHostCommand
+    | WidgetGenerationHostCommand
     | WidgetHostCommand
     | RuntimeHostCommand
     | { type: "projectCreate" | "projectWork" }
@@ -620,6 +625,8 @@ export function applyHostCommand(
   if (command.type === "beginExecution") {
     if (row.turnId) validateProjectTurn(db, row.turnId);
     if (row.state === "queued") {
+      if (activeModelCount(db) >= generationLimits.active)
+        throw new StoreError("CONFLICT", "执行容量已满，回合继续等待。");
       setState(db, row, "running", now);
       appendEvent(db, row, "started", now);
     } else if (terminal(row.state))

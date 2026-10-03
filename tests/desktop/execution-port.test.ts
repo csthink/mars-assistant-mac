@@ -1178,6 +1178,26 @@ test("cancel: a descendant that escaped into its own session is never signalled 
         ).length,
       1,
     );
+    // A stopping-unconfirmed execution still owns the domain slot. Rejection is before acceptance.
+    await assert.rejects(
+      h.inbound(
+        h.connection,
+        "host.execution.start",
+        startRequest(grant.ref, 15),
+      ),
+      /容量已满/,
+    );
+    assert.equal(h.store.snapshot().runtimeExecutions.length, 1);
+    // This fixture owns the escaped process. Its actual exit, observed by the production watcher,
+    // releases the slot; a request can only be accepted after that confirmation.
+    process.kill(escapedPid, "SIGKILL");
+    await until(
+      () => recordOf(h, ref),
+      (r) => r.state === "stopped",
+      10_000,
+    );
+    escapedPid = 0;
+    assert.equal(openStopItems(h).length, 0);
     // Observer lost: the helper stops answering after the target was released; the exit that follows cannot be confirmed.
     h.fixture.update({ implementer: "hang", implementerEscaped: 0 });
     const second = await h.inbound(
@@ -1460,6 +1480,23 @@ test("stop unconfirmed survives a restart: a new port resumes watching the persi
   survivor.unref();
   let successor: EmbeddedExecutionPort | null = null;
   try {
+    // Build the historical record while capacity is free, then recreate the crashed state below.
+    h.adapter.variant = { argv: ["--version"] };
+    const seeded = await h.inbound(
+      h.connection,
+      "host.execution.start",
+      startRequest((await grantOf(h)).ref, 23),
+    );
+    const seededRef = String(seeded.executionRef);
+    await until(
+      () => ({
+        state: recordOf(h, seededRef).state,
+        live: h.port.activeRefs().length,
+      }),
+      (v) =>
+        ["unknown", "failed", "completed", "stopped"].includes(v.state) &&
+        v.live === 0,
+    );
     const started = await stopUnconfirmedOf(h, 22, 12);
     escapedPid = started.escapedPid;
     const { ref, record } = started;
@@ -1480,22 +1517,6 @@ test("stop unconfirmed survives a restart: a new port resumes watching the persi
       uid: process.getuid!(),
     });
     await once(gone, "exit");
-    h.adapter.variant = { argv: ["--version"] };
-    const seeded = await h.inbound(
-      h.connection,
-      "host.execution.start",
-      startRequest(started.grant.ref, 23),
-    );
-    const seededRef = String(seeded.executionRef);
-    await until(
-      () => ({
-        state: recordOf(h, seededRef).state,
-        live: h.port.activeRefs().length,
-      }),
-      (v) =>
-        ["unknown", "failed", "completed", "stopped"].includes(v.state) &&
-        v.live === 0,
-    );
     const current = recordOf(h, seededRef);
     const crashed: HostExecutionRecord = {
       ...current,

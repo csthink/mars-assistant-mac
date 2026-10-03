@@ -27,7 +27,12 @@ export class ClaudeRpc {
   constructor(
     binary: string,
     args: string[],
-    options: { cwd: string; env: NodeJS.ProcessEnv; signal?: AbortSignal },
+    options: {
+      cwd: string;
+      env: NodeJS.ProcessEnv;
+      signal?: AbortSignal;
+      frameLimit?: number;
+    },
   ) {
     this.process = spawn(binary, args, {
       cwd: options.cwd,
@@ -49,7 +54,9 @@ export class ClaudeRpc {
     this.process.on("close", () => this.fail("closed"));
     this.process.stdout.on("data", (chunk: string) => {
       this.buffer += chunk;
-      if (Buffer.byteLength(this.buffer) > 4 * 1024 * 1024) {
+      if (
+        Buffer.byteLength(this.buffer) > (options.frameLimit ?? 4 * 1024 * 1024)
+      ) {
         this.fail("malformed");
         void this.close();
         return;

@@ -2,6 +2,7 @@ import type { WidgetPreview } from "./widget-store";
 export type WidgetControl =
   | { action: "draftConfig"; field: string; revision: number; value: string }
   | { action: "status" | "open" | "hide" | "recover" }
+  | { action: "openGenerated"; candidateId: string }
   | {
       action: "place";
       generation: string;

@@ -1,6 +1,14 @@
+import {
+  widgetSubmitToolName,
+  widgetSubmitParameters,
+  widgetToolWireLimit,
+  validWidgetSubmission,
+} from "../shared/widget-generation-tool";
 /** Product-owned MCP process. The launcher clears its environment before execution. */
 import { connect } from "node:net";
-const [socketPath, token] = process.argv.slice(2);
+const [socketPath, token, mode] = process.argv.slice(2);
+const generation = mode === "generation";
+const wireLimit = generation ? widgetToolWireLimit : 64 * 1024;
 if (!socketPath || !token) process.exit(2);
 const socket = connect(socketPath);
 let buffer = "";
@@ -12,7 +20,14 @@ function send(id: unknown, result: unknown) {
 function error(id: unknown) {
   send(id, {
     isError: true,
-    content: [{ type: "text", text: "资料读取未获准或已取消。" }],
+    content: [
+      {
+        type: "text",
+        text: generation
+          ? "控件候选未通过校验或已取消。"
+          : "资料读取未获准或已取消。",
+      },
+    ],
   });
 }
 socket.setEncoding("utf8");
@@ -39,7 +54,7 @@ socket.on("data", (chunk: string) => {
   }
 });
 function receive(line: string) {
-  if (Buffer.byteLength(line) > 64 * 1024) process.exit(1);
+  if (Buffer.byteLength(line) > wireLimit) process.exit(1);
   try {
     const message = JSON.parse(line);
     if (message.method === "initialize")
@@ -52,26 +67,32 @@ function receive(line: string) {
       send(message.id, {
         tools: [
           {
-            name: "read_material",
-            description:
-              "Read a selected material by its attachment identity, subject to user permission.",
-            inputSchema: {
-              type: "object",
-              properties: { attachmentId: { type: "string" } },
-              required: ["attachmentId"],
-              additionalProperties: false,
-            },
+            name: generation ? widgetSubmitToolName : "read_material",
+            description: generation
+              ? "Submit a generated widget package for product validation, never retain automatically."
+              : "Read a selected material by its attachment identity, subject to user permission.",
+            inputSchema: generation
+              ? widgetSubmitParameters
+              : {
+                  type: "object",
+                  properties: { attachmentId: { type: "string" } },
+                  required: ["attachmentId"],
+                  additionalProperties: false,
+                },
           },
         ],
       });
     else if (message.method === "tools/call") {
       const args = message.params?.arguments;
       if (
-        message.params?.name !== "read_material" ||
+        message.params?.name !==
+          (generation ? widgetSubmitToolName : "read_material") ||
         !args ||
-        Object.keys(args).join(",") !== "attachmentId" ||
-        typeof args.attachmentId !== "string" ||
-        args.attachmentId.length > 200 ||
+        (generation
+          ? !validWidgetSubmission(args)
+          : Object.keys(args).join(",") !== "attachmentId" ||
+            typeof args.attachmentId !== "string" ||
+            args.attachmentId.length > 200) ||
         ++count > 16
       )
         return error(message.id);
@@ -79,7 +100,13 @@ function receive(line: string) {
       if (pending.has(id)) return error(message.id);
       pending.set(id, message.id);
       socket.write(
-        JSON.stringify({ id, token, attachmentId: args.attachmentId }) + "\n",
+        JSON.stringify({
+          id,
+          token,
+          ...(generation
+            ? { package: args.package }
+            : { attachmentId: args.attachmentId }),
+        }) + "\n",
       );
     } else if (message.id != null)
       process.stdout.write(
@@ -97,7 +124,7 @@ let inputBuffer = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk: string) => {
   inputBuffer += chunk;
-  if (Buffer.byteLength(inputBuffer) > 64 * 1024) process.exit(1);
+  if (Buffer.byteLength(inputBuffer) > wireLimit) process.exit(1);
   let end: number;
   while ((end = inputBuffer.indexOf("\n")) >= 0) {
     const line = inputBuffer.slice(0, end);

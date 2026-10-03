@@ -1,3 +1,9 @@
+import { generationLimits } from "../shared/widget-generation";
+import {
+  WidgetGenerationRunner,
+  runApiWidgetGeneration,
+  type GenerationExecution,
+} from "./widget-generation";
 import { ProjectEvidence } from "./project-evidence";
 import { validProjectEvidenceRequest } from "../shared/project-evidence";
 import { ProjectActions } from "./project-actions";
@@ -397,6 +403,68 @@ let vault: Vault | undefined;
 const pendingRefs = new Map<string, NodeJS.Timeout>();
 // In-flight host executions; a stop command aborts the matching request.
 const inflight = new Map<string, AbortController>();
+const widgetGenerationRunner = new WidgetGenerationRunner(
+  (command) => report(command),
+  runGeneratedWidget,
+  () => {
+    if (snapshot && !quitting) launchQueuedTurns(snapshot);
+  },
+);
+async function runGeneratedWidget(options: GenerationExecution) {
+  const connection = options.connection;
+  if (connection.provider === "claude") {
+    if (!connection.claude) throw new Error("Claude Code连接尚未确认。");
+    await claudeConnector.run({
+      model: connection.model,
+      configuration: connection.claude,
+      messages: options.messages,
+      signal: options.signal,
+      onDelta: options.onDelta,
+      invoke: options.invoke,
+      generation: true,
+      budget: 640000,
+      effort: options.task.connection.effort,
+      onSession: async () => {},
+    });
+    return;
+  }
+  if (connection.provider === "codex") {
+    if (!connection.codex) throw new Error("Codex连接尚未确认。");
+    const native = await codexConnector.openApproved(
+      connection.model,
+      connection.codex,
+      "generation",
+      undefined,
+      options.task.connection.effort,
+    );
+    try {
+      await runCodexTurn({
+        rpc: native.rpc,
+        thread: native.thread,
+        messages: options.messages,
+        signal: options.signal,
+        onDelta: options.onDelta,
+        invoke: options.invoke,
+        generation: true,
+        budget: 640000,
+      });
+    } finally {
+      await native.rpc.close();
+    }
+    return;
+  }
+  if (!connection.secretRef || !vault?.has(connection.secretRef))
+    throw new Error("该连接没有已保存的API key。");
+  await runApiWidgetGeneration(
+    {
+      baseUrl: connection.baseUrl,
+      model: connection.model,
+      apiKey: vault.read(connection.secretRef),
+    },
+    options,
+  );
+}
+
 const stopTimeoutMs = 5000;
 const pending = new Map<
   number,
@@ -565,9 +633,23 @@ function adoptSnapshot(next: Snapshot, startup = false) {
 }
 /** Every queued turn visible in a committed snapshot is started exactly once by this process. */
 function launchQueuedTurns(value: Snapshot) {
-  for (const turn of value.activeTurns)
+  if (quitting || !status.connected) return;
+  const domain = value.runtimeExecutions.filter((e) =>
+    ["reserved", "running", "stopping"].includes(e.state),
+  ).length;
+  const generationWaiting =
+    !widgetGenerationRunner.active &&
+    value.widgetGeneration?.tasks.some((t) => t.state === "queued");
+  for (const turn of value.activeTurns) {
+    if (
+      inflight.size + widgetGenerationRunner.active + domain >=
+      generationLimits.active - (generationWaiting ? 1 : 0)
+    )
+      break;
     if (turn.state === "queued" && !inflight.has(turn.executionId))
       void runTurn(turn.executionId, turn.connection.connectionId);
+  }
+  widgetGenerationRunner.adopt(value, inflight.size + domain);
 }
 /** Runs one turn: context and secret are read for this single request; deltas are batched back. */
 async function runTurn(executionId: string, connectionId: string) {
@@ -890,6 +972,7 @@ async function runTurn(executionId: string, connectionId: string) {
   } finally {
     clearTimeout(flushTimer);
     inflight.delete(executionId);
+    if (snapshot && !quitting) launchQueuedTurns(snapshot);
   }
 }
 /** Aborts an in-flight execution and leaves a trace if the abort is not confirmed in time. */
@@ -1485,6 +1568,9 @@ async function quit() {
     [...windows.values()].some((entry) => entry.dirty) ||
     widgetHost?.hasUnconfirmed();
   const active = snapshot?.activeTurns ?? [];
+  const generation = (snapshot?.widgetGeneration?.tasks ?? []).filter((t) =>
+    ["queued", "running", "stopping"].includes(t.state),
+  );
   const checks = Math.max(inflight.size - active.length, 0);
   const agents = executionPort.activeRefs().length;
   const lingering = (snapshot?.runtimeExecutions ?? []).filter(
@@ -1493,13 +1579,21 @@ async function quit() {
       r.stopUnconfirmed !== null &&
       r.stopUnconfirmed.resolvedAt === null,
   ).length;
-  const running = active.length > 0 || inflight.size > 0 || agents > 0;
+  const running =
+    active.length > 0 ||
+    inflight.size > 0 ||
+    agents > 0 ||
+    generation.length > 0;
   if (dirty || running || lingering > 0) {
     confirmingQuit = true;
     const details: string[] = [];
     if (active.length > 0)
       details.push(
         `${active.length} 个回答正在生成。退出会停止它，下次回到这个对话可以重新提问。`,
+      );
+    if (generation.length)
+      details.push(
+        `${generation.length} 个控件生成任务正在等待或执行。退出会停止它们，已保存的需求和部分结果保留，下次启动不会自动发送。`,
       );
     if (checks > 0)
       details.push(`${checks} 个连接检查正在进行，退出会停止它。`);
@@ -1511,7 +1605,7 @@ async function quit() {
       details.push(
         `${lingering} 个已取消执行启动的进程还没退出。Assistant 不会强行结束它，退出后它可能继续运行；下次启动会继续检查，直到它退出。`,
       );
-    if (active.length > 0 || checks > 0)
+    if (active.length > 0 || checks > 0 || generation.length > 0)
       details.push(
         `停止后最多等 ${stopTimeoutMs / 1000} 秒，没有确认停止的记为已中断。`,
       );
@@ -1571,6 +1665,17 @@ async function quit() {
 }
 /** Requests a stop for every open execution and waits for confirmation or the grace period. */
 async function stopEverything() {
+  await Promise.all(
+    (snapshot?.widgetGeneration?.tasks ?? [])
+      .filter(
+        (t) =>
+          !["completed", "stopped", "failed", "interrupted"].includes(t.state),
+      )
+      .map((t) =>
+        request({ type: "stopWidgetGeneration", taskId: t.id }, "main"),
+      ),
+  );
+  await widgetGenerationRunner.stop();
   const ids = new Set<string>([
     ...inflight.keys(),
     ...(snapshot?.activeTurns ?? []).map((turn) => turn.executionId),
@@ -1935,6 +2040,15 @@ if (!instance) {
           ok: false,
           code: "CONFLICT",
           message: "有入口的输入尚未保存，请先处理保存状态。",
+        };
+      if (
+        command.type === "retainWidgetCandidate" &&
+        widgetHost?.hasUnconfirmedCandidate(command.candidateId)
+      )
+        return {
+          ok: false,
+          code: "CONFLICT",
+          message: "控件输入尚未确认保存，请先处理保存状态。",
         };
       const reply = await request(command, entry.surface);
       // The business service records "stopping" first; only then does the host abort the request.

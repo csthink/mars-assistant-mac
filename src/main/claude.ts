@@ -1,5 +1,9 @@
 import { dirname } from "node:path";
-import { assertClaudePolicy, assertClaudeAccountPolicy } from "./claude-policy";
+import {
+  assertClaudePolicy,
+  assertClaudeAccountPolicy,
+  claudeRestrictedSettings,
+} from "./claude-policy";
 import { TransportError } from "./transport";
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -34,7 +38,7 @@ export function claudeInspectionArgs() {
     "--mcp-config",
     '{"mcpServers":{}}',
     "--settings",
-    '{"disableAllHooks":true,"enabledPlugins":{}}',
+    claudeRestrictedSettings,
     "--disable-slash-commands",
     "--no-chrome",
     "--no-session-persistence",

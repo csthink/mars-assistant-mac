@@ -828,15 +828,19 @@ const projectPages: View[] = [
       await page.keyboard.press("Escape");
       await expect(page.locator(".project-form-dialog")).toHaveCount(0);
       await goTo(page, "控件");
+      const icon = page.locator(".widget-canvas-empty-icon");
+      await expect(icon).toBeVisible();
+      await expect(icon).toHaveCSS("width", "56px");
+      await expect(icon).toHaveCSS("height", "56px");
+      await expect(icon).toHaveCSS("border-radius", "16px");
     },
     probes: [
       ...shellProbes,
       ...selectedNav,
-      [".empty-icon", "background-color", surface],
-      [".empty-icon", "border-top-color", line],
-      [".empty-icon", "color", muted],
-      [".empty h2", "color", text],
-      [".empty p", "color", muted],
+      [".widget-canvas-empty-icon", "background-color", "var(--c-accent-soft)"],
+      [".widget-canvas-empty-icon", "color", accent],
+      [".widget-empty h2", "color", text],
+      [".widget-empty p", "color", muted],
     ],
   },
   {

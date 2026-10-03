@@ -500,3 +500,55 @@ test("claude: API errors preserve classification without exposing diagnostics as
     f.clean();
   }
 });
+
+test("claude: generated package travels only through the product widget MCP with independent session identity", async () => {
+  const f = fixture();
+  try {
+    const setup = await f.connector.prepare();
+    f.update({ mode: "widget" });
+    let calls = 0;
+    const sessions = new Set<string>();
+    await f.connector.run({
+      ...setup,
+      generation: true,
+      messages: [{ role: "user", content: "Synthetic widget" }],
+      signal: new AbortController().signal,
+      budget: 10000,
+      onDelta: () => {},
+      onSession: async (r) => {
+        sessions.add(r.threadId);
+      },
+      invoke: async (call) => {
+        calls++;
+        assert.equal(call.function.name, "submit_widget_candidate");
+        assert.deepEqual(JSON.parse(call.function.arguments), {
+          package: "{}",
+        });
+        return JSON.stringify({ status: "accepted", retained: false });
+      },
+    });
+    assert.equal(calls, 1);
+    assert.equal(sessions.size, 1);
+    assert.match(readFileSync(f.calls, "utf8"), /submit_widget_candidate/);
+  } finally {
+    f.clean();
+  }
+});
+
+test("claude: observed built-in plugins are disabled while an unknown loaded plugin still prevents preparation", async () => {
+  const f = fixture();
+  try {
+    const known = [
+      "cc-plugin-agents-md@builtin",
+      "cc-plugin-plugin-authoring@builtin",
+    ];
+    f.update({ builtinPlugins: known });
+    const prepared = await f.connector.prepare();
+    assert.equal(prepared.model, "claude-synthetic[1m]");
+    assert.deepEqual(await f.connector.accept(prepared.token), prepared);
+    f.update({ builtinPlugins: [...known, "unexpected-plugin@builtin"] });
+    await assert.rejects(f.connector.prepare(), /工具限制验证/);
+  } finally {
+    f.clean();
+  }
+});

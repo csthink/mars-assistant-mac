@@ -8,6 +8,9 @@ import { PendingPage } from "./pending-page";
 import { RecordsPage } from "./record-page";
 import "./record-pages.css";
 import { WidgetWorkspace } from "./widgets";
+import { useWidgetDrafts } from "./widget-drafts";
+import { WidgetCandidatePanel } from "./widget-candidate";
+import { WidgetStudio, WidgetTaskCard } from "./widget-studio";
 import { Projects } from "./projects";
 import { useProjectSidebar } from "./project-sidebar";
 import {
@@ -114,6 +117,31 @@ function RefreshControl({
 function App() {
   const model = useBusiness();
   const { snapshot, status } = model;
+  const widgetDrafts = useWidgetDrafts(snapshot, model.setExternalDirty);
+  const widgetSelected =
+    snapshot?.widgetGeneration?.selected?.[window.desktop.surface] ?? undefined;
+  const [widgetSection, setWidgetSection] = useState<"widgets" | "drafts">(
+    "widgets",
+  );
+  async function selectWidget(id?: string) {
+    const saved = await widgetDrafts.command({
+      type: "selectWidgetDraft",
+      id: id ?? null,
+    });
+    if (saved) setRightOpen(!!id);
+  }
+  async function openWidget(id: string) {
+    await go("widgets");
+    setWidgetSection("drafts");
+    selectWidget(id);
+  }
+  async function newWidgetFromChat() {
+    const id = await widgetDrafts.create(current?.id ?? null);
+    if (id) await openWidget(id);
+  }
+  const widgetEditor = snapshot?.widgetGeneration?.drafts.find(
+    (d) => d.id === widgetSelected,
+  );
   const projectProjections = useProjectProjections(snapshot, status.connected);
   const [pendingScopeId, setPendingScopeId] = useState<string>("all");
   const [recordScopeId, setRecordScopeId] = useState<string>("all");
@@ -190,6 +218,9 @@ function App() {
   const width = useWindowWidth();
   const overlayOpen = useOverlayOpen();
   const [rightOpen, setRightOpen] = useState(false);
+  useEffect(() => {
+    if (view === "widgets" && widgetSelected) setRightOpen(true);
+  }, [view, widgetSelected]);
   const [projectAvailable, setProjectAvailable] = useState(false);
   const [projectFull, setProjectFull] = useState(false);
   const [projectPanelHost, setProjectPanelHost] =
@@ -259,6 +290,7 @@ function App() {
   const rightAvailable =
     !panel &&
     (view === "chat" ||
+      (view === "widgets" && !!widgetEditor) ||
       (["projects", "pending", "records"].includes(view) && projectAvailable));
   const effectiveRight = rightOpen && rightAvailable;
   const layout = columnLayout({
@@ -274,7 +306,16 @@ function App() {
   useEffect(() => {
     if (!effectiveRight && takeover) setTakeover(false);
   }, [effectiveRight, takeover]);
-  function go(target: MainView, scope = "all") {
+  async function go(target: MainView, scope = "all") {
+    if (
+      view === "widgets" &&
+      widgetSelected &&
+      target !== "widgets" &&
+      !(await widgetDrafts.confirmed(widgetSelected))
+    ) {
+      setNotice("控件草稿尚未确认保存。输入已保留，请先重试保存。");
+      return;
+    }
     if (target === "pending") setPendingScopeId(scope);
     if (target === "records") setRecordScopeId(scope);
     if (panel) {
@@ -1251,7 +1292,8 @@ function App() {
                     className="suggestion"
                     disabled={!status.connected || model.switching}
                     onClick={() => {
-                      void suggestion(value);
+                      if (index === 3 && !panel) void newWidgetFromChat();
+                      else void suggestion(value);
                     }}
                   >
                     <Icon name={["spark", "edit", "list", "grid"][index]} />
@@ -1277,6 +1319,27 @@ function App() {
             </div>
           )}
         </div>
+        {!panel && current && (
+          <div className="widget-source-tasks">
+            {(snapshot?.widgetGeneration?.tasks ?? [])
+              .filter(
+                (t) =>
+                  snapshot?.widgetGeneration?.drafts.find(
+                    (d) => d.id === t.draftId,
+                  )?.sourceConversationId === current.id,
+              )
+              .map((task) => (
+                <WidgetTaskCard
+                  key={task.id}
+                  task={task}
+                  model={widgetDrafts}
+                  onOpen={() => {
+                    void openWidget(task.draftId);
+                  }}
+                />
+              ))}
+          </div>
+        )}
         {composer}
       </div>
     );
@@ -1286,34 +1349,46 @@ function App() {
    * state names the page the person is on.
    */
   function widgetsContent(title: string, detail?: string) {
-    return (
-      <div className="page">
-        <div className="page-heading">
-          <div>
+    if (panel || window.desktop.widgetEnabled)
+      return (
+        <div className="page">
+          <div className="page-heading">
             <h1 tabIndex={-1} data-center-title>
               {title}
             </h1>
             {detail && <p>{detail}</p>}
           </div>
-          <button className="button" disabled title="控件生成尚未开放">
-            <Icon name="plus" />
-            添加控件
-          </button>
+          {window.desktop.widgetEnabled ? (
+            <WidgetWorkspace
+              occluded={searchOpen || overlayOpen || overlay}
+              connected={status.connected}
+            />
+          ) : (
+            emptyPage(
+              "工作台还是空的",
+              "在主窗口创建控件，保留后可在工作台查看。",
+              "grid",
+              {
+                label: "打开主窗口",
+                run: () => {
+                  void window.desktop.openMain();
+                },
+              },
+            )
+          )}
         </div>
-        {window.desktop.widgetEnabled ? (
-          <WidgetWorkspace
-            occluded={searchOpen || overlayOpen || overlay}
-            connected={status.connected}
-          />
-        ) : (
-          emptyPage(
-            title === "控件" ? "还没有控件" : "工作台还是空的",
-            "从一个想法开始。控件生成开放后，你可以在聊天中创建自己的工具。",
-            "grid",
-            { label: "到聊天记录想法", run: () => go("chat") },
-          )
-        )}
-      </div>
+      );
+    return (
+      <WidgetStudio
+        snapshot={snapshot}
+        connected={status.connected}
+        model={widgetDrafts}
+        selected={widgetSelected}
+        section={widgetSection}
+        onSelect={selectWidget}
+        onSection={setWidgetSection}
+        openSettings={() => openSettings("模型")}
+      />
     );
   }
   function projectsContent() {
@@ -1942,6 +2017,17 @@ function App() {
               )}
             </CenterHeader>
           )}
+          {view === "widgets" && widgetEditor && (
+            <CenterHeader
+              rightOpen={effectiveRight}
+              toggle={panelToggle}
+              onToggle={toggleRight}
+            >
+              <h1 className="center-heading" tabIndex={-1} data-center-title>
+                控件编辑
+              </h1>
+            </CenterHeader>
+          )}
           {view === "archived" && (
             <CenterHeader panelToggle={false}>
               <h1 className="center-heading" tabIndex={-1} data-center-title>
@@ -1974,6 +2060,59 @@ function App() {
                 name: "事件",
                 icon: "activity",
                 body: <ConversationEvents source={panelSource} />,
+              },
+            ]}
+            layout={layout}
+            width={layout.right}
+            panelRef={rightPanel}
+            takeoverButton={takeoverButton}
+            onWidth={(value) => {
+              void savePreference(
+                "rightPanelWidth",
+                value === null ? null : Math.round(value),
+              );
+            }}
+            onPreview={setDragWidth}
+            onTakeover={() => setTakeover(!layout.takeover)}
+            onClose={closeRight}
+          />
+        )}
+        {effectiveRight && view === "widgets" && widgetEditor && (
+          <RightPanel
+            owner={`${widgetEditor.name} · 控件`}
+            tabs={[
+              {
+                id: "preview",
+                name: "预览",
+                icon: "grid",
+                body: (
+                  <WidgetCandidatePanel
+                    key={widgetEditor.id}
+                    snapshot={snapshot!}
+                    draft={widgetEditor}
+                    model={widgetDrafts}
+                    connected={status.connected}
+                    occluded={searchOpen || overlayOpen || overlay}
+                  />
+                ),
+              },
+              {
+                id: "events",
+                name: "事件",
+                icon: "activity",
+                body: (
+                  <div className="widget-history">
+                    {(snapshot?.widgetGeneration?.tasks ?? [])
+                      .filter((t) => t.draftId === widgetEditor.id)
+                      .map((task) => (
+                        <WidgetTaskCard
+                          key={task.id}
+                          task={task}
+                          model={widgetDrafts}
+                        />
+                      ))}
+                  </div>
+                ),
               },
             ]}
             layout={layout}

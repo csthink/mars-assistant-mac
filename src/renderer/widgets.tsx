@@ -5,15 +5,23 @@ import "./widgets.css";
 export function WidgetWorkspace({
   occluded,
   connected,
+  candidateId,
+  retained = false,
+  onUnconfirmed,
 }: {
   occluded: boolean;
   connected: boolean;
+  candidateId?: string;
+  retained?: boolean;
+  onUnconfirmed?: (value: boolean) => void;
 }) {
   const [preview, setPreview] = useState<WidgetPreview>();
   const [generation, setGeneration] = useState<string>();
-  const [wanted, setWanted] = useState(false);
+  const [wanted, setWanted] = useState(!!candidateId);
   const [settings, setSettings] = useState(false);
   const [visible, setVisible] = useState(true);
+  const ownerVisible = useRef(true);
+  const [ownerVisibilityRevision, reviseOwnerVisibility] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(
     "关闭预览后，再次打开会读取已确认内容。",
@@ -97,6 +105,9 @@ export function WidgetWorkspace({
   const draftPending = Object.values(drafts.current).some(
     (draft) => draft.saving || draft.error || draft.text !== draft.confirmed,
   );
+  useEffect(() => {
+    onUnconfirmed?.(unconfirmed || draftPending);
+  }, [unconfirmed, draftPending, onUnconfirmed]);
   const frame = useRef<HTMLDivElement>(null);
   const current = useRef<string | undefined>(undefined);
   const opening = useRef(false);
@@ -104,12 +115,16 @@ export function WidgetWorkspace({
   const latest = useRef({ wanted, settings, occluded, visible });
   latest.current = { wanted, settings, occluded, visible };
   async function open() {
-    if (opening.current || !connected) return;
+    if (opening.current || !connected || !ownerVisible.current) return;
     const id = ++serial.current;
     opening.current = true;
     setBusy(true);
     setFailed(false);
-    const reply = await window.desktop.widgetControl({ action: "open" });
+    const reply = await window.desktop.widgetControl(
+      candidateId
+        ? { action: "openGenerated", candidateId }
+        : { action: "open" },
+    );
     if (id !== serial.current) return;
     opening.current = false;
     setBusy(false);
@@ -151,17 +166,26 @@ export function WidgetWorkspace({
       }
       if (signal.state === "stopped") setWanted(false);
     });
+    const offVisibility = window.desktop.onWidgetVisibility((shown) => {
+      ownerVisible.current = shown;
+      // Hidden renderers may suspend animation frames and coalesce visibility changes.
+      // Revoke immediately and preserve a transition even after a rapid hide/show pair.
+      if (!shown) hide();
+      reviseOwnerVisibility((revision) => revision + 1);
+    });
     return () => {
       off();
+      offVisibility();
       serial.current++;
       window.desktop.widgetOcclude();
     };
   }, []);
   useEffect(() => {
-    if (wanted && !settings && !occluded && visible) void open();
-    else hide();
+    if (wanted && !settings && !occluded && visible && ownerVisible.current) {
+      if (!current.current) void open();
+    } else hide();
     // These transitions are the trusted visibility contract, not widget messages.
-  }, [wanted, settings, occluded, visible]);
+  }, [wanted, settings, occluded, visible, ownerVisibilityRevision]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
@@ -170,7 +194,9 @@ export function WidgetWorkspace({
       scheduled = 0;
       if (!element) return;
       const bounds = element.getBoundingClientRect();
-      const viewport = element.closest(".viewport")!.getBoundingClientRect();
+      const viewport = (
+        element.closest(".viewport, .right-panel") ?? element.parentElement!
+      ).getBoundingClientRect();
       const x = Math.max(bounds.left, viewport.left),
         y = Math.max(bounds.top, viewport.top);
       const width = Math.min(bounds.right, viewport.right) - x;
@@ -252,17 +278,28 @@ export function WidgetWorkspace({
     <section
       className="widget-shell"
       data-widget-shell
-      aria-label="测试候选预览"
+      aria-label={candidateId ? "控件预览" : "测试候选预览"}
     >
       <div className="widget-heading">
         <div>
           <h2>
-            本地便笺 <span className="widget-source">测试候选</span>
+            {candidateId
+              ? (preview?.definition.name ?? "控件预览")
+              : "本地便笺"}{" "}
+            <span className="widget-source">
+              {candidateId ? (retained ? "已保留" : "候选预览") : "测试候选"}
+            </span>
           </h2>
-          <p>本地验收内容，尚未接入模型生成。</p>
+          <p>
+            {candidateId
+              ? retained
+                ? "配置和输入按此控件身份保存。"
+                : "检查实际效果后，再决定是否保留。"
+              : "本地验收内容，尚未接入模型生成。"}
+          </p>
         </div>
         <div className="widget-actions">
-          {preview && (
+          {!!preview?.definition.config.length && (
             <button
               className="button"
               onClick={() => {
@@ -365,10 +402,14 @@ export function WidgetWorkspace({
             <div className="widget-placeholder">
               <p>
                 {busy
-                  ? "正在载入测试候选…"
+                  ? candidateId
+                    ? "正在载入控件…"
+                    : "正在载入测试候选…"
                   : preview
                     ? "预览已收起"
-                    : "打开便笺，试试输入、保存和重新打开。"}
+                    : candidateId
+                      ? "打开候选，检查实际效果。"
+                      : "打开便笺，试试输入、保存和重新打开。"}
               </p>
               <button
                 className="button primary"
@@ -378,7 +419,11 @@ export function WidgetWorkspace({
                   if (wanted) void open();
                 }}
               >
-                {preview ? "重新打开预览" : "载入测试候选"}
+                {preview
+                  ? "重新打开预览"
+                  : candidateId
+                    ? "打开控件预览"
+                    : "载入测试候选"}
               </button>
             </div>
           )}

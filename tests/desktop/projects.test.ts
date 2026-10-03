@@ -1,3 +1,4 @@
+import { restorePreWidgetGenerationFixture } from "./legacy-codex-schema";
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -473,6 +474,7 @@ test("projects: schema 23 migration preserves conversations and creates a comple
   const before = f.store.snapshot().conversations;
   f.store.close();
   const legacy = new DatabaseSync(join(f.data, "state.sqlite"));
+  restorePreWidgetGenerationFixture(legacy);
   legacy.exec(
     "DROP TABLE project_turn_contexts; DROP TABLE project_chats; DROP TABLE project_runtime; DROP TABLE project_events; DROP TABLE project_undo; DROP TABLE projects; PRAGMA user_version=23",
   );
@@ -483,7 +485,7 @@ test("projects: schema 23 migration preserves conversations and creates a comple
     assert.deepEqual(migrated.snapshot().projects, []);
     assert.equal(
       migrated.db.prepare("PRAGMA user_version").get()?.user_version,
-      28,
+      30,
     );
     const backup = readdirSync(dirname(f.data)).find((name) =>
       name.startsWith(basename(f.data) + "-schema-23-backup-"),
@@ -539,6 +541,7 @@ test("projects: organization migration preserves old identities and rolls back a
     .projects.find((project) => project.id === id)!;
   f.store.close();
   const legacy = new DatabaseSync(join(f.data, "state.sqlite"));
+  restorePreWidgetGenerationFixture(legacy);
   legacy.exec(
     "DROP TABLE project_order; ALTER TABLE projects DROP COLUMN pinned_at; PRAGMA user_version=27",
   );
@@ -592,7 +595,7 @@ test("projects: organization migration preserves old identities and rolls back a
     assert.equal(project.pinnedAt, null);
     assert.equal(
       reopened.db.prepare("PRAGMA user_version").get()?.user_version,
-      28,
+      30,
     );
     reopened.close();
     const migrated = new DatabaseSync(join(f.data, "state.sqlite"));
