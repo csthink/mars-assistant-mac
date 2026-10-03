@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { widgetRealAuthorization } from "./real-widget-authorization";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -744,4 +745,62 @@ test("widget generation: a failed attempt candidate cannot be retained after a l
   } finally {
     s.close();
   }
+});
+
+test("widget generation real authorization accepts explicit subsets and rejects missing, duplicate or excess scope before execution", () => {
+  const a = {
+    task: "mac-feature-t9",
+    authorized: true,
+    maxTurns: 18,
+    root: resolve(".test-data/disposable/authorized-root"),
+    evidence: resolve(".test-data/disposable/authorized-evidence"),
+    selections: [
+      { provider: "codex", connectionId: "local-codex", model: "gpt-5.6-luna" },
+      {
+        provider: "claude",
+        connectionId: "local-claude",
+        model: "claude-sonnet-5-5",
+      },
+      {
+        provider: "deepseek",
+        connectionId: "local-api",
+        model: "deepseek-flash",
+      },
+    ],
+    deferredProviders: ["zhipu", "openrouter", "siliconflow"],
+  };
+  assert.equal(widgetRealAuthorization(a, "1"), a);
+  for (const changed of [
+    null,
+    {},
+    { ...a, authorized: false },
+    { ...a, task: "other" },
+    { ...a, maxTurns: 36 },
+    { ...a, maxTurns: 17 },
+    { ...a, root: "relative" },
+    { ...a, evidence: a.root },
+    { ...a, selections: [] },
+    { ...a, selections: [...a.selections.slice(0, 2), a.selections[0]] },
+    { ...a, selections: a.selections.map((s) => ({ ...s, model: "" })) },
+    { ...a, deferredProviders: [] },
+    { ...a, deferredProviders: ["zhipu", "openrouter", "codex"] },
+    { ...a, deferredProviders: ["zhipu", "openrouter", "unknown"] },
+  ])
+    assert.throws(() => widgetRealAuthorization(changed, "1"), /NOT RUN/);
+  assert.throws(() => widgetRealAuthorization(a, undefined), /NOT RUN/);
+  assert.throws(() => widgetRealAuthorization(a, "0"), /NOT RUN/);
+  const full = {
+    ...a,
+    maxTurns: 36,
+    deferredProviders: [],
+    selections: [
+      ...a.selections,
+      ...a.deferredProviders.map((provider) => ({
+        provider,
+        connectionId: provider,
+        model: "explicit-model",
+      })),
+    ],
+  };
+  assert.equal(widgetRealAuthorization(full, "1"), full);
 });

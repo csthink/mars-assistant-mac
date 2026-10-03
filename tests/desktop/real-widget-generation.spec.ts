@@ -12,14 +12,10 @@ import { launchReal, shutdownReal, type RealClient } from "./real-client";
 import { goTo } from "./shell";
 import type { Command, Snapshot } from "../../src/shared/protocol";
 
-const required = [
-  "codex",
-  "claude",
-  "zhipu",
-  "deepseek",
-  "openrouter",
-  "siliconflow",
-] as const;
+import {
+  widgetRealAuthorization,
+  type WidgetRealAuthorization,
+} from "./real-widget-authorization";
 const inputs = [
   {
     group: "A",
@@ -40,43 +36,17 @@ const inputs = [
     foreground: "用一句话解释事务。",
   },
 ] as const;
-interface Selection {
-  provider: (typeof required)[number];
-  connectionId: string;
-  model: string;
-}
-interface Authorization {
-  task: string;
-  authorized: boolean;
-  maxTurns: 36;
-  root: string;
-  evidence: string;
-  selections: Selection[];
-}
 // Explicit private authorization file only. No defaults, no secrets, no model discovery calls.
-function authorization(): Authorization {
+function authorization(): WidgetRealAuthorization {
   const path = process.env.CSTHINK_WIDGET_REAL_AUTHORIZATION;
   if (!path || !isAbsolute(path) || !existsSync(path))
     throw new Error(
       "NOT RUN: explicit absolute real-call authorization file required",
     );
-  const value = JSON.parse(readFileSync(path, "utf8")) as Authorization;
-  if (
-    process.env.CSTHINK_REAL_CALLS_AUTHORIZED !== "1" ||
-    value.task !== "mac-feature-t9" ||
-    value.authorized !== true ||
-    value.maxTurns !== 36 ||
-    !isAbsolute(value.root) ||
-    !isAbsolute(value.evidence) ||
-    value.selections.length !== 6 ||
-    [...value.selections.map((s) => s.provider)].sort().join() !==
-      [...required].sort().join() ||
-    value.selections.some((s) => !s.connectionId || !s.model)
-  )
-    throw new Error(
-      "NOT RUN: authorization scope or six explicit model selections missing",
-    );
-  return value;
+  return widgetRealAuthorization(
+    JSON.parse(readFileSync(path, "utf8")),
+    process.env.CSTHINK_REAL_CALLS_AUTHORIZED,
+  );
 }
 async function command(page: Page, c: Command): Promise<Snapshot> {
   const reply = await page.evaluate((c) => window.desktop.command(c), c);
@@ -87,7 +57,7 @@ async function snapshot(page: Page) {
   return command(page, { type: "snapshot" });
 }
 
-test("real widget generation: six providers create original candidates with same-conversation concurrency and independent stops", async () => {
+test("real widget generation: authorized providers create original candidates with same-conversation concurrency and independent stops", async () => {
   test.setTimeout(4_500_000);
   const auth = authorization();
   if (existsSync(auth.evidence) && readdirSync(auth.evidence).length)
@@ -105,7 +75,12 @@ test("real widget generation: six providers create original candidates with same
         {
           task: auth.task,
           recordedAt: new Date().toISOString(),
-          maxTurns: 36,
+          maxTurns: auth.maxTurns,
+          deferredProviders: auth.deferredProviders.map((provider) => ({
+            provider,
+            status: "NOT RUN",
+            reason: "deferred by user",
+          })),
           submittedTurns: turns,
           automaticRetries: 0,
           counting:
