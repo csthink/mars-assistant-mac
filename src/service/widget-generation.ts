@@ -263,12 +263,14 @@ export function applyWidgetGeneration(
     const {
       imageInput: _imageInput,
       contextChars,
-      effort: _effort,
+      effort,
       ...connection
     } = model;
     void _imageInput;
-    void _effort;
-    const fixed = { ...connection, effort: null } as ConnectionSnapshot;
+    const fixed = {
+      ...connection,
+      effort: effort?.defaultLevel ?? null,
+    } as ConnectionSnapshot;
     const context = capture(db, d, fixed);
     if (
       JSON.stringify(context).length + d.input.length >
@@ -427,15 +429,16 @@ export function applyWidgetGenerationHost(
   }
   if (c.type === "finishWidgetGeneration") {
     if (terminal(t.state)) return {};
-    if (t.state === "stopping" && c.state !== "stopped")
+    if (t.state === "stopping" && !["stopped", "interrupted"].includes(c.state))
       refuse("停止已先提交，迟到完成结果未应用。");
     if (c.state === "completed" && !t.candidateId)
       refuse("没有通过校验的候选，不能标记生成完成。");
     state(db, t, c.state, now, c.error);
     return {};
   }
-  if (t.state !== "running") refuse("任务已停止或结束，迟到内容未应用。");
   if (c.type === "widgetGenerationDelta") {
+    if (!["running", "stopping"].includes(t.state))
+      refuse("任务已结束，迟到内容未应用。");
     if (t.partialText.length + c.text.length > 1_000_000)
       refuse("生成输出超过预算。");
     db.prepare(
@@ -443,6 +446,7 @@ export function applyWidgetGenerationHost(
     ).run(c.text, t.id);
     return {};
   }
+  if (t.state !== "running") refuse("任务已停止或结束，迟到内容未应用。");
   if (t.requirementRevision !== draft(db, t.draftId).requirementRevision)
     refuse("候选采用旧需求，未进入预览。");
   if (t.candidateId) {

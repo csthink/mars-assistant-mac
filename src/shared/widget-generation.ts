@@ -121,7 +121,7 @@ export type WidgetGenerationHostCommand =
       type: "finishWidgetGeneration";
       taskId: string;
       executionId: string;
-      state: "completed" | "stopped" | "failed";
+      state: "completed" | "stopped" | "failed" | "interrupted";
       error: string | null;
     }
   | {
@@ -216,7 +216,9 @@ export function validWidgetGenerationHostCommand(
     case "finishWidgetGeneration":
       return (
         exact(v, ["taskId", "executionId", "state", "error"]) &&
-        ["completed", "stopped", "failed"].includes(String(v.state)) &&
+        ["completed", "stopped", "failed", "interrupted"].includes(
+          String(v.state),
+        ) &&
         (v.error === null || text(v.error, 4096))
       );
     case "receiveWidgetCandidate":

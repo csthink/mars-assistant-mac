@@ -20,6 +20,7 @@ export function createCodexFixture(root: string) {
     mode: "normal",
     runtimeStyle: "code",
     attachmentId: "selected-material",
+    widgetPackage: "{}",
     instructionsPath: "",
     inlineInstructions: "",
     /** Per-model reasoning effort advertised by model/list, and the user's configured default. */
@@ -194,7 +195,7 @@ rl.on('line', line => {
   if (!m.method) {
     if(typeof m.id==='string'&&approvalWaiters.has(m.id)){const resolve=approvalWaiters.get(m.id);approvalWaiters.delete(m.id);resolve(m.error?null:m.result);return;}
     if(m.id==='contract-request'&&m.result){void contractNext({contractMaterialRead:true});return;}
-    if (m.id === 'material-request' && m.result) { delta('fixture-read-completed'); completed('completed'); }
+    if (['material-request','widget-request'].includes(m.id) && m.result) { delta('fixture-read-completed'); completed('completed'); }
     return;
   }
   if (m.method === 'initialized') return;
@@ -219,6 +220,7 @@ rl.on('line', line => {
       if(reviewerThread){reviewerTurn(m.params);return;}
       if (state.mode==='turn_hang') { delta('partial-before-stop'); return; }
       if (state.mode==='turn_tool') { materialCall(); return; }
+      if (state.mode==='turn_widget') { materialCall('widget-request',{tool:'submit_widget_candidate',arguments:{package:state.widgetPackage}}); return; }
       if (state.mode==='turn_spoof') { materialCall('spoof-request',{threadId:'other-thread'}); return; }
       if (state.mode==='turn_namespace') { materialCall('namespace-request',{namespace:'unregistered'}); return; }
       if (state.mode==='turn_extra') { materialCall('extra-request',{arguments:{attachmentId:'selected-material',path:'/forbidden'}}); return; }

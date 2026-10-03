@@ -1,6 +1,6 @@
 import type { ClaudeRun } from "../shared/claude";
 import { ClaudeRpc } from "./claude-rpc";
-import { claudeReadTool } from "./claude-broker";
+import { claudeReadTool, claudeWidgetTool } from "./claude-broker";
 import {
   TransportError,
   validateInputBudget,
@@ -109,6 +109,7 @@ export async function runClaudeSession(options: {
   run: ClaudeRun;
   messages: ChatMessage[];
   tools: boolean;
+  generation?: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSession: (run: ClaudeRun) => Promise<void>;
@@ -221,11 +222,16 @@ export async function runClaudeSession(options: {
               (tool) =>
                 typeof tool !== "string" ||
                 ![
-                  ...(options.tools ? [claudeReadTool] : []),
+                  ...(options.tools
+                    ? [options.generation ? claudeWidgetTool : claudeReadTool]
+                    : []),
                   "EndConversation",
                 ].includes(tool),
             ) ||
-            (options.tools && !tools.includes(claudeReadTool)) ||
+            (options.tools &&
+              !tools.includes(
+                options.generation ? claudeWidgetTool : claudeReadTool,
+              )) ||
             !Array.isArray(message.plugins) ||
             message.plugins.length ||
             !Array.isArray(message.skills) ||

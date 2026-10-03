@@ -42,6 +42,7 @@ export class CodexRpc {
     args: string[],
     options: { cwd: string; env: NodeJS.ProcessEnv },
     private timeout = 5000,
+    private frameLimit = 4 * 1024 * 1024,
   ) {
     this.process = spawn(binary, args, {
       ...options,
@@ -103,7 +104,7 @@ export class CodexRpc {
   private receive(chunk: string) {
     if (this.closed) return;
     this.buffer += chunk;
-    if (Buffer.byteLength(this.buffer) > 4 * 1024 * 1024)
+    if (Buffer.byteLength(this.buffer) > this.frameLimit)
       return this.fail(new CodexRpcError("oversized"));
     let position: number;
     while ((position = this.buffer.indexOf("\n")) >= 0) {

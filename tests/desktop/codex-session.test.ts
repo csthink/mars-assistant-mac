@@ -19,7 +19,7 @@ import {
   startCodexThread,
 } from "../../src/main/codex-session";
 import { TransportError } from "../../src/main/transport";
-async function fixture(mode: string) {
+async function fixture(mode: string, generation = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "csthink-turn-")));
   const f = createCodexFixture(root);
   f.update({ mode });
@@ -38,7 +38,7 @@ async function fixture(mode: string) {
     root,
     "synthetic-model",
     "openai",
-    true,
+    generation ? "generation" : true,
   );
   const controller = new AbortController();
   const text: string[] = [];
@@ -289,4 +289,52 @@ test("Codex follow-up keeps historical images as image inputs in message order",
       ),
   );
   assert.deepEqual(result.at(-1), { type: "text", text: "follow up" });
+});
+
+test("Codex widget tool is isolated from material tools and binds the candidate to its own turn", async () => {
+  const f = await fixture("turn_widget", true);
+  try {
+    let called = 0;
+    await runCodexTurn({
+      ...f.options,
+      generation: true,
+      invoke: async (call) => {
+        called++;
+        assert.equal(call.function.name, "submit_widget_candidate");
+        assert.deepEqual(JSON.parse(call.function.arguments), {
+          package: "{}",
+        });
+        return JSON.stringify({ status: "accepted", retained: false });
+      },
+    });
+    assert.equal(called, 1);
+    const calls = readFileSync(f.calls, "utf8")
+      .trim()
+      .split("\n")
+      .map((s) => JSON.parse(s));
+    const start = calls.find((c) => c.method === "thread/start");
+    assert.deepEqual(
+      start.params.dynamicTools.map((t: { name: string }) => t.name),
+      ["submit_widget_candidate"],
+    );
+  } finally {
+    await f.clean();
+  }
+  const wrong = await fixture("turn_tool", true);
+  try {
+    let invoked = false;
+    await assert.rejects(
+      runCodexTurn({
+        ...wrong.options,
+        generation: true,
+        invoke: async () => {
+          invoked = true;
+          return "";
+        },
+      }),
+    );
+    assert.equal(invoked, false);
+  } finally {
+    await wrong.clean();
+  }
 });

@@ -14,6 +14,7 @@ export function createClaudeFixture(root: string) {
     authentication: "subscription",
     model: "claude-synthetic[1m]",
     attachmentId: "selected",
+    widgetPackage: "{}",
     /** Whether --help lists --effort, and the levels each resolved model advertises in initialize. */
     effortFlag: true,
     efforts: {
@@ -150,7 +151,8 @@ const input=rl.createInterface({input:process.stdin});
 const synthetic=process.env.ANTHROPIC_API_KEY==='SYNTHETIC_ONLY_NOT_REAL';
 const session=flag(args.includes('--resume')?'--resume':'--session-id');
 const config=JSON.parse(flag('--mcp-config')||'{"mcpServers":{}}');
-const tool='mcp__csthink_assistant__read_material';
+const widget=flag('--allowedTools')==='mcp__csthink_assistant__submit_widget_candidate';
+const tool=widget?'mcp__csthink_assistant__submit_widget_candidate':'mcp__csthink_assistant__read_material';
 let child;
 async function readMaterial(input){
  const server=config.mcpServers.csthink_assistant;
@@ -160,7 +162,7 @@ async function readMaterial(input){
   let b='';const id=crypto.randomUUID();
   const listener=(chunk)=>{b+=chunk;let end;while((end=b.indexOf('\n'))>=0){const line=b.slice(0,end);b=b.slice(end+1);const r=JSON.parse(line);if(r.id===id){child.stdout.off('data',listener);resolve({is_error:r.result.isError===true,content:r.result.content});}}};
   child.stdout.on('data',listener);
-  child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name:'read_material',arguments:input}})+'\n');
+  child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name:widget?'submit_widget_candidate':'read_material',arguments:input}})+'\n');
  });
 }
 async function user(m){
@@ -176,8 +178,8 @@ async function user(m){
    const result=call.name===tool?await readMaterial(call.input):{is_error:true,content:'unavailable'};
    messages.push({role:'user',content:[{type:'tool_result',tool_use_id:call.id,...result}]});
   }
- }else if(state.mode==='tools'){
-  const result=await readMaterial({attachmentId:state.attachmentId});record({materialResult:result});
+ }else if(state.mode==='tools'||state.mode==='widget'){
+  const result=await readMaterial(widget?{package:state.widgetPackage}:{attachmentId:state.attachmentId});record({materialResult:result});
   if(result.is_error){emit({type:'result',session_id:session,subtype:'error_during_execution',is_error:true,errors:['permission denied']});return;}
  }
  if(!synthetic&&state.mode==='apiError'){

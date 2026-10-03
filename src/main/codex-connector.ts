@@ -1,3 +1,4 @@
+import { widgetToolWireLimit } from "../shared/widget-generation-tool";
 import { defaultCodexSettings, type CodexSettings } from "../shared/codex";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
@@ -131,7 +132,7 @@ export class CodexConnector {
   ) {}
   async open(
     expectedModel?: string,
-    tools = false,
+    tools: boolean | "generation" = false,
     resume?: CodexRun,
     effort: string | null = null,
   ) {
@@ -199,6 +200,8 @@ export class CodexConnector {
       installation.resolvedPath,
       codexPolicyArgs(installation.resolvedPath, cwd, inventory),
       { cwd, env },
+      5000,
+      tools === "generation" ? widgetToolWireLimit : undefined,
     );
     try {
       const effectiveConfig = await initializeRestrictedCodex(
@@ -305,7 +308,7 @@ export class CodexConnector {
   async openApproved(
     model: string,
     configuration: CodexConnection,
-    tools: boolean,
+    tools: boolean | "generation",
     resume?: CodexRun,
     effort: string | null = null,
   ) {

@@ -1,3 +1,8 @@
+import {
+  widgetSubmitToolName,
+  widgetSubmitParameters,
+  validWidgetSubmission,
+} from "../shared/widget-generation-tool";
 import type { CodexRun } from "../shared/codex";
 import { createHash } from "node:crypto";
 import { open, realpath } from "node:fs/promises";
@@ -79,7 +84,7 @@ export async function startCodexThread(
   cwd: string,
   model: string,
   provider: string | undefined,
-  tools: boolean,
+  tools: boolean | "generation",
   resume?: CodexRun,
   effort: string | null = null,
 ): Promise<CodexThread> {
@@ -102,9 +107,18 @@ export async function startCodexThread(
       ? [
           {
             type: "function",
-            name: materialTool.function.name,
-            description: materialTool.function.description,
-            inputSchema: materialTool.function.parameters,
+            name:
+              tools === "generation"
+                ? widgetSubmitToolName
+                : materialTool.function.name,
+            description:
+              tools === "generation"
+                ? "Submit one complete generated widget package for product validation. This does not retain it."
+                : materialTool.function.description,
+            inputSchema:
+              tools === "generation"
+                ? widgetSubmitParameters
+                : materialTool.function.parameters,
           },
         ]
       : [],
@@ -234,6 +248,7 @@ export async function runCodexTurn(options: {
   signal: AbortSignal;
   onDelta: (text: string) => void;
   invoke?: (call: ToolCall, signal: AbortSignal) => Promise<string>;
+  generation?: boolean;
   budget: number;
   onTurn?: (id: string) => Promise<void>;
 }) {
@@ -376,10 +391,13 @@ export async function runCodexTurn(options: {
         const callId = identifier(params.callId);
         const args = record(params.arguments);
         if (
-          params.tool !== readToolName ||
+          params.tool !==
+            (options.generation ? widgetSubmitToolName : readToolName) ||
           params.namespace != null ||
-          Object.keys(args).join(",") !== "attachmentId" ||
-          typeof args.attachmentId !== "string" ||
+          (options.generation
+            ? !validWidgetSubmission(args)
+            : Object.keys(args).join(",") !== "attachmentId" ||
+              typeof args.attachmentId !== "string") ||
           calls.has(callId) ||
           ++toolCount > toolRoundsLimit
         )
@@ -389,7 +407,10 @@ export async function runCodexTurn(options: {
           {
             id: callId,
             type: "function",
-            function: { name: readToolName, arguments: JSON.stringify(args) },
+            function: {
+              name: options.generation ? widgetSubmitToolName : readToolName,
+              arguments: JSON.stringify(args),
+            },
           },
           toolSignal,
         );

@@ -500,3 +500,37 @@ test("claude: API errors preserve classification without exposing diagnostics as
     f.clean();
   }
 });
+
+test("claude: generated package travels only through the product widget MCP with independent session identity", async () => {
+  const f = fixture();
+  try {
+    const setup = await f.connector.prepare();
+    f.update({ mode: "widget" });
+    let calls = 0;
+    const sessions = new Set<string>();
+    await f.connector.run({
+      ...setup,
+      generation: true,
+      messages: [{ role: "user", content: "Synthetic widget" }],
+      signal: new AbortController().signal,
+      budget: 10000,
+      onDelta: () => {},
+      onSession: async (r) => {
+        sessions.add(r.threadId);
+      },
+      invoke: async (call) => {
+        calls++;
+        assert.equal(call.function.name, "submit_widget_candidate");
+        assert.deepEqual(JSON.parse(call.function.arguments), {
+          package: "{}",
+        });
+        return JSON.stringify({ status: "accepted", retained: false });
+      },
+    });
+    assert.equal(calls, 1);
+    assert.equal(sessions.size, 1);
+    assert.match(readFileSync(f.calls, "utf8"), /submit_widget_candidate/);
+  } finally {
+    f.clean();
+  }
+});

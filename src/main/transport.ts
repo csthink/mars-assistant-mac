@@ -522,6 +522,7 @@ export async function streamChat(
     headersMs?: number;
     idleMs?: number;
     tools?: ToolDefinition[];
+    toolArgumentsLimit?: number;
     totalMs?: number;
   } = {},
 ): Promise<StreamResult> {
@@ -684,7 +685,8 @@ export async function streamChat(
         if (
           call.id.length > 100 ||
           call.function.name.length > 100 ||
-          call.function.arguments.length > toolArgumentsLimit
+          call.function.arguments.length >
+            (timeouts.toolArgumentsLimit ?? toolArgumentsLimit)
         )
           throw new TransportError("protocol", "工具调用参数超限，未执行。");
         calls.set(index, call);
@@ -721,7 +723,10 @@ export async function streamChat(
       if (done) break;
       armIdle();
       buffer += decoder.decode(value, { stream: true });
-      if (buffer.length > 2_000_000)
+      if (
+        buffer.length >
+        Math.max(2_000_000, (timeouts.toolArgumentsLimit ?? 0) + 4096)
+      )
         throw new TransportError("protocol", "事件流单条消息超限。");
       let index: number;
       while ((index = buffer.indexOf("\n")) >= 0) {

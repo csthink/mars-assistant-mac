@@ -1,3 +1,4 @@
+import { widgetToolWireLimit } from "../shared/widget-generation-tool";
 import { assertClaudePolicy } from "./claude-policy";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -172,6 +173,7 @@ export class ClaudeConnector {
     onSession: (run: ClaudeRun) => Promise<void>;
     budget: number;
     invoke?: (call: ToolCall, signal: AbortSignal) => Promise<string>;
+    generation?: boolean;
     resume?: ClaudeRun;
     /** Level fixed in the turn snapshot; null runs at the CLI's own default. */
     effort?: string | null;
@@ -252,7 +254,12 @@ export class ClaudeConnector {
     };
     await save("running");
     const broker = options.invoke
-      ? await createClaudeBroker(this.helper, options.invoke, options.signal)
+      ? await createClaudeBroker(
+          this.helper,
+          options.invoke,
+          options.signal,
+          options.generation,
+        )
       : undefined;
     let rpc: ClaudeRpc | undefined;
     try {
@@ -265,9 +272,11 @@ export class ClaudeConnector {
           broker?.config ?? { mcpServers: {} },
           resume,
           effort,
+          options.generation,
         ),
         {
           cwd,
+          frameLimit: options.generation ? widgetToolWireLimit : undefined,
           env: claudeEnvironment(
             this.environment,
             dirname(current.installation.path),
@@ -281,6 +290,7 @@ export class ClaudeConnector {
         run,
         messages: options.messages,
         tools: !!broker,
+        generation: options.generation,
         signal: options.signal,
         budget: options.budget,
         onSession: async () => {},
