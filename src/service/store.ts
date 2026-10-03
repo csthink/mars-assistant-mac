@@ -146,7 +146,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 29;
+export const schemaVersion = 30;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -223,6 +223,7 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     26: migrateConversationOrder,
     27: migrateProjectOrganization,
     28: widgetGenerationSchema,
+    29: "CREATE TABLE widget_draft_selection(surface TEXT PRIMARY KEY,draft_id TEXT REFERENCES widget_drafts(id));",
     17: `ALTER TABLE connection_models ADD COLUMN codex_json TEXT;
       UPDATE connection_models SET codex_json=(SELECT codex_json FROM connections WHERE connections.id=connection_models.connection_id)
       WHERE connection_id IN (SELECT id FROM connections WHERE provider='codex')
@@ -703,7 +704,12 @@ export class Store {
           new Date().toISOString(),
         );
       else if (!host && validWidgetGenerationCommand(input))
-        applyWidgetGeneration(this.db, input, new Date().toISOString());
+        applyWidgetGeneration(
+          this.db,
+          input,
+          new Date().toISOString(),
+          surface,
+        );
       else if (
         (host && validProjectHostCommand(input)) ||
         (!host && validProjectCommand(input))

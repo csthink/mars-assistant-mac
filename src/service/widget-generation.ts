@@ -182,6 +182,16 @@ export function widgetGenerationSnapshot(
         ...c,
         differences: JSON.parse(String(c.differences)),
       })) as unknown as GeneratedCandidate[],
+    selected: Object.fromEntries(
+      ["main", "panel"].map((surface) => [
+        surface,
+        db
+          .prepare(
+            "SELECT draft_id FROM widget_draft_selection WHERE surface=?",
+          )
+          .get(surface)?.draft_id ?? null,
+      ]),
+    ) as { main: string | null; panel: string | null },
     widgets: db
       .prepare(
         "SELECT id,name,candidate_id AS candidateId,digest,revision,position FROM saved_widgets ORDER BY position",
@@ -209,7 +219,15 @@ export function applyWidgetGeneration(
   db: DatabaseSync,
   c: WidgetGenerationCommand,
   now: string,
+  surface: "main" | "panel" = "main",
 ) {
+  if (c.type === "selectWidgetDraft") {
+    if (c.id) draft(db, c.id);
+    db.prepare(
+      "INSERT INTO widget_draft_selection(surface,draft_id) VALUES(?,?) ON CONFLICT(surface) DO UPDATE SET draft_id=excluded.draft_id",
+    ).run(surface, c.id);
+    return;
+  }
   if (c.type === "createWidgetDraft") {
     if (db.prepare("SELECT 1 FROM widget_drafts WHERE id=?").get(c.id)) return;
     if (

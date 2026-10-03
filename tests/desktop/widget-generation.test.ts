@@ -489,3 +489,27 @@ test("widget generation: changed requirement and forged artifact cannot become a
     s.close();
   }
 });
+
+test("widget generation: editor selections persist independently by surface and reject missing identities", () => {
+  const s = setup();
+  try {
+    const a = draft(s),
+      b = draft(s);
+    assert(s.store.execute({ type: "selectWidgetDraft", id: a }, "main").ok);
+    assert(s.store.execute({ type: "selectWidgetDraft", id: b }, "panel").ok);
+    assert.equal(
+      s.store.execute({ type: "selectWidgetDraft", id: randomUUID() }, "main")
+        .ok,
+      false,
+    );
+    s.store.close();
+    s.store = new Store(s.root);
+    assert.deepEqual(s.store.snapshot().widgetGeneration!.selected, {
+      main: a,
+      panel: b,
+    });
+    assert.equal(s.store.snapshot().widgetGeneration!.tasks.length, 0);
+  } finally {
+    s.close();
+  }
+});

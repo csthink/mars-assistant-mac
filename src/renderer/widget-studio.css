@@ -1,0 +1,262 @@
+.widget-studio {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.widget-studio-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--c-line);
+}
+.widget-studio-heading h1 {
+  font-size: 18px;
+  margin: 0;
+}
+.widget-studio-heading > .widget-studio-actions {
+  margin-left: auto;
+}
+.widget-studio-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.widget-studio .button {
+  font-size: 12px;
+}
+.widget-studio .widget-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  flex: 1;
+  min-height: 260px;
+  padding: 28px;
+  color: var(--c-muted);
+}
+.widget-empty > .icon {
+  width: 32px;
+  height: 32px;
+}
+.widget-empty h2 {
+  font-size: 18px;
+  color: var(--c-text);
+  margin: 0;
+}
+.widget-empty p {
+  max-width: 340px;
+  line-height: 1.7;
+  margin: 0;
+}
+.widget-name {
+  min-width: 0;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--c-text);
+  border-radius: 6px;
+  padding: 6px;
+}
+.widget-name:focus {
+  border-color: var(--c-line);
+  outline: 2px solid var(--c-accent);
+}
+.widget-draft-list {
+  padding: 16px 24px;
+  display: grid;
+  gap: 10px;
+}
+.widget-draft-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: var(--c-text);
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--c-surface);
+  min-width: 0;
+}
+.widget-draft-row:hover {
+  background: var(--c-raised);
+}
+.widget-draft-row > span {
+  flex: 1;
+  min-width: 0;
+}
+.widget-draft-row strong,
+.widget-draft-row p {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.widget-draft-row p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+.widget-draft-row small {
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.widget-search-anchor {
+  position: relative;
+}
+.widget-search-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(320px, 60vw);
+  z-index: 20;
+  padding: 12px;
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+  border-radius: 10px;
+  box-shadow: 0 10px 35px #0002;
+  display: grid;
+  gap: 8px;
+}
+.widget-search-popover input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--c-line);
+  border-radius: 6px;
+  background: var(--c-raised);
+  color: var(--c-text);
+}
+.widget-editor {
+  height: 100%;
+  min-height: 0;
+}
+.widget-history {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px;
+}
+.widget-task-card {
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.widget-task-card > p {
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.widget-task-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.widget-task-title > span,
+.widget-task-card > small {
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.widget-task-output {
+  max-height: 260px;
+  overflow: auto;
+}
+.widget-task-card .widget-studio-actions {
+  margin-top: 12px;
+}
+.widget-input-box {
+  margin: 0 20px 16px;
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
+  background: var(--c-surface);
+  padding: 12px;
+}
+.widget-input-label {
+  font-size: 12px;
+  color: var(--c-muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.widget-input-box textarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 220px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  outline: none;
+}
+.widget-input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.widget-input-footer select {
+  flex: 1;
+  min-width: 0;
+  max-width: 280px;
+  border: 1px solid var(--c-line);
+  border-radius: 6px;
+  padding: 6px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  font-size: 12px;
+}
+.widget-save-note {
+  display: flex;
+  gap: 12px;
+  margin-top: 9px;
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.widget-save-note button {
+  border: 0;
+  background: transparent;
+  color: var(--c-accent);
+  font-size: 11px;
+  padding: 0;
+}
+.widget-saved-card {
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--c-surface);
+}
+.widget-saved-card h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.widget-studio > .error {
+  padding: 0 24px;
+}
+
+.widget-source-tasks {
+  max-height: 240px;
+  overflow: auto;
+  padding: 0 24px;
+}
+.right-panel .widget-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--c-muted);
+  line-height: 1.7;
+}
+.right-panel .widget-empty h2 {
+  font-size: 16px;
+}

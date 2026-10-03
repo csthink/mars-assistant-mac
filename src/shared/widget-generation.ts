@@ -77,8 +77,10 @@ export interface WidgetGenerationSnapshot {
   tasks: GenerationTask[];
   candidates: GeneratedCandidate[];
   widgets: SavedWidget[];
+  selected?: { main: string | null; panel: string | null };
 }
 export type WidgetGenerationCommand =
+  | { type: "selectWidgetDraft"; id: string | null }
   | {
       type: "createWidgetDraft";
       id: string;
@@ -151,6 +153,8 @@ export function validWidgetGenerationCommand(
 ): v is WidgetGenerationCommand {
   if (!object(v)) return false;
   switch (v.type) {
+    case "selectWidgetDraft":
+      return exact(v, ["id"]) && (v.id === null || id(v.id));
     case "createWidgetDraft":
       return (
         exact(v, ["id", "name", "sourceConversationId"]) &&
