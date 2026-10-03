@@ -2,6 +2,15 @@ import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir, userInfo } from "node:os";
 import { TransportError } from "./transport";
+/** Empty maps merge with CLI defaults; explicitly disable observed built-in plugins.
+ * Session init still rejects every loaded plugin, including newly introduced ones. */
+export const claudeRestrictedSettings = JSON.stringify({
+  disableAllHooks: true,
+  enabledPlugins: {
+    "cc-plugin-agents-md@builtin": false,
+    "cc-plugin-plugin-authoring@builtin": false,
+  },
+});
 const conflict = () =>
   new TransportError(
     "unsupported",

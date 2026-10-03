@@ -534,3 +534,21 @@ test("claude: generated package travels only through the product widget MCP with
     f.clean();
   }
 });
+
+test("claude: observed built-in plugins are disabled while an unknown loaded plugin still prevents preparation", async () => {
+  const f = fixture();
+  try {
+    const known = [
+      "cc-plugin-agents-md@builtin",
+      "cc-plugin-plugin-authoring@builtin",
+    ];
+    f.update({ builtinPlugins: known });
+    const prepared = await f.connector.prepare();
+    assert.equal(prepared.model, "claude-synthetic[1m]");
+    assert.deepEqual(await f.connector.accept(prepared.token), prepared);
+    f.update({ builtinPlugins: [...known, "unexpected-plugin@builtin"] });
+    await assert.rejects(f.connector.prepare(), /工具限制验证/);
+  } finally {
+    f.clean();
+  }
+});

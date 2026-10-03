@@ -9,6 +9,7 @@ export function createClaudeFixture(root: string) {
   const initial = {
     version: "2.1.263",
     mode: "normal",
+    builtinPlugins: [] as string[],
     errorCode: "rate_limit",
     errorText: "Synthetic error",
     authentication: "subscription",
@@ -101,6 +102,8 @@ if(args.includes('--effort')){
 }
 const emit=(m)=>process.stdout.write(JSON.stringify(m)+'\n');
 const flag=(name)=>args.includes(name)?args[args.indexOf(name)+1]:undefined;
+const settings=JSON.parse(flag('--settings')||'{}');
+const loadedPlugins=(state.builtinPlugins||[]).filter(id=>settings.enabledPlugins?.[id]!==false).map(id=>({name:id.split('@')[0],path:'builtin',source:id}));
 if(args.includes('-p')&&flag('--input-format')==='text'){
  // Implementer print session (feature-t30): the whole prompt arrives on stdin, then the frames follow.
  const chunks=[];
@@ -111,7 +114,7 @@ if(args.includes('-p')&&flag('--input-format')==='text'){
   const model=flag('--model'), session=flag('--session-id');
   const requested=(flag('--tools')||'').split(',').filter(Boolean);
   const tools=state.implementer==='wrongTools'?['Bash','Read']:requested;
-  emit({type:'system',subtype:'init',cwd:process.cwd(),session_id:session,tools,mcp_servers:[],model,permissionMode:flag('--permission-mode'),apiKeySource:'none',claude_code_version:state.version,plugins:[],skills:[]});
+  emit({type:'system',subtype:'init',cwd:process.cwd(),session_id:session,tools,mcp_servers:[],model,permissionMode:flag('--permission-mode'),apiKeySource:'none',claude_code_version:state.version,plugins:loadedPlugins,skills:[]});
   for(let i=0;i<Number(state.implementerChildren||0);i++){
    // Inside the target's session (not detached): the port must reclaim these by identity after the target exits.
    const child=cp.spawn('/bin/sleep',['60'],{stdio:'ignore'});record({child:child.pid,parent:process.pid});
@@ -167,7 +170,7 @@ async function readMaterial(input){
 }
 async function user(m){
  const tools=config.mcpServers.csthink_assistant?[tool]:[];
- emit({type:'system',subtype:'init',model:flag('--model'),permissionMode:'dontAsk',session_id:!synthetic&&state.mode==='wrongSession'?'unowned':session,tools:!synthetic&&state.mode==='unsafeTools'?['Bash']:tools,plugins:[],skills:[]});
+ emit({type:'system',subtype:'init',model:flag('--model'),permissionMode:'dontAsk',session_id:!synthetic&&state.mode==='wrongSession'?'unowned':session,tools:!synthetic&&state.mode==='unsafeTools'?['Bash']:tools,plugins:loadedPlugins,skills:[]});
  if(process.env.ANTHROPIC_API_KEY==='SYNTHETIC_ONLY_NOT_REAL'){
   const messages=[{role:'user',content:'synthetic fixture'}];
   for(let turn=0;turn<4;turn++){
