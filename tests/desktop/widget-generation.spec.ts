@@ -355,3 +355,94 @@ test("widget candidate: discard preserves history and remaining input while unch
     await empty.close();
   }
 });
+
+test("widget candidate: native owner hide and show recreate a fresh preview while occlusion and explicit close keep their meaning", async ({}, info) => {
+  const f = await fixture(seedWidgetCandidate);
+  const live = () =>
+    f.app
+      .context()
+      .pages()
+      .filter(
+        (p) =>
+          p.url().startsWith("csthink-widget:") &&
+          p.url().endsWith("/index.html"),
+      );
+  const owner = (action: "hide" | "show" | "occlude") =>
+    f.app.evaluate(({ BrowserWindow }, action) => {
+      const w = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().endsWith("index.html"),
+      )!;
+      if (action === "occlude") w.emit("hide");
+      else w[action]();
+      return { visible: w.isVisible() };
+    }, action);
+  try {
+    await widgets(f.page);
+    await expect.poll(() => live().length).toBe(1);
+    const first = live()[0],
+      firstURL = first.url();
+    await first.getByRole("button", { name: "0", exact: true }).click();
+    await expect(
+      first.getByRole("button", { name: "7", exact: true }),
+    ).toBeVisible();
+    expect(await owner("occlude")).toEqual({ visible: true });
+    await expect(
+      first.getByRole("button", { name: "7", exact: true }),
+    ).toBeVisible();
+    expect(live().map((p) => p.url())).toEqual([firstURL]);
+    expect(await owner("hide")).toEqual({ visible: false });
+    await expect.poll(() => first.isClosed()).toBe(true);
+    await expect.poll(() => live().length).toBe(0);
+    await info.attach("hidden-owner-renderer-state", {
+      body: JSON.stringify(
+        await f.page.evaluate(() => ({
+          hidden: document.hidden,
+          state: document.visibilityState,
+        })),
+      ),
+      contentType: "application/json",
+    });
+    expect(await owner("show")).toEqual({ visible: true });
+    await expect.poll(() => live().length).toBe(1);
+    expect(live()[0].url()).not.toBe(firstURL);
+    await expect(
+      live()[0].getByRole("button", { name: "0", exact: true }),
+    ).toBeVisible();
+    const second = live()[0],
+      secondURL = second.url();
+    const rapid = await f.app.evaluate(async ({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().endsWith("index.html"),
+      )!;
+      // Wait only for native hide, then show in that event. Do not wait for a renderer frame.
+      await new Promise<void>((resolve) => {
+        const hidden = () => {
+          if (w.isVisible()) return;
+          w.removeListener("hide", hidden);
+          w.show();
+          resolve();
+        };
+        w.on("hide", hidden);
+        w.hide();
+      });
+      return { visible: w.isVisible() };
+    });
+    expect(rapid).toEqual({ visible: true });
+    await expect.poll(() => second.isClosed()).toBe(true);
+    await expect.poll(() => live().length).toBe(1);
+    expect(live()[0].url()).not.toBe(secondURL);
+    await expect(
+      live()[0].getByRole("button", { name: "0", exact: true }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "关闭预览", exact: true }).click();
+    await expect.poll(() => live().length).toBe(0);
+    await owner("hide");
+    await owner("show");
+    await expect(
+      f.page.getByRole("button", { name: "重新打开预览", exact: true }),
+    ).toBeVisible();
+    expect(live()).toHaveLength(0);
+  } finally {
+    await f.close();
+  }
+});

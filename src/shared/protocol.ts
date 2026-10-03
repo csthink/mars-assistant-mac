@@ -1037,6 +1037,7 @@ export interface DesktopBridge {
   widgetControl: (command: WidgetControl) => Promise<WidgetUIReply>;
   widgetOcclude: () => void;
   onWidgetStatus: (callback: (signal: WidgetSignal) => void) => () => void;
+  onWidgetVisibility: (callback: (visible: boolean) => void) => () => void;
   onWidgetSearch: (callback: () => void) => () => void;
   detectCodex: () => Promise<CodexStatus>;
   detectClaude: () => Promise<ClaudeStatus>;

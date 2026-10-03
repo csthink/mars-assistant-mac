@@ -190,7 +190,25 @@ export class WidgetHost {
       entry = { token: 0, owner, unconfirmed: new Map() };
       this.entries.set(owner.webContents.id, entry);
       const id = owner.webContents.id;
+      let visible = owner.isVisible();
+      const visibility = () => {
+        const next = owner.isVisible();
+        // macOS also emits hide for occlusion. Only native visibility revokes the preview.
+        if (next === visible) return;
+        visible = next;
+        if (!next) this.occlude(owner);
+        if (!owner.webContents.isDestroyed())
+          owner.webContents.send("widget:visibility", next);
+      };
+      owner.on("hide", visibility);
+      owner.on("show", visibility);
+      owner.on("minimize", visibility);
+      owner.on("restore", visibility);
       owner.once("closed", () => {
+        owner.removeListener("hide", visibility);
+        owner.removeListener("show", visibility);
+        owner.removeListener("minimize", visibility);
+        owner.removeListener("restore", visibility);
         this.entries.delete(id);
       });
     }

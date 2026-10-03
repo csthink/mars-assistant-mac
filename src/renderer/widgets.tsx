@@ -20,6 +20,8 @@ export function WidgetWorkspace({
   const [wanted, setWanted] = useState(!!candidateId);
   const [settings, setSettings] = useState(false);
   const [visible, setVisible] = useState(true);
+  const ownerVisible = useRef(true);
+  const [ownerVisibilityRevision, reviseOwnerVisibility] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(
     "关闭预览后，再次打开会读取已确认内容。",
@@ -113,7 +115,7 @@ export function WidgetWorkspace({
   const latest = useRef({ wanted, settings, occluded, visible });
   latest.current = { wanted, settings, occluded, visible };
   async function open() {
-    if (opening.current || !connected) return;
+    if (opening.current || !connected || !ownerVisible.current) return;
     const id = ++serial.current;
     opening.current = true;
     setBusy(true);
@@ -164,17 +166,26 @@ export function WidgetWorkspace({
       }
       if (signal.state === "stopped") setWanted(false);
     });
+    const offVisibility = window.desktop.onWidgetVisibility((shown) => {
+      ownerVisible.current = shown;
+      // Hidden renderers may suspend animation frames and coalesce visibility changes.
+      // Revoke immediately and preserve a transition even after a rapid hide/show pair.
+      if (!shown) hide();
+      reviseOwnerVisibility((revision) => revision + 1);
+    });
     return () => {
       off();
+      offVisibility();
       serial.current++;
       window.desktop.widgetOcclude();
     };
   }, []);
   useEffect(() => {
-    if (wanted && !settings && !occluded && visible) void open();
-    else hide();
+    if (wanted && !settings && !occluded && visible && ownerVisible.current) {
+      if (!current.current) void open();
+    } else hide();
     // These transitions are the trusted visibility contract, not widget messages.
-  }, [wanted, settings, occluded, visible]);
+  }, [wanted, settings, occluded, visible, ownerVisibilityRevision]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;
