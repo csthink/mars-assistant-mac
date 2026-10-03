@@ -5,10 +5,11 @@ import {
   runWidgetProviderChecks,
 } from "./real-widget-authorization";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { Store } from "../../src/service/store";
+import { Store, schemaVersion } from "../../src/service/store";
 import { buildWidgetPackage } from "../../src/main/widget-package";
 import type { Command, HostCommand } from "../../src/shared/protocol";
 import type { GenerationTask } from "../../src/shared/widget-generation";
@@ -1522,5 +1523,102 @@ test("widget stop recovery: owned evidence survives restart, explicit confirmati
     if (reopened) reopened.close();
     if (!closed) s.store.close();
     rmSync(s.root, { recursive: true, force: true });
+  }
+});
+
+test("widget migration: schema 30 retains formal identities, candidates and input through schema 33 with a verified backup", () => {
+  const s = setup();
+  try {
+    const first = candidate(s, submit(s, draft(s)).task);
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: first.id,
+          digest: first.digest,
+          requirementRevision: first.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    candidate(s, submit(s, draft(s, "pending preview")).task);
+    draft(s, "unsent input");
+    s.store.db
+      .exec(`DROP TABLE widget_draft_undo; DROP TABLE widget_candidate_sets; DROP TABLE widget_layout;
+      ALTER TABLE widget_generation_tasks DROP COLUMN stop_unconfirmed;
+      ALTER TABLE widget_generation_tasks DROP COLUMN stop_evidence;
+      ALTER TABLE generated_candidates DROP COLUMN group_id;
+      ALTER TABLE widget_drafts DROP COLUMN target_ids;
+      ALTER TABLE widget_drafts DROP COLUMN deleted;
+      PRAGMA user_version=30;`);
+    const tables = [
+      "saved_widgets",
+      "generated_candidates",
+      "widget_generation_tasks",
+      "widget_generation_attempts",
+      "widget_generation_events",
+      "widget_drafts",
+      "widget_draft_selection",
+    ];
+    const rows = (db: DatabaseSync, table: string, columns: string[]) =>
+      db
+        .prepare(
+          `SELECT ${columns.map((c) => '"' + c + '"').join(",")} FROM ${table} ORDER BY rowid`,
+        )
+        .all();
+    const before = tables.map((table) => {
+      const columns = s.store.db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((r) => String(r.name));
+      return { table, columns, rows: rows(s.store.db, table, columns) };
+    });
+    s.store.close();
+    s.store = new Store(s.root);
+    assert.equal(
+      s.store.db.prepare("PRAGMA user_version").get()?.user_version,
+      schemaVersion,
+    );
+    for (const row of before)
+      assert.deepEqual(
+        rows(s.store.db, row.table, row.columns),
+        row.rows,
+        row.table,
+      );
+    const generation = s.store.snapshot().widgetGeneration!;
+    for (const d of generation.drafts) {
+      assert.deepEqual(d.targetIds, d.widgetId ? [d.widgetId] : []);
+    }
+    assert.equal(generation.widgets.length, 1);
+    assert.equal(generation.candidates.length, 2);
+    assert(generation.drafts.some((d) => d.input === "unsent input"));
+    assert.equal(
+      s.store.db.prepare("PRAGMA foreign_key_check").all().length,
+      0,
+    );
+    const backups = readdirSync(dirname(s.root)).filter((n) =>
+      n.startsWith(basename(s.root) + "-schema-30-backup-"),
+    );
+    assert.equal(backups.length, 1);
+    const backup = new DatabaseSync(
+      join(dirname(s.root), backups[0], "data", "state.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      assert.equal(
+        backup.prepare("PRAGMA user_version").get()?.user_version,
+        30,
+      );
+      for (const row of before)
+        assert.deepEqual(
+          rows(backup, row.table, row.columns),
+          row.rows,
+          row.table,
+        );
+    } finally {
+      backup.close();
+    }
+  } finally {
+    s.close();
   }
 });
