@@ -73,11 +73,16 @@ const electronBinary = resolve(
   "node_modules/electron/dist",
   readFileSync("node_modules/electron/path.txt", "utf8").trim(),
 );
-export async function launchReal(root: string): Promise<RealClient> {
+export async function launchReal(
+  root: string,
+  options: { background?: boolean } = {},
+): Promise<RealClient> {
   const child = spawn(
     electronBinary,
     [
-      resolve("."),
+      options.background
+        ? resolve("tests/desktop/background-main.cjs")
+        : resolve("."),
       `--data-root=${root}`,
       "--remote-debugging-port=0",
       "--inspect=0",

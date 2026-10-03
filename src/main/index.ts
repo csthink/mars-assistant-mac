@@ -2041,6 +2041,15 @@ if (!instance) {
           code: "CONFLICT",
           message: "有入口的输入尚未保存，请先处理保存状态。",
         };
+      if (
+        command.type === "retainWidgetCandidate" &&
+        widgetHost?.hasUnconfirmedCandidate(command.candidateId)
+      )
+        return {
+          ok: false,
+          code: "CONFLICT",
+          message: "控件输入尚未确认保存，请先处理保存状态。",
+        };
       const reply = await request(command, entry.surface);
       // The business service records "stopping" first; only then does the host abort the request.
       if (reply.ok && command.type === "stopExecution")

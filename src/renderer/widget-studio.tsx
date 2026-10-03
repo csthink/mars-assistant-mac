@@ -19,16 +19,14 @@ export function visibleWidgetDraft(d: WidgetDraft, snapshot: Snapshot) {
   const candidates =
     snapshot.widgetGeneration?.candidates.filter((c) => c.draftId === d.id) ??
     [];
-  return (
-    !!d.input ||
-    tasks.some((t) =>
-      ["queued", "running", "stopping", "failed", "interrupted"].includes(
-        t.state,
-      ),
-    ) ||
-    candidates.some((c) => c.state === "preview") ||
-    (!d.widgetId && candidates.length === 0)
-  );
+  if (d.widgetId) return !!d.input;
+  if (
+    d.input ||
+    tasks.some((t) => ["queued", "running", "stopping"].includes(t.state))
+  )
+    return true;
+  if (candidates.length) return candidates.at(-1)?.state === "preview";
+  return true;
 }
 export function WidgetTaskCard({
   task,
@@ -259,7 +257,7 @@ export function WidgetStudio({
               <div className="widget-empty">
                 <Icon name="spark" />
                 <h2>你想做一个什么控件？</h2>
-                <p>描述它的内容和用法，生成后先预览，再决定是否保留。</p>
+                <p>描述内容与用法，预览后再保留。</p>
               </div>
             )}
             {tasks.map((t) => (

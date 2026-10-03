@@ -61,7 +61,12 @@ export interface GeneratedCandidate {
   name: string;
   requirementRevision: number;
   state: "preview" | "retained" | "discarded" | "unchanged";
-  differences: { path: string; before: string | null; after: string | null }[];
+  differences: {
+    path: string;
+    before: string | null;
+    after: string | null;
+    encoding?: "utf8" | "base64";
+  }[];
   widgetId: string | null;
 }
 export interface SavedWidget {

@@ -1,3 +1,4 @@
+import { restorePreWidgetGenerationFixture } from "./legacy-codex-schema";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -102,6 +103,7 @@ function legacyRoot() {
   act(store, ids[4], "pin");
   store.close();
   const db = new DatabaseSync(join(dir, "state.sqlite"));
+  restorePreWidgetGenerationFixture(db);
   // Before this version an archived conversation kept its pin; recreate such a row.
   db.prepare("UPDATE conversations SET pinned_at=? WHERE id=?").run(
     "2026-01-03T00:00:00.000Z",
@@ -121,8 +123,8 @@ test("conversation order: schema 26 data migrates through 28 keeping every conve
   assert.equal(before.version, 26);
   const store = new Store(dir);
   try {
-    assert.equal(schemaVersion, 28);
-    assert.equal(version(store.db), 28);
+    assert.equal(schemaVersion, 30);
+    assert.equal(version(store.db), schemaVersion);
     const snapshot = store.snapshot();
     const expected = (before.rows.conversations as string[])
       .map((row) => JSON.parse(row) as Record<string, unknown>)
@@ -159,7 +161,7 @@ test("conversation order: schema 26 data migrates through 28 keeping every conve
   // Opening again does not migrate again and keeps the data.
   const again = new Store(dir);
   try {
-    assert.equal(version(again.db), 28);
+    assert.equal(version(again.db), schemaVersion);
     assert.equal(find(again.snapshot(), ids[1]).unread, true);
   } finally {
     again.close();
@@ -196,7 +198,7 @@ test("conversation order: a migration that fails part way rolls back, keeps ever
   assert.deepEqual(copy.rows, before.rows);
   const store = new Store(dir);
   try {
-    assert.equal(version(store.db), 28);
+    assert.equal(version(store.db), schemaVersion);
   } finally {
     store.close();
   }
@@ -206,11 +208,12 @@ test("conversation order: a partly migrated database with the column, the trigge
   const dir = root();
   new Store(dir).close();
   const db = new DatabaseSync(join(dir, "state.sqlite"));
+  restorePreWidgetGenerationFixture(db);
   db.exec("PRAGMA user_version=26");
   db.close();
   const store = new Store(dir);
   try {
-    assert.equal(version(store.db), 28);
+    assert.equal(version(store.db), schemaVersion);
     const id = randomUUID();
     assert.ok(store.execute({ type: "create", id }, "main").ok);
     assert.notEqual(find(store.snapshot(), id).createdAt, null);

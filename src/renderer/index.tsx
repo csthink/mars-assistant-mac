@@ -9,6 +9,7 @@ import { RecordsPage } from "./record-page";
 import "./record-pages.css";
 import { WidgetWorkspace } from "./widgets";
 import { useWidgetDrafts } from "./widget-drafts";
+import { WidgetCandidatePanel } from "./widget-candidate";
 import { WidgetStudio, WidgetTaskCard } from "./widget-studio";
 import { Projects } from "./projects";
 import { useProjectSidebar } from "./project-sidebar";
@@ -2085,10 +2086,14 @@ function App() {
                 name: "预览",
                 icon: "grid",
                 body: (
-                  <div className="widget-empty">
-                    <h2>等待控件候选</h2>
-                    <p>提交需求后，生成进度和结果会保留在编辑对话中。</p>
-                  </div>
+                  <WidgetCandidatePanel
+                    key={widgetEditor.id}
+                    snapshot={snapshot!}
+                    draft={widgetEditor}
+                    model={widgetDrafts}
+                    connected={status.connected}
+                    occluded={searchOpen || overlayOpen || overlay}
+                  />
                 ),
               },
               {

@@ -68,6 +68,7 @@ function narrowCheck(
 }
 /** Restore the exact schema-22 boundary: schema 23 added physical executions, role selections and two CHECK members (feature-t30). */
 export function restorePreExecutionFixture(db: DatabaseSync) {
+  restorePreWidgetGenerationFixture(db);
   db.exec(
     "DROP TABLE project_turn_contexts; DROP TABLE project_chats; DROP TABLE project_runtime;",
   );
@@ -160,4 +161,11 @@ export function restorePreClaudeFixture(db: DatabaseSync) {
   );
   for (const index of indexes) db.exec(index);
   db.exec("PRAGMA foreign_keys=ON");
+}
+
+/** Remove only schemas 29/30 before reconstructing a real earlier schema boundary. */
+export function restorePreWidgetGenerationFixture(db: DatabaseSync) {
+  db.exec(
+    "DROP TABLE widget_draft_selection; DROP TABLE saved_widgets; DROP TABLE generated_candidates; DROP TABLE widget_generation_attempts; DROP TABLE widget_generation_tasks; DROP TABLE widget_generation_events; DROP TABLE widget_drafts;",
+  );
 }

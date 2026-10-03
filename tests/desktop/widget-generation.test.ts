@@ -513,3 +513,235 @@ test("widget generation: editor selections persist independently by surface and 
     s.close();
   }
 });
+
+test("widget generation: identical unretained history does not block a legitimate first addition", () => {
+  const s = setup();
+  try {
+    const id = draft(s),
+      first = submit(s, id).task,
+      old = candidate(s, first);
+    assert(
+      s.store.execute(
+        {
+          type: "saveWidgetDraft",
+          id,
+          name: "same",
+          input: "updated requirement",
+          revision: 2,
+        },
+        "main",
+      ).ok,
+    );
+    const next = submit(s, id, randomUUID(), 3).task;
+    assert(claim(s, next).ok);
+    const receive: HostCommand = {
+      type: "receiveWidgetCandidate",
+      taskId: next.id,
+      executionId: next.executionId,
+      build: built(),
+    };
+    assert(host(s.store, receive).ok);
+    assert(host(s.store, receive).ok);
+    assert.equal(s.store.snapshot().widgetGeneration!.candidates.length, 2);
+    const c = s.store.snapshot().widgetGeneration!.candidates.at(-1)!;
+    assert.equal(c.state, "preview");
+    assert(c.differences.every((d) => d.before === null));
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: next.id,
+        executionId: next.executionId,
+        state: "completed",
+        error: null,
+      }).ok,
+    );
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: c.id,
+          digest: c.digest,
+          requirementRevision: c.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    assert.equal(
+      s.store
+        .snapshot()
+        .widgetGeneration!.candidates.find((c) => c.id === old.id)!.state,
+      "discarded",
+    );
+    assert.equal(s.store.snapshot().widgetGeneration!.widgets.length, 1);
+  } finally {
+    s.close();
+  }
+});
+test("widget generation: empty actual differences are explained and cannot create a version", () => {
+  const s = setup();
+  try {
+    const first = submit(s, draft(s)).task,
+      c = candidate(s, first);
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: c.id,
+          digest: c.digest,
+          requirementRevision: c.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    const formal = s.store.snapshot().widgetGeneration!.widgets[0];
+    const other = draft(s),
+      next = submit(s, other).task;
+    // Real storage fixture supplies an existing formal baseline without exposing a modification UI.
+    s.store.db
+      .prepare("UPDATE widget_drafts SET widget_id=? WHERE id=?")
+      .run(formal.id, other);
+    const unchanged = candidate(s, next);
+    assert.equal(unchanged.state, "unchanged");
+    assert.deepEqual(unchanged.differences, []);
+    const reply = s.store.execute(
+      {
+        type: "retainWidgetCandidate",
+        candidateId: unchanged.id,
+        digest: unchanged.digest,
+        requirementRevision: unchanged.requirementRevision,
+      },
+      "main",
+    );
+    assert(!reply.ok);
+    assert.match(reply.message, /没有变化/);
+    assert.equal(s.store.snapshot().widgetGeneration!.widgets.length, 1);
+    assert.equal(s.store.snapshot().widgetGeneration!.widgets[0].revision, 1);
+  } finally {
+    s.close();
+  }
+});
+test("widget generation: first retain promotes confirmed configuration and revokes stale preview writes atomically", () => {
+  const s = setup();
+  try {
+    const t = submit(s, draft(s)).task,
+      c = candidate(s, t);
+    const identity = {
+      widgetId: t.draftId,
+      candidateId: c.id,
+      version: c.digest,
+      generation: randomUUID(),
+      surface: "main" as const,
+    };
+    assert(host(s.store, { type: "widgetBind", identity }).ok);
+    s.store.db
+      .prepare(
+        "UPDATE widget_previews SET data=?,data_revision=1 WHERE candidate_id=?",
+      )
+      .run(JSON.stringify({ confirmed: "value" }), c.id);
+    const retain: Command = {
+      type: "retainWidgetCandidate",
+      candidateId: c.id,
+      digest: c.digest,
+      requirementRevision: c.requirementRevision,
+    };
+    s.store.db.exec(
+      "CREATE TRIGGER fail_promotion BEFORE UPDATE OF widget_id ON widget_previews BEGIN SELECT RAISE(ABORT,'fail promotion'); END",
+    );
+    assert(!s.store.execute(retain, "main").ok);
+    assert.equal(s.store.snapshot().widgetGeneration!.widgets.length, 0);
+    assert.equal(
+      s.store.db.prepare("SELECT COUNT(*) AS n FROM widget_instances").get()!.n,
+      1,
+    );
+    s.store.db.exec("DROP TRIGGER fail_promotion");
+    assert(s.store.execute(retain, "main").ok);
+    const reply = host(s.store, { type: "widgetInspect", candidateId: c.id });
+    assert(reply.ok);
+    assert.equal(
+      reply.widgetPreview!.widgetId,
+      s.store.snapshot().widgetGeneration!.widgets[0].id,
+    );
+    assert.deepEqual(reply.widgetPreview!.data, { confirmed: "value" });
+    assert.equal(
+      s.store.db.prepare("SELECT COUNT(*) AS n FROM widget_instances").get()!.n,
+      0,
+    );
+    assert(
+      !host(s.store, {
+        type: "widgetRequest",
+        identity,
+        request: { method: "readData" },
+      }).ok,
+    );
+  } finally {
+    s.close();
+  }
+});
+test("widget generation: a failed attempt candidate cannot be retained after a later attempt completes", () => {
+  const s = setup();
+  try {
+    const t = submit(s, draft(s)).task;
+    assert(claim(s, t).ok);
+    assert(
+      host(s.store, {
+        type: "receiveWidgetCandidate",
+        taskId: t.id,
+        executionId: t.executionId,
+        build: built(),
+      }).ok,
+    );
+    const previous = s.store.snapshot().widgetGeneration!.candidates.at(-1)!;
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+        state: "failed",
+        error: "process exit not confirmed",
+      }).ok,
+    );
+    assert(
+      s.store.execute(
+        { type: "retryWidgetGeneration", taskId: t.id, attempt: 1 },
+        "main",
+      ).ok,
+    );
+    const retry = s.store
+      .snapshot()
+      .widgetGeneration!.tasks.find((task) => task.id === t.id)!;
+    const current = candidate(s, retry);
+    assert.notEqual(current.id, previous.id);
+    const rejected = s.store.execute(
+      {
+        type: "retainWidgetCandidate",
+        candidateId: previous.id,
+        digest: previous.digest,
+        requirementRevision: previous.requirementRevision,
+      },
+      "main",
+    );
+    assert(!rejected.ok);
+    assert.match(rejected.message, /尝试已过期/);
+    assert.equal(s.store.snapshot().widgetGeneration!.widgets.length, 0);
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: current.id,
+          digest: current.digest,
+          requirementRevision: current.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    const snapshot = s.store.snapshot().widgetGeneration!;
+    assert.equal(snapshot.widgets.length, 1);
+    assert.equal(snapshot.widgets[0].candidateId, current.id);
+    assert.equal(
+      snapshot.candidates.find((c) => c.id === previous.id)!.state,
+      "discarded",
+    );
+  } finally {
+    s.close();
+  }
+});

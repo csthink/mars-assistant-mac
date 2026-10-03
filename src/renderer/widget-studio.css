@@ -121,7 +121,7 @@
   border: 1px solid var(--c-line);
   background: var(--c-surface);
   border-radius: 10px;
-  box-shadow: 0 10px 35px #0002;
+  box-shadow: var(--c-shadow-sm);
   display: grid;
   gap: 8px;
 }
@@ -259,4 +259,63 @@
 }
 .right-panel .widget-empty h2 {
   font-size: 16px;
+}
+
+.widget-candidate-panel {
+  padding: 16px;
+  min-width: 0;
+}
+.widget-candidate-summary {
+  margin-bottom: 16px;
+}
+.widget-candidate-summary h2 {
+  font-size: 16px;
+  margin: 0 0 10px;
+}
+.widget-candidate-summary p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 8px 0;
+}
+.widget-candidate-panel .widget-heading {
+  padding: 16px 16px 0;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 10px;
+}
+.widget-candidate-panel .widget-frame {
+  margin: 0 10px;
+  height: 280px;
+}
+.widget-candidate-panel .widget-scope,
+.widget-candidate-panel .widget-save-status {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.widget-differences details {
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  padding: 12px;
+}
+.widget-differences summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.widget-differences pre {
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 360px;
+  overflow: auto;
+  background: var(--c-raised);
+  padding: 10px;
+}
+.widget-differences h3 {
+  font-size: 12px;
+  color: var(--c-muted);
+}
+.widget-confirmation p {
+  font-size: 13px;
+  line-height: 1.7;
 }

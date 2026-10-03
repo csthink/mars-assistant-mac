@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { StoreError } from "./errors";
 import { selectedModel } from "./models";
 import { applyWidgetHost } from "./widgets";
+import { widgetDifferences } from "../shared/widget-diff";
 import { verifyBuiltWidget } from "../main/widget-package";
 import type { BuiltWidget } from "../shared/widget";
 import type { ConnectionSnapshot, Message } from "../shared/protocol";
@@ -86,7 +87,7 @@ export function waitingCount(db: DatabaseSync) {
   return Number(
     db
       .prepare(
-        "SELECT (SELECT COUNT(*) FROM widget_generation_tasks WHERE state='queued') + (SELECT COUNT(*) FROM executions WHERE state='queued') AS n",
+        "SELECT (SELECT COUNT(*) FROM widget_generation_tasks WHERE state='queued') + (SELECT COUNT(*) FROM executions WHERE state='queued' AND id NOT IN (SELECT execution_id FROM runtime_executions WHERE state='reserved')) AS n",
       )
       .get()!.n,
   );
@@ -99,7 +100,7 @@ export function activeModelCount(db: DatabaseSync) {
   return Number(
     db
       .prepare(
-        "SELECT (SELECT COUNT(*) FROM widget_generation_tasks WHERE state IN ('running','stopping')) + (SELECT COUNT(*) FROM executions WHERE state IN ('running','awaiting_authorization','stopping')) AS n",
+        "SELECT (SELECT COUNT(*) FROM widget_generation_tasks WHERE state IN ('running','stopping')) + (SELECT COUNT(*) FROM executions WHERE state IN ('running','awaiting_authorization','stopping')) + (SELECT COUNT(*) FROM runtime_executions WHERE state='reserved') AS n",
       )
       .get()!.n,
   );
@@ -348,7 +349,7 @@ export function applyWidgetGeneration(
     assertQueueSpace(db);
     const executionId = randomUUID();
     db.prepare(
-      "UPDATE widget_generation_tasks SET state='queued',attempt=attempt+1,execution_id=?,partial_text='',error=NULL,ended_at=NULL WHERE id=?",
+      "UPDATE widget_generation_tasks SET state='queued',attempt=attempt+1,execution_id=?,candidate_id=NULL,partial_text='',error=NULL,ended_at=NULL WHERE id=?",
     ).run(executionId, t.id);
     db.prepare(
       "INSERT INTO widget_generation_attempts(execution_id,task_id,attempt,state,created_at) VALUES(?,?,?,'queued',?)",
@@ -368,6 +369,11 @@ export function applyWidgetGeneration(
   if (c.type === "retainWidgetCandidate" && row.state === "retained") return;
   if (c.type === "discardWidgetCandidate" && row.state === "discarded") return;
   if (row.state !== "preview") refuse("候选已处理或没有变化，不能执行此操作。");
+  if (
+    c.type === "retainWidgetCandidate" &&
+    !JSON.parse(String(row.differences)).length
+  )
+    refuse("没有实际变化，无需保留。");
   const d = draft(db, String(row.draft_id));
   if (c.type === "discardWidgetCandidate") {
     db.prepare(
@@ -379,12 +385,16 @@ export function applyWidgetGeneration(
     db.prepare("UPDATE widget_previews SET active=0 WHERE candidate_id=?").run(
       c.candidateId,
     );
+    event(db, task(db, String(row.task_id)), "discarded", now, {
+      candidateId: c.candidateId,
+    });
     return;
   }
   if (d.requirementRevision !== c.requirementRevision || d.widgetId)
     refuse("需求或正式版本已变化，候选未保留。");
   const t = task(db, String(row.task_id));
-  if (t.state !== "completed") refuse("生成尚未成功结束，候选未保留。");
+  if (t.state !== "completed" || t.candidateId !== c.candidateId)
+    refuse("生成尚未成功结束或候选尝试已过期，候选未保留。");
   const widgetId = randomUUID();
   db.prepare(
     "INSERT INTO saved_widgets(id,name,candidate_id,digest,position) VALUES(?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM saved_widgets))",
@@ -395,6 +405,21 @@ export function applyWidgetGeneration(
   db.prepare(
     "UPDATE generated_candidates SET state='retained',widget_id=? WHERE id=?",
   ).run(widgetId, c.candidateId);
+  // Publish the confirmed configuration/data together with the stable identity.
+  // Revoke preview instance grants so late messages cannot write the formal widget.
+  db.prepare("UPDATE widget_previews SET widget_id=? WHERE candidate_id=?").run(
+    widgetId,
+    c.candidateId,
+  );
+  db.prepare(
+    "DELETE FROM widget_instances WHERE candidate_id IN (SELECT id FROM generated_candidates WHERE draft_id=?)",
+  ).run(d.id);
+  db.prepare(
+    "UPDATE widget_previews SET active=0 WHERE candidate_id IN (SELECT id FROM generated_candidates WHERE draft_id=? AND state='preview')",
+  ).run(d.id);
+  db.prepare(
+    "UPDATE generated_candidates SET state='discarded' WHERE draft_id=? AND state='preview'",
+  ).run(d.id);
   event(db, t, "retained", now, { candidateId: c.candidateId, widgetId });
 }
 export function applyWidgetGenerationHost(
@@ -479,30 +504,12 @@ export function applyWidgetGenerationHost(
     build = c.build;
   const old = db
     .prepare(
-      "SELECT build,digest FROM generated_candidates WHERE draft_id=? ORDER BY rowid DESC LIMIT 1",
+      "SELECT c.build FROM widget_drafts d JOIN saved_widgets w ON w.id=d.widget_id JOIN generated_candidates c ON c.id=w.candidate_id WHERE d.id=?",
     )
     .get(t.draftId);
   const prior = old ? (JSON.parse(String(old.build)) as BuiltWidget) : null;
-  const differences = Object.entries(build.resources)
-    .filter(
-      ([path, value]) =>
-        JSON.stringify(prior?.resources[path]) !== JSON.stringify(value),
-    )
-    .map(([path, value]) => ({
-      path,
-      before: prior?.resources[path]?.data ?? null,
-      after: value.data,
-    }));
-  if (
-    !prior ||
-    JSON.stringify(prior.manifest) !== JSON.stringify(build.manifest)
-  )
-    differences.unshift({
-      path: "manifest.json",
-      before: prior ? JSON.stringify(prior.manifest) : null,
-      after: JSON.stringify(build.manifest),
-    });
-  const unchanged = old?.digest === build.digest;
+  const differences = widgetDifferences(prior, build);
+  const unchanged = differences.length === 0;
   db.prepare(
     "INSERT INTO generated_candidates(id,task_id,draft_id,digest,name,requirement_revision,state,build,differences) VALUES(?,?,?,?,?,?,?,?,?)",
   ).run(

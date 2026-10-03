@@ -1,3 +1,4 @@
+import { restorePreWidgetGenerationFixture } from "./legacy-codex-schema";
 import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
@@ -718,6 +719,7 @@ test("project work: schema 24 migration preserves project identities and drafts;
     );
     f.store.close();
     const db = new DatabaseSync(join(f.data, "state.sqlite"));
+    restorePreWidgetGenerationFixture(db);
     db.exec(
       "DROP TABLE project_turn_contexts;DROP TABLE project_chats;DROP TABLE project_runtime;PRAGMA user_version=24",
     );
@@ -726,7 +728,7 @@ test("project work: schema 24 migration preserves project identities and drafts;
     try {
       assert.equal(
         migrated.db.prepare("PRAGMA user_version").get()?.user_version,
-        28,
+        30,
       );
       assert.deepEqual(
         migrated.snapshot().projects.map(({ runtime: _r, chats: _c, ...p }) => {

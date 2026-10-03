@@ -18,7 +18,7 @@ const source = JSON.stringify({
   capabilities: [],
   resources: [],
 });
-async function fixture() {
+async function fixture(autoSubmit = true) {
   const responses = new Map<string, ServerResponse>(),
     counts = { generation: 0, foreground: 0 };
   const server = createServer((req, res) => {
@@ -60,53 +60,59 @@ async function fixture() {
       .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
-  const ids = await page.evaluate(async (baseUrl) => {
-    const connectionId = crypto.randomUUID(),
-      conversationId = crypto.randomUUID(),
-      draftId = crypto.randomUUID();
-    const secret = await window.desktop.saveSecret("synthetic-generation-key");
-    if (!secret.ok) throw new Error(secret.message);
-    for (const command of [
-      {
-        type: "upsertConnection",
-        id: connectionId,
-        name: "Offline",
-        provider: "custom",
-        baseUrl,
-        model: "synthetic-model",
-        secretRef: secret.secretRef,
-        imageInput: "unknown",
-        contextChars: null,
-        revision: 0,
-      },
-      { type: "create", id: conversationId },
-      {
-        type: "createWidgetDraft",
-        id: draftId,
-        name: "Original seven marks",
-        sourceConversationId: conversationId,
-      },
-      {
-        type: "saveWidgetDraft",
-        id: draftId,
-        name: "Original seven marks",
-        input: "Create seven original marks",
-        revision: 0,
-      },
-      {
-        type: "submitWidgetGeneration",
-        draftId,
-        connectionId,
-        model: "synthetic-model",
-        revision: 1,
-        requestId: crypto.randomUUID(),
-      },
-    ] as Command[]) {
-      const r = await window.desktop.command(command);
-      if (!r.ok) throw new Error(r.message);
-    }
-    return { connectionId, conversationId, draftId };
-  }, baseUrl);
+  const ids = await page.evaluate(
+    async ({ baseUrl, autoSubmit }) => {
+      const connectionId = crypto.randomUUID(),
+        conversationId = crypto.randomUUID(),
+        draftId = crypto.randomUUID();
+      const secret = await window.desktop.saveSecret(
+        "synthetic-generation-key",
+      );
+      if (!secret.ok) throw new Error(secret.message);
+      for (const command of [
+        {
+          type: "upsertConnection",
+          id: connectionId,
+          name: "Offline",
+          provider: "custom",
+          baseUrl,
+          model: "synthetic-model",
+          secretRef: secret.secretRef,
+          imageInput: "unknown",
+          contextChars: null,
+          revision: 0,
+        },
+        { type: "create", id: conversationId },
+        {
+          type: "createWidgetDraft",
+          id: draftId,
+          name: "Original seven marks",
+          sourceConversationId: conversationId,
+        },
+        {
+          type: "saveWidgetDraft",
+          id: draftId,
+          name: "Original seven marks",
+          input: "Create seven original marks",
+          revision: 0,
+        },
+        {
+          type: "submitWidgetGeneration",
+          draftId,
+          connectionId,
+          model: "synthetic-model",
+          revision: 1,
+          requestId: crypto.randomUUID(),
+        },
+      ] as Command[]) {
+        if (command.type === "submitWidgetGeneration" && !autoSubmit) continue;
+        const r = await window.desktop.command(command);
+        if (!r.ok) throw new Error(r.message);
+      }
+      return { connectionId, conversationId, draftId };
+    },
+    { baseUrl, autoSubmit },
+  );
   return {
     app,
     closeApp,
@@ -284,6 +290,44 @@ test("widget generation IPC: quitting names generation, cancel keeps running and
     } finally {
       await closeLocal(reopened);
     }
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget generation UI: confirmed requirement submits once and the real local response opens a retainable preview", async () => {
+  const f = await fixture(false);
+  try {
+    await f.page.evaluate(
+      (id) => window.desktop.command({ type: "selectWidgetDraft", id }),
+      f.ids.draftId,
+    );
+    await f.page
+      .getByRole("navigation", { name: "全局导航" })
+      .getByRole("button", { name: "控件", exact: true })
+      .click();
+    await expect(
+      f.page.getByRole("textbox", { name: "控件需求", exact: true }),
+    ).toHaveValue("Create seven original marks");
+    await f.page.getByRole("button", { name: "生成控件", exact: true }).click();
+    await expect.poll(() => f.counts.generation).toBe(1);
+    await expect(
+      f.page.getByRole("textbox", { name: "控件需求", exact: true }),
+    ).toHaveValue("");
+    await expect(
+      f.page.getByRole("button", { name: "停止生成", exact: true }),
+    ).toBeVisible();
+    f.finish("generation");
+    await expect(
+      f.page.getByRole("button", { name: "保留控件", exact: true }),
+    ).toBeEnabled();
+    await f.page.getByRole("button", { name: "保留控件", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认保留", exact: true }).click();
+    await expect(
+      f.page.getByText("已保留到控件。编辑历史继续保存。"),
+    ).toBeVisible();
+    expect((await snapshot(f.page)).widgetGeneration!.widgets).toHaveLength(1);
+    expect(f.counts).toEqual({ generation: 1, foreground: 0 });
   } finally {
     await f.close();
   }

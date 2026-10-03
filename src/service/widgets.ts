@@ -37,7 +37,7 @@ export function readWidgetPreview(
   const row = db
     .prepare("SELECT * FROM widget_previews WHERE candidate_id=? AND active=1")
     .get(candidateId);
-  if (!row) refuse("测试候选已失效，请重新载入。");
+  if (!row) refuse("控件候选已失效，请重新载入。");
   return {
     candidateId,
     widgetId: String(row.widget_id),
@@ -81,12 +81,6 @@ export function applyWidgetHost(
   command: WidgetHostCommand,
 ): { widget?: WidgetReply; widgetPreview?: WidgetPreview } {
   if (command.type === "widgetCreate") {
-    if (
-      (db
-        .prepare("SELECT COUNT(*) AS n FROM widget_previews WHERE active=1")
-        .get()!.n as number) >= 8
-    )
-      refuse("测试候选数量超过限制。");
     const defaults = Object.fromEntries(
       command.definition.config.map((f) => [f.id, f.default]),
     );

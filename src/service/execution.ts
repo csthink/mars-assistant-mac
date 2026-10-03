@@ -1,3 +1,4 @@
+import { generationLimits } from "../shared/widget-generation";
 import { assertQueueSpace, activeModelCount } from "./widget-generation";
 import type { WidgetGenerationHostCommand } from "../shared/widget-generation";
 import { validateProjectTurn } from "./project-work";
@@ -624,7 +625,7 @@ export function applyHostCommand(
   if (command.type === "beginExecution") {
     if (row.turnId) validateProjectTurn(db, row.turnId);
     if (row.state === "queued") {
-      if (activeModelCount(db) >= 3)
+      if (activeModelCount(db) >= generationLimits.active)
         throw new StoreError("CONFLICT", "执行容量已满，回合继续等待。");
       setState(db, row, "running", now);
       appendEvent(db, row, "started", now);
