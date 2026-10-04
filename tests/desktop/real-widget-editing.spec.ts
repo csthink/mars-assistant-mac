@@ -163,6 +163,10 @@ test("real widget editing: five authorized turns retain behavior, revised requir
       return c;
     };
     const view = async (candidateId: string) => {
+      await page
+        .getByLabel("控件预览", { exact: true })
+        .locator(".widget-frame")
+        .scrollIntoViewIfNeeded();
       await expect
         .poll(async () => {
           const r = await page.evaluate(() =>
