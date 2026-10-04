@@ -322,6 +322,13 @@ test("project pending: global and project decisions share identities, filter wit
 test("project pending: two confirmations use one operation and stale, foreign, processed and revoked identities cannot decide", async () => {
   const f = await journeyFixture();
   try {
+    const fault = join(
+      f.target.runtimeRoot,
+      "instances",
+      f.target.instanceId.replace(/[^A-Za-z0-9._-]/g, "_"),
+      "fault.json",
+    );
+    writeFileSync(fault, JSON.stringify({ delayEvents: 0.01, eventGap: 0.1 }));
     const a = await preparePending(f, "task.accept"),
       b = await preparePending(f, "task.accept");
     expect(a.pending).toEqual(b.pending);
@@ -349,6 +356,22 @@ test("project pending: two confirmations use one operation and stale, foreign, p
     expect(replies[0].ok && replies[0].operation?.operationId).toBe(
       replies[1].ok && replies[1].operation?.operationId,
     );
+    // The accepted operation can answer before its processed item and next
+    // pending confirmation arrive. Read their published version before checking.
+    await f.waitForPublishedProjection();
+    const acceptedRevision = (await projection(f)).objects.find(
+      (o) => o.objectRef === "candidate:1",
+    )!.revision;
+    await expect
+      .poll(
+        async () =>
+          (await projection(f)).pendingItems.find(
+            (i) =>
+              i.status === "pending" &&
+              i.actionIds.includes("definition.freeze"),
+          )?.revision,
+      )
+      .toBe(acceptedRevision);
     expect(
       (
         await f.request({
@@ -378,6 +401,14 @@ test("project pending: two confirmations use one operation and stale, foreign, p
         }),
       f.target,
     );
+    await expect
+      .poll(
+        async () =>
+          (await projection(f)).objects.find(
+            (o) => o.objectRef === "candidate:1",
+          )!.revision,
+      )
+      .not.toBe(old.object.revision);
     expect(
       (
         await f.request({
@@ -388,14 +419,33 @@ test("project pending: two confirmations use one operation and stale, foreign, p
         })
       ).ok,
     ).toBe(false);
+    // Objects, actions and pending items arrive in separate events. An updated
+    // object alone does not make the next pending confirmation current.
+    let sawPartialProjection = false;
     await expect
-      .poll(
-        async () =>
-          (await projection(f)).objects.find(
-            (o) => o.objectRef === "candidate:1",
-          )!.revision,
-      )
-      .not.toBe(old.object.revision);
+      .poll(async () => {
+        const p = await projection(f),
+          object = p.objects.find((o) => o.objectRef === "candidate:1")!,
+          action = p.actions.find((a) => a.actionId === "definition.freeze")!,
+          pending = p.pendingItems.find(
+            (i) =>
+              i.status === "pending" &&
+              i.actionIds.includes("definition.freeze"),
+          )!;
+        if (
+          object.revision !== old.object.revision &&
+          pending.revision !== object.revision
+        )
+          sawPartialProjection = true;
+        return (
+          object.revision !== old.object.revision &&
+          action.expectedRevision === object.revision &&
+          pending.revision === object.revision
+        );
+      })
+      .toBe(true);
+    expect(sawPartialProjection).toBe(true);
+    writeFileSync(fault, "{}");
     const current = await preparePending(f, "definition.freeze");
     await f.app.evaluate(
       (_, t) => globalThis.runtimeHost.revokeGrant(t.instanceId, t.grantId),
