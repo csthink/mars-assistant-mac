@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createServer, type ServerResponse } from "node:http";
+import { DatabaseSync } from "node:sqlite";
 import type { AddressInfo } from "node:net";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -120,12 +121,12 @@ async function fixture(autoSubmit = true) {
     counts,
     root,
     ids,
-    finish(kind: "generation" | "foreground") {
+    finish(kind: "generation" | "foreground", artifact = source) {
       const res = responses.get(kind);
       if (!res) throw new Error("missing request");
       if (kind === "generation")
         res.write(
-          `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "generated", type: "function", function: { name: "submit_widget_candidate", arguments: JSON.stringify({ package: source }) } }] } }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "generated", type: "function", function: { name: "submit_widget_candidate", arguments: JSON.stringify({ package: artifact }) } }] } }] })}\n\n`,
         );
       res.end(
         `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: kind === "generation" ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
@@ -328,6 +329,301 @@ test("widget generation UI: confirmed requirement submits once and the real loca
     ).toBeVisible();
     expect((await snapshot(f.page)).widgetGeneration!.widgets).toHaveLength(1);
     expect(f.counts).toEqual({ generation: 1, foreground: 0 });
+  } finally {
+    await f.close();
+  }
+});
+
+async function openWidgets(page: Page) {
+  await page
+    .getByRole("navigation", { name: "全局导航" })
+    .getByRole("button", { name: "控件", exact: true })
+    .click();
+}
+async function retainUI(page: Page) {
+  await expect(
+    page.getByRole("button", { name: "保留控件", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "保留控件", exact: true }).click();
+  await page.getByRole("button", { name: "确认保留", exact: true }).click();
+  await expect(
+    page.getByText("已保留到控件。编辑历史继续保存。"),
+  ).toBeVisible();
+}
+function changedSource(label: string) {
+  return JSON.stringify({
+    ...JSON.parse(source),
+    name: label,
+    view: {
+      html: `<button>${label}</button>`,
+      css: "button{color:navy}",
+      js: "",
+    },
+  });
+}
+async function editRequirement(page: Page, text: string, button: string) {
+  await page.getByRole("textbox", { name: "控件需求", exact: true }).fill(text);
+  await expect(page.getByText("草稿已保存", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: button, exact: true }).click();
+}
+test("widget editing UI: formal entry, supplement, same identity retain, discard and conflict use production IPC", async () => {
+  const f = await fixture();
+  try {
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await openWidgets(f.page);
+    await expect.poll(() => f.counts.generation).toBe(1);
+    f.finish("generation");
+    await retainUI(f.page);
+    const original = (await snapshot(f.page)).widgetGeneration!.widgets[0];
+    await f.page.getByRole("button", { name: "返回控件草稿" }).click();
+    await f.page
+      .getByRole("button", { name: "新建修改草稿", exact: true })
+      .click();
+    await editRequirement(f.page, "Change the behavior", "生成修改");
+    await expect.poll(() => f.counts.generation).toBe(2);
+    await editRequirement(
+      f.page,
+      "Also update the label",
+      "补充需求并重新生成",
+    );
+    await expect.poll(() => f.counts.generation).toBe(3);
+    f.finish("generation", changedSource("Updated marks"));
+    await retainUI(f.page);
+    await expect(
+      f.page.getByRole("textbox", { name: "控件需求", exact: true }),
+    ).toBeVisible();
+    const retained = (await snapshot(f.page)).widgetGeneration!.widgets;
+    expect(retained).toHaveLength(1);
+    expect(retained[0]).toMatchObject({
+      id: original.id,
+      revision: 2,
+      position: original.position,
+    });
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[1].state).toBe(
+      "stopped",
+    );
+    await editRequirement(f.page, "Try a disposable change", "生成修改");
+    await expect.poll(() => f.counts.generation).toBe(4);
+    f.finish("generation", changedSource("Discarded marks"));
+    await expect(
+      f.page.getByRole("button", { name: "撤销预览", exact: true }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "撤销预览", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认撤销", exact: true }).click();
+    await expect(f.page.locator(".widget-candidate-summary h2")).toHaveText(
+      "Updated marks",
+    );
+    expect((await snapshot(f.page)).widgetGeneration!.widgets).toEqual(
+      retained,
+    );
+    await editRequirement(f.page, "Create a conflicting candidate", "生成修改");
+    await expect.poll(() => f.counts.generation).toBe(5);
+    f.finish("generation", changedSource("Conflicting marks"));
+    await expect(
+      f.page.getByRole("button", { name: "保留控件", exact: true }),
+    ).toBeEnabled();
+    const db = new DatabaseSync(resolve(f.root, "state.sqlite"));
+    try {
+      db.prepare("UPDATE saved_widgets SET revision=revision+1 WHERE id=?").run(
+        original.id,
+      );
+    } finally {
+      db.close();
+    }
+    await f.page.getByRole("button", { name: "保留控件", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认保留", exact: true }).click();
+    await expect(
+      f.page.getByRole("dialog", { name: "确认保留控件" }),
+    ).toBeVisible();
+    await expect(f.page.getByRole("dialog").getByRole("alert")).toContainText(
+      "正式版本已改变",
+    );
+    expect(
+      (await snapshot(f.page)).widgetGeneration!.widgets[0].candidateId,
+    ).toBe(retained[0].candidateId);
+    expect(f.counts).toEqual({ generation: 5, foreground: 0 });
+  } finally {
+    await f.close();
+  }
+});
+test("widget editing UI: two selected formal targets are previewed and retained as one layout change", async () => {
+  const f = await fixture();
+  try {
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await openWidgets(f.page);
+    await expect.poll(() => f.counts.generation).toBe(1);
+    f.finish("generation");
+    await retainUI(f.page);
+    await f.page.getByRole("button", { name: "返回控件草稿" }).click();
+    await f.page.getByRole("button", { name: "新建控件", exact: true }).click();
+    await editRequirement(
+      f.page,
+      "Create a second independent widget",
+      "生成控件",
+    );
+    await expect.poll(() => f.counts.generation).toBe(2);
+    f.finish("generation", changedSource("Second marks"));
+    await retainUI(f.page);
+    const before = (await snapshot(f.page)).widgetGeneration!.widgets;
+    await f.page.getByRole("button", { name: "返回控件草稿" }).click();
+    await expect(
+      f.page.getByRole("checkbox", { name: /^选择控件 / }),
+    ).toHaveCount(2);
+    for (const checkbox of await f.page
+      .getByRole("checkbox", { name: /^选择控件 / })
+      .all())
+      await checkbox.check();
+    await f.page
+      .getByRole("button", { name: "修改所选 2 个控件", exact: true })
+      .click();
+    await editRequirement(
+      f.page,
+      "Update both widgets and compact the layout",
+      "生成修改",
+    );
+    await expect.poll(() => f.counts.generation).toBe(3);
+    f.finish(
+      "generation",
+      JSON.stringify({
+        kind: "widget-change-set",
+        widgets: before.map((w, i) => ({
+          widgetId: w.id,
+          package: JSON.parse(changedSource(`Pair ${i}`)),
+        })),
+        layout: { minWidth: 300, gap: 12, density: "compact" },
+      }),
+    );
+    await expect(f.page.getByLabel("候选布局预览")).toBeVisible();
+    await expect(f.page.locator(".widget-targets li")).toHaveCount(2);
+    await f.page.getByRole("button", { name: "Pair 1", exact: true }).click();
+    await retainUI(f.page);
+    const after = (await snapshot(f.page)).widgetGeneration!;
+    expect(
+      after.widgets.map((w) => ({ id: w.id, position: w.position })),
+    ).toEqual(before.map((w) => ({ id: w.id, position: w.position })));
+    expect(after.widgets.map((w) => w.revision)).toEqual([2, 2]);
+    expect(after.layout?.value).toEqual({
+      minWidth: 300,
+      gap: 12,
+      density: "compact",
+    });
+    expect(f.counts).toEqual({ generation: 3, foreground: 0 });
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget draft deletion UI: cancel, stop before deletion and immediate undo preserve input without another provider call", async () => {
+  const f = await fixture();
+  try {
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await openWidgets(f.page);
+    await expect.poll(() => f.counts.generation).toBe(1);
+    await f.page
+      .getByRole("textbox", { name: "控件需求", exact: true })
+      .fill("Keep this unsubmitted input");
+    await expect(f.page.getByText("草稿已保存", { exact: true })).toBeVisible();
+    await f.page.getByRole("button", { name: "删除草稿", exact: true }).click();
+    await f.page
+      .getByRole("dialog", { name: "确认删除控件草稿" })
+      .getByRole("button", { name: "取消", exact: true })
+      .click();
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "running",
+    );
+    await f.page.getByRole("button", { name: "删除草稿", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "撤销删除", exact: true }),
+    ).toBeVisible();
+    let value = (await snapshot(f.page)).widgetGeneration!;
+    expect(value.drafts).toHaveLength(0);
+    expect(value.tasks[0].state).toBe("stopped");
+    await f.page.getByRole("button", { name: "撤销删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("textbox", { name: "控件需求", exact: true }),
+    ).toHaveValue("Keep this unsubmitted input");
+    expect(f.counts.generation).toBe(1);
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "stopped",
+    );
+    await editRequirement(
+      f.page,
+      "Generate a restorable candidate",
+      "生成控件",
+    );
+    await expect.poll(() => f.counts.generation).toBe(2);
+    f.finish("generation");
+    await expect(
+      f.page.getByRole("button", { name: "保留控件", exact: true }),
+    ).toBeEnabled();
+    const candidate = (await snapshot(f.page)).widgetGeneration!.candidates[0];
+    await f.page.getByRole("button", { name: "删除草稿", exact: true }).click();
+    await f.page.getByRole("button", { name: "确认删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "撤销删除", exact: true }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "撤销删除", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "保留控件", exact: true }),
+    ).toBeEnabled();
+    value = (await snapshot(f.page)).widgetGeneration!;
+    expect(value.candidates.find((c) => c.id === candidate.id)!.state).toBe(
+      "preview",
+    );
+    expect(f.counts.generation).toBe(2);
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget stop recovery UI: missing evidence stays blocked and exact exited identities require explicit verification", async () => {
+  const f = await fixture();
+  try {
+    await expect.poll(() => f.counts.generation).toBe(1);
+    f.finish("generation");
+    await expect
+      .poll(
+        async () => (await snapshot(f.page)).widgetGeneration!.tasks[0].state,
+      )
+      .toBe("completed");
+    const t = (await snapshot(f.page)).widgetGeneration!.tasks[0];
+    const db = new DatabaseSync(resolve(f.root, "state.sqlite"));
+    db.prepare(
+      "UPDATE widget_generation_tasks SET state='interrupted',stop_unconfirmed=1,error='停止尚未确认' WHERE id=?",
+    ).run(t.id);
+    db.close();
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await openWidgets(f.page);
+    await expect(
+      f.page.getByRole("button", { name: "核对停止", exact: true }),
+    ).toBeVisible();
+    await f.page.getByRole("button", { name: "核对停止", exact: true }).click();
+    await expect(
+      f.page.getByRole("alert").filter({ hasText: "仍无法确认" }),
+    ).toBeVisible();
+    expect(
+      (await snapshot(f.page)).widgetGeneration!.tasks[0].stopUnconfirmed,
+    ).toBe(true);
+    const seeded = new DatabaseSync(resolve(f.root, "state.sqlite"));
+    seeded
+      .prepare("UPDATE widget_generation_tasks SET stop_evidence=? WHERE id=?")
+      .run(
+        JSON.stringify({
+          complete: true,
+          processes: [{ pid: 2147483647, startSeconds: 1, startMicros: 1 }],
+        }),
+        t.id,
+      );
+    seeded.close();
+    await f.page.getByRole("button", { name: "核对停止", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "核对停止", exact: true }),
+    ).toHaveCount(0);
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "stopped",
+    );
+    expect(f.counts.generation).toBe(1);
   } finally {
     await f.close();
   }

@@ -7,7 +7,11 @@ import {
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { seedWidgetCandidate } from "./widget-generation-fixture";
+import {
+  seedWidgetCandidate,
+  seedWidgetCandidateSet,
+} from "./widget-generation-fixture";
+import { Store } from "../../src/service/store";
 import { launchLocal, closeLocal } from "./local-client";
 async function ready(page: Page) {
   await expect(
@@ -408,8 +412,41 @@ test("widget candidate: native owner hide and show recreate a fresh preview whil
     await expect(
       live()[0].getByRole("button", { name: "0", exact: true }),
     ).toBeVisible();
+    // macOS can omit hide when the owner is already occluded. Suppress only that
+    // native event; the runtime must retire from isVisible and show must reconcile it.
+    const beforeMissingHide = live()[0],
+      missingHideURL = beforeMissingHide.url();
+    await f.app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().endsWith("index.html"),
+      )!;
+      const emit = w.emit.bind(w);
+      w.emit = ((event: string | symbol, ...args: unknown[]) => {
+        if (event === "hide" && !w.isVisible()) return false;
+        return emit(event, ...args);
+      }) as typeof w.emit;
+      w.once("show", () => {
+        w.emit = emit;
+      });
+      w.hide();
+    });
+    await expect.poll(() => beforeMissingHide.isClosed()).toBe(true);
+    await expect.poll(() => live().length).toBe(0);
+    expect(await owner("show")).toEqual({ visible: true });
+    await expect.poll(() => live().length).toBe(1);
+    expect(live()[0].url()).not.toBe(missingHideURL);
+    await expect(
+      live()[0].getByRole("button", { name: "0", exact: true }),
+    ).toBeVisible();
     const second = live()[0],
       secondURL = second.url();
+    await f.page.evaluate(() => {
+      const state = window as unknown as { visibilityEvents: boolean[] };
+      state.visibilityEvents = [];
+      window.desktop.onWidgetVisibility((shown) =>
+        state.visibilityEvents.push(shown),
+      );
+    });
     const rapid = await f.app.evaluate(async ({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows().find((w) =>
         w.webContents.getURL().endsWith("index.html"),
@@ -424,12 +461,39 @@ test("widget candidate: native owner hide and show recreate a fresh preview whil
         };
         w.on("hide", hidden);
         w.hide();
+        // This subcase exercises reentrant native event handling. macOS may omit
+        // hide for an already occluded window (covered above), so deliver that
+        // event only when native visibility confirms hide and no handler ran.
+        if (!w.isVisible()) w.emit("hide");
       });
       return { visible: w.isVisible() };
     });
     expect(rapid).toEqual({ visible: true });
     await expect.poll(() => second.isClosed()).toBe(true);
-    await expect.poll(() => live().length).toBe(1);
+    try {
+      await expect.poll(() => live().length).toBe(1);
+    } catch (error) {
+      await info.attach("rapid-owner-diagnostics", {
+        body: JSON.stringify({
+          native: await f.app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows().map((w) => ({
+              visible: w.isVisible(),
+              url: w.webContents.getURL(),
+            })),
+          ),
+          renderer: await f.page.evaluate(async () => ({
+            hidden: document.hidden,
+            visibilityEvents: (
+              window as unknown as { visibilityEvents: boolean[] }
+            ).visibilityEvents,
+            text: document.body.innerText,
+            status: await window.desktop.widgetControl({ action: "status" }),
+          })),
+        }),
+        contentType: "application/json",
+      });
+      throw error;
+    }
     expect(live()[0].url()).not.toBe(secondURL);
     await expect(
       live()[0].getByRole("button", { name: "0", exact: true }),
@@ -442,6 +506,134 @@ test("widget candidate: native owner hide and show recreate a fresh preview whil
       f.page.getByRole("button", { name: "重新打开预览", exact: true }),
     ).toBeVisible();
     expect(live()).toHaveLength(0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget candidate set: two member previews become reachable after scrolling below three retained widgets", async () => {
+  let draftId = "";
+  const f = await fixture((root) => {
+    const set = seedWidgetCandidateSet(root);
+    draftId = set.draftId;
+    const extra = seedWidgetCandidate(root);
+    const store = new Store(root);
+    try {
+      const candidate = store
+        .snapshot()
+        .widgetGeneration!.candidates.find((c) => c.id === extra.candidateId)!;
+      expect(
+        store.execute(
+          {
+            type: "retainWidgetCandidate",
+            candidateId: candidate.id,
+            digest: candidate.digest,
+            requirementRevision: candidate.requirementRevision,
+          },
+          "main",
+        ).ok,
+      ).toBe(true);
+      expect(
+        store.execute({ type: "selectWidgetDraft", id: draftId }, "main").ok,
+      ).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
+  try {
+    await f.app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().endsWith("index.html"))!
+        .setContentSize(1200, 680),
+    );
+    await widgets(f.page);
+    const before = await f.page.evaluate(async () => {
+      const r = await window.desktop.command({ type: "snapshot" });
+      if (!r.ok) throw new Error(r.message);
+      return r.snapshot.widgetGeneration!;
+    });
+    expect(before.widgets).toHaveLength(3);
+    const candidate = before.candidates.find((c) => c.draftId === draftId)!;
+    expect(candidate.members).toHaveLength(2);
+    const frame = f.page
+      .getByLabel("控件预览", { exact: true })
+      .locator(".widget-frame");
+    const status = () =>
+      f.page.evaluate(() => window.desktop.widgetControl({ action: "status" }));
+    await f.page
+      .getByLabel("选择集合预览")
+      .getByRole("button", { name: candidate.members![0].name, exact: true })
+      .click();
+    await frame.evaluate((el) => {
+      const viewport = el.closest<HTMLElement>(".viewport, .right-panel");
+      if (viewport) viewport.scrollTop = 0;
+    });
+    await expect
+      .poll(() =>
+        frame.evaluate(
+          (el) => el.getBoundingClientRect().top >= window.innerHeight,
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(async () => {
+        const r = await status();
+        return r.ok && !r.generation;
+      })
+      .toBe(true);
+    for (const member of candidate.members!) {
+      await f.page
+        .getByLabel("选择集合预览")
+        .getByRole("button", { name: member.name, exact: true })
+        .click();
+      await frame.scrollIntoViewIfNeeded();
+      await expect
+        .poll(async () => {
+          const r = await status();
+          return r.ok && r.preview?.candidateId === member.id && !!r.generation;
+        })
+        .toBe(true);
+      const r = await status();
+      if (!r.ok || !r.generation)
+        throw new Error("Missing visible member preview");
+      const url = `csthink-widget://${r.generation}/index.html`;
+      await expect
+        .poll(() =>
+          f.app
+            .context()
+            .pages()
+            .some((p) => p.url() === url),
+        )
+        .toBe(true);
+      const view = f.app
+        .context()
+        .pages()
+        .find((p) => p.url() === url)!;
+      await expect(
+        view.getByRole("button", {
+          name: member.name.replace("控件", ""),
+          exact: true,
+        }),
+      ).toBeVisible();
+    }
+    const after = await f.page.evaluate(async () => {
+      const r = await window.desktop.command({ type: "snapshot" });
+      if (!r.ok) throw new Error(r.message);
+      return r.snapshot.widgetGeneration!;
+    });
+    expect(
+      after.tasks.map((t) => ({
+        id: t.id,
+        executionId: t.executionId,
+        state: t.state,
+      })),
+    ).toEqual(
+      before.tasks.map((t) => ({
+        id: t.id,
+        executionId: t.executionId,
+        state: t.state,
+      })),
+    );
   } finally {
     await f.close();
   }

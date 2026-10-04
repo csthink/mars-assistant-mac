@@ -35,12 +35,31 @@ export function WidgetCandidatePanel({
     snapshot.widgetGeneration?.candidates.filter(
       (c) => c.draftId === draft.id,
     ) ?? [];
+  const formal = snapshot.widgetGeneration?.widgets.find(
+    (w) => w.id === draft.widgetId,
+  );
+  const formalRoot = snapshot.widgetGeneration?.candidates.find(
+    (c) =>
+      c.id === formal?.candidateId ||
+      c.members?.some((m) => m.id === formal?.candidateId),
+  );
+  const formalMember = formalRoot?.members?.find(
+    (m) => m.id === formal?.candidateId,
+  );
+  const formalCandidate =
+    formalMember && formalRoot
+      ? { ...formalRoot, ...formalMember, members: undefined, layout: null }
+      : formalRoot;
+  const latest = candidates.at(-1);
   const candidate =
-    candidates.find((c) => c.state === "retained") ?? candidates.at(-1);
+    latest && latest.state !== "discarded"
+      ? latest
+      : (formalCandidate ?? latest);
   const [confirmation, setConfirmation] = useState<{
     candidate: GeneratedCandidate;
     action: "retainWidgetCandidate" | "discardWidgetCandidate";
   }>();
+  const [selectedMember, setSelectedMember] = useState<string>();
   const [unconfirmed, setUnconfirmed] = useState(false);
   const [difference, setDifference] = useState(false);
   if (!candidate)
@@ -55,7 +74,11 @@ export function WidgetCandidatePanel({
   );
   const stale = candidate.requirementRevision !== draft.requirementRevision;
   const changed =
-    candidate.differences.length > 0 && candidate.state !== "unchanged";
+    (candidate.differences.length > 0 || !!candidate.layout) &&
+    candidate.state !== "unchanged";
+  const member =
+    candidate.members?.find((m) => m.id === selectedMember) ??
+    candidate.members?.[0];
   const available = candidate.state === "preview" && changed;
   return (
     <div className="widget-candidate-panel">
@@ -68,16 +91,54 @@ export function WidgetCandidatePanel({
               ? "已撤销预览，编辑历史继续保存。"
               : !changed
                 ? "没有实际变化，无需保留。"
-                : `新增 1 个控件 · ${candidate.differences.length} 个文件变化`}
+                : `${draft.widgetId ? "修改" : "新增"} ${candidate.members?.length ?? 1} 个控件 · ${candidate.differences.length} 个文件变化`}
         </p>
         {stale && candidate.state === "preview" && (
           <p className="error" role="alert">
             需求已更新，此候选不能保留。可继续检查或撤销。
           </p>
         )}
-        <p className="quiet">
-          访问范围：仅本控件的本地配置和数据；不访问网络或本机文件。
-        </p>
+        <details className="widget-effects">
+          <summary>
+            已发生影响：数据保存 {candidate.effects?.dataWrites ?? 0} 次 ·
+            配置保存 {candidate.effects?.configSaves ?? 0} 次 · 外部 0 项
+          </summary>
+          <p className="quiet">
+            访问范围：每个控件仅访问自己的本地配置和数据。输入仅保存在候选。网络请求、通知和外部写入能力未开放。撤销预览不会撤回历史外部操作。
+          </p>
+        </details>
+        {candidate.members && (
+          <ul className="widget-targets">
+            {candidate.members.map((m) => (
+              <li key={m.id}>
+                {m.name} · {m.widgetId.slice(0, 8)}
+              </li>
+            ))}
+          </ul>
+        )}
+        {candidate.layout && (
+          <div
+            className="widget-layout-preview"
+            aria-label="候选布局预览"
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(auto-fit,minmax(min(100%,${candidate.layout.minWidth}px),1fr))`,
+              gap: candidate.layout.gap,
+            }}
+          >
+            {snapshot.widgetGeneration?.widgets.map((w) => (
+              <div key={w.id}>
+                {candidate.members?.find((m) => m.widgetId === w.id)?.name ??
+                  w.name}
+              </div>
+            ))}
+            <p>
+              列宽下限 {candidate.layout.minWidth} · 间距 {candidate.layout.gap}{" "}
+              · {candidate.layout.density === "compact" ? "紧凑" : "舒适"}
+              ，保留现有顺序
+            </p>
+          </div>
+        )}
         <div className="widget-studio-actions">
           {changed && (
             <button
@@ -119,6 +180,21 @@ export function WidgetCandidatePanel({
           <p className="error">控件输入尚未确认保存，确认后才能保留。</p>
         )}
       </div>
+      {!difference && candidate.members && (
+        <div className="widget-studio-actions" aria-label="选择集合预览">
+          {candidate.members.map((m) => (
+            <button
+              key={m.id}
+              className="button"
+              aria-pressed={member?.id === m.id}
+              disabled={unconfirmed && member?.id !== m.id}
+              onClick={() => setSelectedMember(m.id)}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+      )}
       {difference ? (
         <div className="widget-differences" aria-label="实际产物差异">
           {candidate.differences.map((d) => (
@@ -141,8 +217,8 @@ export function WidgetCandidatePanel({
       ) : (
         ["preview", "retained"].includes(candidate.state) && (
           <WidgetWorkspace
-            key={`${candidate.id}:${candidate.state}`}
-            candidateId={candidate.id}
+            key={`${member?.id ?? candidate.id}:${candidate.state}`}
+            candidateId={member?.id ?? candidate.id}
             retained={candidate.state === "retained"}
             connected={connected}
             occluded={occluded || !!confirmation}
@@ -203,7 +279,25 @@ function CandidateConfirmation({
           else setFailed(true);
         }}
       >
-        <h2>{retain ? "保留这个控件？" : "撤销这个预览？"}</h2>
+        <h2>
+          {candidate.members
+            ? retain
+              ? "保留这组修改？"
+              : "撤销这组预览？"
+            : retain
+              ? "保留这个控件？"
+              : "撤销这个预览？"}
+        </h2>
+        {candidate.members && (
+          <p>
+            将同时处理 {candidate.members.length} 个控件，任一冲突整组不应用。
+            {candidate.members.map((m) => (
+              <span className="widget-confirm-target" key={m.id}>
+                {m.name} · {m.widgetId.slice(0, 8)}
+              </span>
+            ))}
+          </p>
+        )}
         <p>
           {candidate.name} · 需求修订 {candidate.requirementRevision}
         </p>

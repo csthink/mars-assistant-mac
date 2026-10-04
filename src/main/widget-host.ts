@@ -19,6 +19,7 @@ interface PendingInput {
 }
 interface Entry {
   token: number;
+  contentOnly?: boolean;
   owner: BrowserWindow;
   instance?: WidgetInstance;
   preview?: WidgetPreview;
@@ -26,7 +27,8 @@ interface Entry {
 }
 /** Trusted shell controls are separate from the limited generated-view bridge. */
 export class WidgetHost {
-  private entries = new Map<number, Entry>();
+  private entries = new Map<string, Entry>();
+  private owners = new Set<number>();
   private buffers = new Map<string, Map<string, PendingInput>>();
   private buffer(surface: Surface, candidateId: string) {
     const key = `${surface}:${candidateId}`;
@@ -147,9 +149,15 @@ export class WidgetHost {
         } satisfies WidgetSignal);
     }
   }
-  occlude(owner: BrowserWindow) {
-    const entry = this.entries.get(owner.webContents.id);
-    if (!entry) return;
+  occlude(owner: BrowserWindow, slot?: string) {
+    for (const [key, entry] of this.entries)
+      if (
+        entry.owner === owner &&
+        (slot === undefined || key === `${owner.webContents.id}:${slot}`)
+      )
+        this.closeEntry(entry);
+  }
+  private closeEntry(entry: Entry) {
     entry.token++;
     if (entry.instance) {
       this.signal(
@@ -171,10 +179,20 @@ export class WidgetHost {
     const command = raw as WidgetControl;
     if (!this.enabled && command.action === "open")
       return { ok: true, enabled: false };
-    const keys = Object.keys(command).sort().join(",");
+    if (
+      command.slot !== undefined &&
+      (typeof command.slot !== "string" ||
+        !/^[a-zA-Z0-9:-]{1,200}$/.test(command.slot))
+    )
+      return { ok: false, message: "控件位置身份无效。" };
+    const keys = Object.keys(command)
+      .filter((key) => key !== "slot")
+      .sort()
+      .join(",");
     if (
       ![
         "status",
+        "suspend",
         "open",
         "openGenerated",
         "hide",
@@ -185,41 +203,74 @@ export class WidgetHost {
       ].includes(command.action)
     )
       return { ok: false, message: "控件操作无效。" };
-    let entry = this.entries.get(owner.webContents.id);
+    const entryKey = `${owner.webContents.id}:${command.slot ?? "default"}`;
+    let entry = this.entries.get(entryKey);
     if (!entry) {
       entry = { token: 0, owner, unconfirmed: new Map() };
-      this.entries.set(owner.webContents.id, entry);
+      this.entries.set(entryKey, entry);
+    }
+    if (!this.owners.has(owner.webContents.id)) {
+      this.owners.add(owner.webContents.id);
       const id = owner.webContents.id;
       let visible = owner.isVisible();
       const visibility = () => {
         const next = owner.isVisible();
         // macOS also emits hide for occlusion. Only native visibility revokes the preview.
-        if (next === visible) return;
+        // A hidden, already-occluded window can omit the native hide event. The runtime
+        // still retires its views from native visibility, so reconcile those retired
+        // instances on show even if the cached visibility never changed.
+        const retired = [...this.entries.values()].filter(
+          (entry) =>
+            entry.owner === owner && entry.instance && !entry.instance.active,
+        );
+        if (next === visible && retired.length === 0) return;
         visible = next;
         if (!next) this.occlude(owner);
+        else for (const entry of retired) this.closeEntry(entry);
         if (!owner.webContents.isDestroyed())
           owner.webContents.send("widget:visibility", next);
       };
-      owner.on("hide", visibility);
-      owner.on("show", visibility);
-      owner.on("minimize", visibility);
-      owner.on("restore", visibility);
+      let visibilityCheck: ReturnType<typeof setImmediate> | undefined;
+      const observeVisibility = () => {
+        visibility();
+        // A hide listener can show the owner reentrantly without a second native
+        // event. Reconcile once after the event stack, without delaying revocation.
+        if (visibilityCheck) return;
+        visibilityCheck = setImmediate(() => {
+          visibilityCheck = undefined;
+          if (!owner.isDestroyed()) visibility();
+        });
+      };
+      owner.on("hide", observeVisibility);
+      owner.on("show", observeVisibility);
+      owner.on("minimize", observeVisibility);
+      owner.on("restore", observeVisibility);
       owner.once("closed", () => {
-        owner.removeListener("hide", visibility);
-        owner.removeListener("show", visibility);
-        owner.removeListener("minimize", visibility);
-        owner.removeListener("restore", visibility);
-        this.entries.delete(id);
+        if (visibilityCheck) clearImmediate(visibilityCheck);
+        owner.removeListener("hide", observeVisibility);
+        owner.removeListener("show", observeVisibility);
+        owner.removeListener("minimize", observeVisibility);
+        owner.removeListener("restore", observeVisibility);
+        this.occlude(owner);
+        for (const [key, entry] of this.entries)
+          if (entry.owner === owner) this.entries.delete(key);
+        this.owners.delete(id);
       });
     }
     try {
       if (command.action === "place") {
         if (
-          keys !== "action,generation,height,width,x,y" ||
+          ![
+            "action,generation,height,width,x,y",
+            "action,contentOnly,generation,height,width,x,y",
+          ].includes(keys) ||
+          (command.contentOnly !== undefined &&
+            typeof command.contentOnly !== "boolean") ||
           !entry.instance ||
           entry.instance.identity.generation !== command.generation
         )
           return { ok: false, message: "控件实例已关闭。" };
+        entry.contentOnly = command.contentOnly === true;
         this.runtime.place(
           entry.instance,
           owner,
@@ -230,6 +281,7 @@ export class WidgetHost {
             height: command.height,
           },
           false,
+          command.contentOnly === true,
         );
       } else if (command.action === "draftConfig") {
         if (keys !== "action,field,revision,value" || !entry.preview)
@@ -295,9 +347,11 @@ export class WidgetHost {
           if ([...entry.unconfirmed.values()].some((input) => input.pending))
             throw new Error("写入尚未结束，请稍后再核对。");
           entry.unconfirmed.clear();
-          this.occlude(owner);
+          this.closeEntry(entry);
         }
-        if (command.action === "hide") this.occlude(owner);
+        if (command.action === "hide") this.closeEntry(entry);
+        if (command.action === "suspend" && entry.instance)
+          entry.instance.view.setVisible(false);
         if (command.action === "status" && entry.preview) {
           const reply = await this.request(
             { type: "widgetInspect", candidateId: entry.preview.candidateId },
@@ -307,7 +361,7 @@ export class WidgetHost {
           entry.preview = reply.widgetPreview;
         }
         if (command.action === "open" || command.action === "openGenerated") {
-          this.occlude(owner);
+          this.closeEntry(entry);
           const token = entry.token;
           const generated =
             command.action === "openGenerated"
@@ -372,6 +426,10 @@ export class WidgetHost {
           }
           entry.instance = instance;
           instance.contents.on("before-input-event", (event, input) => {
+            if (input.type === "keyDown" && input.key === "Escape") {
+              if (entry.contentOnly) event.preventDefault();
+              owner.webContents.send("widget:restore");
+            }
             if (input.meta && input.key.toLowerCase() === "k") {
               event.preventDefault();
               this.occlude(owner);

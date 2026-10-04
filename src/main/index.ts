@@ -1801,9 +1801,14 @@ if (!instance) {
       const entry = sender(event);
       return widgetHost!.control(entry.window, entry.surface, command);
     });
-    ipcMain.on("widget:occlude", (event) => {
+    ipcMain.on("widget:occlude", (event, slot: unknown) => {
       try {
-        widgetHost!.occlude(sender(event).window);
+        if (
+          slot !== undefined &&
+          (typeof slot !== "string" || !/^[a-zA-Z0-9:-]{1,200}$/.test(slot))
+        )
+          throw new Error("Invalid widget slot");
+        widgetHost!.occlude(sender(event).window, slot as string | undefined);
         event.returnValue = true;
       } catch {
         event.returnValue = false;
@@ -2043,13 +2048,26 @@ if (!instance) {
         };
       if (
         command.type === "retainWidgetCandidate" &&
-        widgetHost?.hasUnconfirmedCandidate(command.candidateId)
+        [
+          command.candidateId,
+          ...(snapshot?.widgetGeneration?.candidates
+            .find((c) => c.id === command.candidateId)
+            ?.members?.map((m) => m.id) ?? []),
+        ].some((id) => widgetHost?.hasUnconfirmedCandidate(id))
       )
         return {
           ok: false,
           code: "CONFLICT",
           message: "控件输入尚未确认保存，请先处理保存状态。",
         };
+      if (command.type === "checkWidgetGenerationStop") {
+        const task = snapshot?.widgetGeneration?.tasks.find(
+          (t) => t.id === command.taskId,
+        );
+        if (!task)
+          return { ok: false, code: "NOT_FOUND", message: "生成任务不存在。" };
+        return widgetGenerationRunner.confirmStop(task);
+      }
       const reply = await request(command, entry.surface);
       // The business service records "stopping" first; only then does the host abort the request.
       if (reply.ok && command.type === "stopExecution")

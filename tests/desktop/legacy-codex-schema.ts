@@ -163,9 +163,9 @@ export function restorePreClaudeFixture(db: DatabaseSync) {
   db.exec("PRAGMA foreign_keys=ON");
 }
 
-/** Remove only schemas 29/30 before reconstructing a real earlier schema boundary. */
+/** Remove schemas 29 through 33 before reconstructing a real earlier schema boundary. */
 export function restorePreWidgetGenerationFixture(db: DatabaseSync) {
   db.exec(
-    "DROP TABLE widget_draft_selection; DROP TABLE saved_widgets; DROP TABLE generated_candidates; DROP TABLE widget_generation_attempts; DROP TABLE widget_generation_tasks; DROP TABLE widget_generation_events; DROP TABLE widget_drafts;",
+    "DROP TABLE widget_draft_undo; DROP TABLE widget_candidate_sets; DROP TABLE widget_layout; DROP TABLE widget_draft_selection; DROP TABLE saved_widgets; DROP TABLE generated_candidates; DROP TABLE widget_generation_attempts; DROP TABLE widget_generation_tasks; DROP TABLE widget_generation_events; DROP TABLE widget_drafts;",
   );
 }

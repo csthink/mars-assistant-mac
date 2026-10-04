@@ -24,10 +24,37 @@ export interface WidgetDraft {
   requirementRevision: number;
   sourceConversationId: string | null;
   widgetId: string | null;
+  targetIds: string[];
+  deleted: boolean;
   createdAt: string;
   updatedAt: string;
 }
+export interface WidgetStopEvidence {
+  complete: boolean;
+  processes: { pid: number; startSeconds: number; startMicros: number }[];
+}
+export function validWidgetStopEvidence(v: unknown): v is WidgetStopEvidence {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const x = v as Record<string, unknown>;
+  return (
+    Object.keys(x).sort().join(",") === "complete,processes" &&
+    typeof x.complete === "boolean" &&
+    Array.isArray(x.processes) &&
+    x.processes.length <= 128 &&
+    x.processes.every(
+      (p) =>
+        p &&
+        typeof p === "object" &&
+        Object.keys(p).sort().join(",") === "pid,startMicros,startSeconds" &&
+        [p.pid, p.startSeconds, p.startMicros].every(
+          (n) => Number.isSafeInteger(n) && n >= 0,
+        ) &&
+        p.pid > 0,
+    )
+  );
+}
 export interface GenerationTask {
+  stopUnconfirmed?: boolean;
   id: string;
   draftId: string;
   requestId: string;
@@ -43,7 +70,18 @@ export interface GenerationTask {
   createdAt: string;
   endedAt: string | null;
 }
+export interface WidgetEditTarget {
+  id: string;
+  revision: number;
+  candidateId: string;
+  configRevision: number;
+  dataRevision: number;
+  build: BuiltWidget;
+  config: Record<string, string | number | boolean>;
+}
 export interface GenerationContext {
+  widgets?: WidgetEditTarget[];
+  layoutRevision?: number;
   messages: Message[];
   attachments: {
     attachmentId: string;
@@ -53,7 +91,40 @@ export interface GenerationContext {
   }[];
   access: { grantedConnections: string[]; permissionRevision: number };
 }
+export interface WidgetLayout {
+  minWidth: number;
+  gap: number;
+  density: "comfortable" | "compact";
+}
+export const defaultWidgetLayout: WidgetLayout = {
+  minWidth: 320,
+  gap: 16,
+  density: "comfortable",
+};
+export function validWidgetLayout(v: unknown): v is WidgetLayout {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const x = v as Record<string, unknown>;
+  return (
+    Object.keys(x).sort().join(",") === "density,gap,minWidth" &&
+    Number.isInteger(x.minWidth) &&
+    Number(x.minWidth) >= 240 &&
+    Number(x.minWidth) <= 800 &&
+    Number.isInteger(x.gap) &&
+    Number(x.gap) >= 8 &&
+    Number(x.gap) <= 32 &&
+    ["comfortable", "compact"].includes(String(x.density))
+  );
+}
 export interface GeneratedCandidate {
+  effects?: { dataWrites: number; configSaves: number };
+  members?: {
+    id: string;
+    widgetId: string;
+    name: string;
+    digest: string;
+    differences: GeneratedCandidate["differences"];
+  }[];
+  layout?: WidgetLayout | null;
   id: string;
   taskId: string;
   draftId: string;
@@ -78,6 +149,7 @@ export interface SavedWidget {
   position: number;
 }
 export interface WidgetGenerationSnapshot {
+  layout?: { value: WidgetLayout; revision: number; fallback: string | null };
   drafts: WidgetDraft[];
   tasks: GenerationTask[];
   candidates: GeneratedCandidate[];
@@ -85,6 +157,17 @@ export interface WidgetGenerationSnapshot {
   selected?: { main: string | null; panel: string | null };
 }
 export type WidgetGenerationCommand =
+  | { type: "checkWidgetGenerationStop"; taskId: string }
+  | {
+      type: "deleteWidgetDraft";
+      id: string;
+      revision: number;
+      name: string;
+      input: string;
+      undoToken: string;
+    }
+  | { type: "undoWidgetDraftDeletion"; id: string; undoToken: string }
+  | { type: "createWidgetEditDraft"; id: string; widgetIds: string[] }
   | { type: "selectWidgetDraft"; id: string | null }
   | {
       type: "createWidgetDraft";
@@ -100,7 +183,7 @@ export type WidgetGenerationCommand =
       input: string;
     }
   | {
-      type: "submitWidgetGeneration";
+      type: "submitWidgetGeneration" | "supplementWidgetGeneration";
       draftId: string;
       requestId: string;
       revision: number;
@@ -116,6 +199,12 @@ export type WidgetGenerationCommand =
       requirementRevision: number;
     };
 export type WidgetGenerationHostCommand =
+  | {
+      type: "loadWidgetGenerationStop";
+      taskId: string;
+      executionId: string;
+    }
+  | { type: "confirmWidgetGenerationStop"; taskId: string; executionId: string }
   | { type: "claimWidgetGeneration"; taskId: string; executionId: string }
   | { type: "loadWidgetGeneration"; taskId: string; executionId: string }
   | {
@@ -126,6 +215,8 @@ export type WidgetGenerationHostCommand =
     }
   | {
       type: "finishWidgetGeneration";
+      stopUnconfirmed?: boolean;
+      stopEvidence?: WidgetStopEvidence;
       taskId: string;
       executionId: string;
       state: "completed" | "stopped" | "failed" | "interrupted";
@@ -136,6 +227,13 @@ export type WidgetGenerationHostCommand =
       taskId: string;
       executionId: string;
       build: BuiltWidget;
+    }
+  | {
+      type: "receiveWidgetCandidateSet";
+      taskId: string;
+      executionId: string;
+      builds: { widgetId: string; build: BuiltWidget }[];
+      layout: WidgetLayout | null;
     }
   | { type: "loadGeneratedWidget"; candidateId: string };
 const object = (v: unknown): v is Record<string, unknown> =>
@@ -158,6 +256,27 @@ export function validWidgetGenerationCommand(
 ): v is WidgetGenerationCommand {
   if (!object(v)) return false;
   switch (v.type) {
+    case "deleteWidgetDraft":
+      return (
+        exact(v, ["id", "revision", "name", "input", "undoToken"]) &&
+        id(v.id) &&
+        revision(v.revision) &&
+        text(v.name, 160) &&
+        text(v.input, 64000) &&
+        id(v.undoToken)
+      );
+    case "undoWidgetDraftDeletion":
+      return exact(v, ["id", "undoToken"]) && id(v.id) && id(v.undoToken);
+    case "createWidgetEditDraft":
+      return (
+        exact(v, ["id", "widgetIds"]) &&
+        id(v.id) &&
+        Array.isArray(v.widgetIds) &&
+        v.widgetIds.length > 0 &&
+        v.widgetIds.length <= 20 &&
+        new Set(v.widgetIds).size === v.widgetIds.length &&
+        v.widgetIds.every(id)
+      );
     case "selectWidgetDraft":
       return exact(v, ["id"]) && (v.id === null || id(v.id));
     case "createWidgetDraft":
@@ -175,6 +294,7 @@ export function validWidgetGenerationCommand(
         name(v.name) &&
         text(v.input, 64000)
       );
+    case "supplementWidgetGeneration":
     case "submitWidgetGeneration":
       return (
         exact(v, [
@@ -191,6 +311,7 @@ export function validWidgetGenerationCommand(
         text(v.model, 256) &&
         !!v.model
       );
+    case "checkWidgetGenerationStop":
     case "stopWidgetGeneration":
       return exact(v, ["taskId"]) && id(v.taskId);
     case "retryWidgetGeneration":
@@ -217,6 +338,8 @@ export function validWidgetGenerationHostCommand(
     return exact(v, ["candidateId"]) && id(v.candidateId);
   if (!id(v.taskId) || !id(v.executionId)) return false;
   switch (v.type) {
+    case "loadWidgetGenerationStop":
+    case "confirmWidgetGenerationStop":
     case "claimWidgetGeneration":
     case "loadWidgetGeneration":
       return exact(v, ["taskId", "executionId"]);
@@ -224,11 +347,40 @@ export function validWidgetGenerationHostCommand(
       return exact(v, ["taskId", "executionId", "text"]) && text(v.text, 64000);
     case "finishWidgetGeneration":
       return (
-        exact(v, ["taskId", "executionId", "state", "error"]) &&
+        exact(v, [
+          "taskId",
+          "executionId",
+          "state",
+          "error",
+          ...(Object.hasOwn(v, "stopUnconfirmed") ? ["stopUnconfirmed"] : []),
+          ...(Object.hasOwn(v, "stopEvidence") ? ["stopEvidence"] : []),
+        ]) &&
+        (v.stopEvidence === undefined ||
+          (v.stopUnconfirmed === true &&
+            validWidgetStopEvidence(v.stopEvidence))) &&
+        (v.stopUnconfirmed === undefined ||
+          (typeof v.stopUnconfirmed === "boolean" &&
+            v.state === "interrupted")) &&
         ["completed", "stopped", "failed", "interrupted"].includes(
           String(v.state),
         ) &&
         (v.error === null || text(v.error, 4096))
+      );
+    case "receiveWidgetCandidateSet":
+      return (
+        exact(v, ["taskId", "executionId", "builds", "layout"]) &&
+        Array.isArray(v.builds) &&
+        v.builds.length > 0 &&
+        v.builds.length <= 20 &&
+        v.builds.every(
+          (b) =>
+            object(b) &&
+            Object.keys(b).sort().join(",") === "build,widgetId" &&
+            id(b.widgetId) &&
+            object(b.build) &&
+            digest(b.build.digest),
+        ) &&
+        (v.layout === null || validWidgetLayout(v.layout))
       );
     case "receiveWidgetCandidate":
       return (
