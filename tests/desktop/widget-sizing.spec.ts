@@ -26,7 +26,7 @@ const source = (short = false) =>
     capabilities: [],
     resources: [],
   });
-async function setup(retain: boolean) {
+async function setup(retain: boolean, connectionOrder?: string) {
   mkdirSync(".test-data/disposable", { recursive: true });
   const root = mkdtempSync(resolve(".test-data/disposable/content-sizing-"));
   const ids = retain
@@ -61,6 +61,11 @@ async function setup(retain: boolean) {
   store.close();
   const app = await launchLocal({
     args: [resolve("."), `--data-root=${root}`],
+    env: {
+      ...process.env,
+      CSTHINK_TEST_PANEL_CONNECTION_ORDER: connectionOrder ?? "",
+      CSTHINK_TEST_RECORD_WIDGET_LAYOUT: "1",
+    },
   });
   const shell = await app.firstWindow();
   await goTo(shell, "控件");
@@ -261,6 +266,33 @@ test("widget sizing: workspace, fullscreen and panel preserve natural geometry, 
       window.desktop.command({ type: "snapshot" }),
     );
     expect(snap.ok && snap.snapshot.widgetGeneration!.tasks.length).toBe(2);
+  } catch (error) {
+    await info.attach("sizing-failure-state", {
+      body: JSON.stringify(
+        await f.app.evaluate(async ({ BrowserWindow, webContents }) => ({
+          records: Reflect.get(globalThis, "widgetLayoutRecords"),
+          windows: BrowserWindow.getAllWindows().map((w) => ({
+            id: w.id,
+            visible: w.isVisible(),
+            bounds: w.getBounds(),
+            children: w.contentView.children.map((v) => v.getBounds()),
+          })),
+          pages: await Promise.all(
+            webContents.getAllWebContents().map(async (c) => ({
+              id: c.id,
+              url: c.getURL(),
+              state: await c
+                .executeJavaScript(
+                  `({width:innerWidth,height:innerHeight,hidden:document.hidden,bodyHeight:document.body?.scrollHeight,frames:[...document.querySelectorAll('.widget-frame')].map(e=>({height:e.clientHeight,mode:e.dataset.heightMode,rect:e.getBoundingClientRect().toJSON()})),text:document.body?.innerText})`,
+                )
+                .catch((e) => String(e)),
+            })),
+          ),
+        })),
+      ),
+      contentType: "application/json",
+    });
+    throw error;
   } finally {
     await f.close();
   }
@@ -376,5 +408,132 @@ test("widget sizing: isolated backgrounds follow the saved App appearance withou
     );
   } finally {
     await f.close();
+  }
+});
+
+test("widget sizing: retained panel widgets start after either data and connection order without recreating on reconnect", async ({}, info) => {
+  for (const order of ["connection-first", "snapshot-first"]) {
+    const f = await setup(true, order);
+    try {
+      for (const w of f.widgets)
+        await isolated(f.app, f.shell, `formal:${w.id}`);
+      const panelEvent = f.app.waitForEvent("window");
+      await f.app.evaluate(({ Menu }) =>
+        Menu.getApplicationMenu()!
+          .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+          .click(),
+      );
+      const panel = await panelEvent;
+      await expect
+        .poll(() =>
+          f.app.evaluate(
+            () =>
+              (
+                globalThis as unknown as {
+                  panelConnectionGate: { held: boolean };
+                }
+              ).panelConnectionGate.held,
+          ),
+        )
+        .toBe(true);
+      await panel.getByRole("button", { name: "工作台", exact: true }).click();
+      await expect(panel.locator("[data-formal-widget]")).toHaveCount(2);
+      await expect
+        .poll(() =>
+          f.app.evaluate(({ BrowserWindow }) => {
+            const owner = BrowserWindow.getAllWindows().find(
+              (w) => !w.isResizable(),
+            );
+            return owner?.isVisible();
+          }),
+        )
+        .toBe(true);
+      const before = await panel.evaluate(
+        async (widgets) => ({
+          connected: !document.querySelector(".service-error"),
+          slots: await Promise.all(
+            widgets.map((w) =>
+              window.desktop.widgetControl({
+                action: "status",
+                slot: `formal:${w.id}`,
+              }),
+            ),
+          ),
+        }),
+        f.widgets,
+      );
+      expect(before.connected).toBe(order === "connection-first");
+      if (order === "snapshot-first")
+        expect(before.slots.every((r) => r.ok && !r.generation)).toBe(true);
+      await info.attach(`${order}-before`, {
+        body: JSON.stringify(before),
+        contentType: "application/json",
+      });
+      await f.app.evaluate(({ app }) =>
+        app.emit("test-panel-connection-release"),
+      );
+      await expect(panel.locator(".service-error")).toHaveCount(0);
+      const views = await Promise.all(
+        f.widgets.map((w) => isolated(f.app, panel, `formal:${w.id}`)),
+      );
+      const urls = views.map((v) => v.url());
+      await views[0].getByLabel("备注").fill("重连保留");
+      const ownerId = await panel.evaluate(() => window.desktop.surface);
+      expect(ownerId).toBe("panel");
+      // Real trusted bridge notifications, without replacing the bridge or renderer.
+      for (const connected of [false, true]) {
+        await f.app.evaluate(({ BrowserWindow }, connected) => {
+          const owner = BrowserWindow.getAllWindows().find(
+            (w) => !w.isResizable(),
+          )!;
+          owner.webContents.send("business:status", {
+            connected,
+            message: connected ? "" : "测试连接恢复",
+          });
+        }, connected);
+        await expect(panel.locator(".service-error")).toHaveCount(
+          connected ? 0 : 1,
+        );
+      }
+      for (let i = 0; i < f.widgets.length; i++) {
+        const same = await isolated(f.app, panel, `formal:${f.widgets[i].id}`);
+        expect(same.url()).toBe(urls[i]);
+      }
+      await expect(views[0].getByLabel("备注")).toHaveValue("重连保留");
+    } catch (error) {
+      await info.attach(`${order}-failure-state`, {
+        body: JSON.stringify(
+          await f.app.evaluate(async ({ BrowserWindow }) => {
+            const owner = BrowserWindow.getAllWindows().find(
+              (w) => !w.isResizable(),
+            )!;
+            function tree(v: Electron.View): unknown {
+              return {
+                bounds: v.getBounds(),
+                visible: v.getVisible(),
+                children: v.children.map(tree),
+              };
+            }
+            return {
+              owner: {
+                id: owner.id,
+                visible: owner.isVisible(),
+                bounds: owner.getBounds(),
+                focusable: owner.isFocusable(),
+                opacity: owner.getOpacity(),
+              },
+              tree: tree(owner.contentView),
+              renderer: await owner.webContents.executeJavaScript(
+                `(async () => ({ surface: window.desktop.surface, connected: !document.querySelector(".service-error"), frames: [...document.querySelectorAll("[data-formal-widget]")].map(e => ({id:e.dataset.formalWidget, text:e.innerText})), slots: await Promise.all([...document.querySelectorAll("[data-formal-widget]")].map(e => window.desktop.widgetControl({action:"status",slot:"formal:"+e.dataset.formalWidget}))) }))()`,
+              ),
+            };
+          }),
+        ),
+        contentType: "application/json",
+      });
+      throw error;
+    } finally {
+      await f.close();
+    }
   }
 });

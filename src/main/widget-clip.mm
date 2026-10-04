@@ -129,7 +129,7 @@ static napi_value Finish(napi_env env, napi_callback_info info) {
     [root.window makeFirstResponder:responder];
   return nullptr;
 }
-static bool Rectangle(napi_env env, napi_value value, NSRect* rect) {
+static bool Rectangle(napi_env env, napi_value value, NSRect* rect, bool full = false) {
   double numbers[4];
   const char* keys[] = {"x", "y", "width", "height"};
   for (int i = 0; i < 4; ++i) {
@@ -137,27 +137,27 @@ static bool Rectangle(napi_env env, napi_value value, NSRect* rect) {
     if (napi_get_named_property(env, value, keys[i], &part) != napi_ok ||
         napi_get_value_double(env, part, &numbers[i]) != napi_ok || !std::isfinite(numbers[i])) return false;
   }
-  if (numbers[0] < 0 || numbers[1] < 0 || numbers[2] < 0 || numbers[3] < 0 ||
+  if ((!full && (numbers[0] < 0 || numbers[1] < 0)) || numbers[2] < (full ? 1 : 0) || numbers[3] < (full ? 1 : 0) ||
       numbers[2] > 8192 || numbers[3] > 4096) return false;
   *rect = NSMakeRect(numbers[0], numbers[1], numbers[2], numbers[3]);
   return true;
 }
 static napi_value Place(napi_env env, napi_callback_info info) {
   if (!MainThread(env)) return nullptr;
-  size_t argc = 3;
-  napi_value args[3];
+  size_t argc = 4;
+  napi_value args[4];
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  if (argc != 3) { napi_throw_type_error(env, nullptr, "Expected clipping binding, rectangle and visibility"); return nullptr; }
+  if (argc != 3 && argc != 4) { napi_throw_type_error(env, nullptr, "Expected clipping binding, rectangle, visibility and optional full layout"); return nullptr; }
   ClipBinding* binding = Binding(env, args[0]);
   if (!binding) return nullptr;
-  NSRect rect;
+  NSRect rect, full;
   bool visible = false;
   NSView* root = binding->root;
   NSView* child = binding->child;
   WidgetClipView* clip = binding->clip;
   if (binding->disposed || !root.window || !child || !clip ||
       clip.superview != root || child.superview != clip || child.window != root.window ||
-      !Rectangle(env, args[1], &rect) || napi_get_value_bool(env, args[2], &visible) != napi_ok) {
+      !Rectangle(env, args[1], &rect) || (argc == 4 && !Rectangle(env, args[3], &full, true)) || napi_get_value_bool(env, args[2], &visible) != napi_ok) {
     clip.hidden = YES;
     child.hidden = YES;
     napi_throw_error(env, nullptr, "Widget native clipping boundary is unavailable");
@@ -170,6 +170,13 @@ static napi_value Place(napi_env env, napi_callback_info info) {
   // and bounds keeps that coordinate space intact, including after resize and scroll.
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
+  // NativeViewHost skips ShowWidget when its visible bounds are empty. Commit the
+  // complete document size here as well, while both drawing and input remain hidden.
+  // AppKit propagates this frame through the existing WebContents autoresizing chain.
+  if (argc == 4) {
+    if (!root.isFlipped) full.origin.y = NSMaxY(rootBounds) - NSMaxY(full);
+    if (!NSEqualRects(child.frame, full)) child.frame = full;
+  }
   clip.frame = rect;
   clip.bounds = rect;
   clip.hidden = !visible || NSIsEmptyRect(rect);

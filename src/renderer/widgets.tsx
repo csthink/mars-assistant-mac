@@ -244,7 +244,15 @@ export function WidgetWorkspace({
       if (!current.current) void open();
     } else hide();
     // These transitions are the trusted visibility contract, not widget messages.
-  }, [wanted, settings, occluded, visible, retained, ownerVisibilityRevision]);
+  }, [
+    wanted,
+    settings,
+    occluded,
+    visible,
+    retained,
+    ownerVisibilityRevision,
+    connected,
+  ]);
   useEffect(() => {
     const element = frame.current;
     if (!element) return;

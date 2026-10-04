@@ -115,9 +115,40 @@ test("widget sizing: clipping preserves the complete native layout viewport", as
   }
 });
 
-test("widget sizing: natural height grows and shrinks independently of the current viewport", async () => {
+test("widget sizing: natural height grows and shrinks independently of the current viewport", async ({}, info) => {
   const client = await setup();
   try {
+    await client.evaluate(() => {
+      const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+      h.runtime.place(
+        h.instance,
+        h.owner,
+        { x: 300, y: 1500, width: 370, height: 240 },
+        false,
+        false,
+        { x: 300, y: 1500, width: 370, height: 0 },
+      );
+    });
+    await expect
+      .poll(() =>
+        client.evaluate(async () => {
+          const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+          return {
+            viewport: await h.instance.contents.executeJavaScript(
+              "({width:innerWidth,height:innerHeight})",
+            ),
+            layout: h.instance.layout,
+            measured: h.instance.measuredRevision,
+            visible: h.instance.view.getVisible(),
+          };
+        }),
+      )
+      .toMatchObject({
+        layout: { height: 720, width: 370, widthRevision: 1, mode: "natural" },
+        measured: 1,
+        visible: false,
+        viewport: { width: 370, height: 240 },
+      });
     await client.evaluate(() => {
       const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
       h.runtime.place(
@@ -198,6 +229,26 @@ test("widget sizing: natural height grows and shrinks independently of the curre
     });
     expect(tail.scroll).toBeGreaterThan(0);
     expect(tail.tail).toBeLessThanOrEqual(tail.height);
+  } catch (error) {
+    await info.attach("measurement-failure-state", {
+      body: JSON.stringify(
+        await client.evaluate(async () => {
+          const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+          return {
+            layout: h.instance.layout,
+            measured: h.instance.measuredRevision,
+            visible: h.instance.view.getVisible(),
+            viewBounds: h.instance.view.getBounds(),
+            records: Reflect.get(globalThis, "widgetLayoutRecords"),
+            viewport: await h.instance.contents.executeJavaScript(
+              "({width:innerWidth,height:innerHeight,hidden:document.hidden,content:document.body.scrollHeight})",
+            ),
+          };
+        }),
+      ),
+      contentType: "application/json",
+    });
+    throw error;
   } finally {
     await closeLocal(client);
   }
@@ -453,6 +504,38 @@ test("widget sizing: native clipping preserves hit testing and layout across res
           );
         }),
       ).toEqual({ width, height });
+    }
+    for (const occluded of [false, true]) {
+      await client.evaluate((_, occluded) => {
+        const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+        h.runtime.place(
+          h.instance,
+          h.owner,
+          { x: 300, y: 150, width: 500, height: 720 },
+          occluded,
+          false,
+          { x: 300, y: 180, width: 500, height: occluded ? 400 : 0 },
+        );
+      }, occluded);
+      await expect
+        .poll(async () => {
+          const clip = (await read()).clips[0];
+          return {
+            hidden: clip.hidden,
+            inside: clip.insideHitsWidget,
+            above: clip.aboveHitsWidget,
+          };
+        })
+        .toEqual({ hidden: true, inside: false, above: false });
+      expect(
+        await client.evaluate(() => {
+          const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+          return {
+            child: h.instance.view.getVisible(),
+            root: h.instance.clip.getVisible(),
+          };
+        }),
+      ).toEqual({ child: false, root: false });
     }
     const stopped = await client.evaluate(({ BrowserWindow }, module) => {
       const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;

@@ -611,6 +611,12 @@ export class WidgetRuntime {
         instance,
         visible,
         visible.width > 0 && visible.height > 0,
+        {
+          x: Math.floor(rectangle.x),
+          y: Math.floor(rectangle.y),
+          width: layoutWidth,
+          height: layoutHeight,
+        },
       )
     )
       return;
@@ -645,10 +651,16 @@ export class WidgetRuntime {
     instance: WidgetInstance,
     bounds: Rectangle,
     shown: boolean,
+    full?: Rectangle,
   ) {
     if (!instance.nativeClip) return true;
     try {
-      nativeWidgetClip!.place(instance.nativeClip, bounds, shown);
+      nativeWidgetClip!.place(
+        instance.nativeClip,
+        bounds,
+        shown,
+        ...(full ? ([full] as const) : []),
+      );
       return true;
     } catch {
       this.fail(instance, "控件显示边界失效，已关闭预览，请重新打开。");

@@ -140,6 +140,63 @@ app.on("browser-window-created", (_event, window) => {
   window.focus = () => {};
 });
 
+// Observe sizing traffic without delaying it; synthetic tests attach this on failure.
+if (process.env.CSTHINK_TEST_RECORD_WIDGET_LAYOUT === "1") {
+  const records = (globalThis.widgetLayoutRecords = []);
+  app.on("web-contents-created", (_event, contents) => {
+    contents.ipc.on("widget:measure", (_event, value) => {
+      if (records.length < 1000)
+        records.push({
+          direction: "measure",
+          id: contents.id,
+          at: Date.now(),
+          value,
+        });
+    });
+    const send = contents.send;
+    contents.send = function (channel, ...args) {
+      if (channel === "widget:layout" && records.length < 1000)
+        records.push({
+          direction: "layout",
+          id: contents.id,
+          at: Date.now(),
+          value: args[0],
+        });
+      return send.call(this, channel, ...args);
+    };
+  });
+}
+
+// Hold only the first panel snapshot reply, after the actual service has published its
+// data. This makes the two legal data/connection notification orders deterministic.
+const panelConnectionOrder = process.env.CSTHINK_TEST_PANEL_CONNECTION_ORDER;
+if (panelConnectionOrder) {
+  const { ipcMain } = electron;
+  const handle = ipcMain.handle;
+  const gate = (globalThis.panelConnectionGate = { held: false, calls: [] });
+  let first = true;
+  ipcMain.handle = function (channel, listener) {
+    if (channel !== "business:command")
+      return handle.call(this, channel, listener);
+    return handle.call(this, channel, async (event, command) => {
+      const owner = electron.BrowserWindow.fromWebContents(event.sender);
+      const panel = owner && !owner.isResizable();
+      gate.calls.push({ command: command.type, windowId: owner?.id, panel });
+      if (!first || !panel || command.type !== "snapshot")
+        return listener(event, command);
+      first = false;
+      if (panelConnectionOrder === "connection-first")
+        event.sender.send("business:status", { connected: true, message: "" });
+      const reply = await listener(event, command);
+      gate.held = true;
+      await new Promise((release) =>
+        app.once("test-panel-connection-release", release),
+      );
+      return reply;
+    });
+  };
+}
+
 // A slow business service: the messages of the first service process reach the main process only after
 // CSTHINK_TEST_SERVICE_DELAY_MS, in their original order, as when a large data root opens slowly.
 const serviceDelay = Number(process.env.CSTHINK_TEST_SERVICE_DELAY_MS ?? 0);
