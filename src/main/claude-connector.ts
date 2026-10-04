@@ -292,6 +292,8 @@ export class ClaudeConnector {
       options.signal.throwIfAborted();
       await rpc.request("initialize");
       await options.onSession(run);
+      // The session owns interrupt and verified exit after preparation.
+      options.signal.removeEventListener("abort", closeOnAbort);
       await runClaudeSession({
         rpc,
         run,

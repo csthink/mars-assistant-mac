@@ -1,3 +1,4 @@
+import { widgetFixture } from "../../src/main/widget-fixture";
 import {
   test,
   expect,
@@ -383,6 +384,81 @@ test("widget client: leaving the viewport destroys the instance and returning re
     await expect(restored.getByLabel("随手记")).toHaveValue(
       "离开可见区域前已保存",
     );
+  } finally {
+    await client.close();
+  }
+});
+
+test("widget acceptance fixture: pending initial reads disable edits until confirmed state is loaded", async () => {
+  const client = await launchLocal({
+    args: [resolve("."), `--data-root=${root()}`],
+  });
+  try {
+    const fixture = JSON.parse(widgetFixture);
+    const bridge = `(() => { let release; const ready = new Promise(resolve => { release = resolve; });
+      let draft = { revision: 3, text: '已保存的便笺' }, count = 2;
+      window.releaseInitialRead = () => release();
+      window.fixtureState = () => ({ draft, count });
+      window.widget = {
+        readDraft: async () => { await ready; return { ok: true, value: { note: draft } }; },
+        readData: async () => { await ready; return { ok: true, revision: 4, value: { count } }; },
+        readConfig: async () => { await ready; return { ok: true, value: { title: '便笺', font_size: 14, show_count: true } }; },
+        writeDraft: async (revision, field, text) => { if (revision !== draft.revision || field !== 'note') throw Error('stale draft'); draft = { revision: revision + 1, text }; return { ok: true, revision: draft.revision }; },
+        writeData: async (revision, value) => { if (revision !== 4) throw Error('stale data'); count = value.count; return { ok: true, revision: 5, value: { count } }; }
+      }; })();`;
+    await client.firstWindow();
+    await client.evaluate(
+      async ({ BrowserWindow }, html) => {
+        const window = new BrowserWindow({
+          show: false,
+          webPreferences: { contextIsolation: true, sandbox: true },
+        });
+        await window.loadURL(
+          `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+        );
+      },
+      fixture.view.html + "<script>" + bridge + fixture.view.js + "</script>",
+    );
+    await expect
+      .poll(() =>
+        client
+          .context()
+          .pages()
+          .some((page) => page.url().startsWith("data:text/html")),
+      )
+      .toBe(true);
+    const page = client
+      .context()
+      .pages()
+      .find((page) => page.url().startsWith("data:text/html"))!;
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            typeof (window as unknown as { releaseInitialRead?: unknown })
+              .releaseInitialRead,
+        ),
+      )
+      .toBe("function");
+    await expect(page.getByLabel("随手记")).toBeDisabled();
+    await expect(page.getByRole("button", { name: "记录一次" })).toBeDisabled();
+    await page.evaluate(() =>
+      (
+        window as unknown as { releaseInitialRead(): void }
+      ).releaseInitialRead(),
+    );
+    await expect(page.getByLabel("随手记")).toHaveValue("已保存的便笺");
+    await expect(page.getByLabel("随手记")).toBeEnabled();
+    await page.getByLabel("随手记").fill("就绪后输入的便笺");
+    await expect(page.getByRole("status")).toHaveText("草稿已确认保存");
+    await page.getByRole("button", { name: "记录一次" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (window as unknown as { fixtureState(): unknown }).fixtureState(),
+        ),
+      )
+      .toEqual({ draft: { revision: 4, text: "就绪后输入的便笺" }, count: 3 });
   } finally {
     await client.close();
   }

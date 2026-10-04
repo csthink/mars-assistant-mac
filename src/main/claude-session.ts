@@ -120,6 +120,7 @@ export async function runClaudeSession(options: {
   signal.throwIfAborted();
   const content = claudeInput(options.messages, options.budget);
   await rpc.ready();
+  signal.throwIfAborted();
   let initialized = false,
     resultSeen = false,
     streamed = false,

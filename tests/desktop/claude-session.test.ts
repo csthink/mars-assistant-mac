@@ -1,3 +1,4 @@
+import { ClaudeRpc } from "../../src/main/claude-rpc";
 import { claudeInput } from "../../src/main/claude-session";
 import { spawn } from "node:child_process";
 import { configureCodexProcessHelper } from "../../src/main/codex-process";
@@ -161,6 +162,7 @@ test("claude: cancel confirms process exit then resumes only the recorded sessio
       { name: "AbortError" },
     );
     assert.equal(text, "SYNTHETIC_RESPONSE");
+    assert.match(readFileSync(f.calls, "utf8"), /"subtype":"interrupt"/);
     assert.ok(run);
     assert.equal(
       JSON.parse(readFileSync(join(run.cwd, "outcome.json"), "utf8")).state,
@@ -605,6 +607,65 @@ test(
       t.mock.timers.reset();
       controller?.abort();
       await result;
+      f.clean();
+    }
+  },
+);
+
+test(
+  "claude: abort at the preparation handoff sends no user prompt and confirms owned process exit",
+  { timeout: 15000 },
+  async (t) => {
+    const f = fixture();
+    const controller = new AbortController();
+    const originalReady = ClaudeRpc.prototype.ready;
+    let sessionProcess: ClaudeRpc["process"] | undefined,
+      run: ClaudeRun | undefined;
+    try {
+      const setup = await f.connector.prepare();
+      t.mock.method(
+        ClaudeRpc.prototype,
+        "ready",
+        async function (this: ClaudeRpc) {
+          await originalReady.call(this);
+          if (run) {
+            sessionProcess = this.process;
+            controller.abort();
+          }
+        },
+      );
+      await assert.rejects(
+        f.connector.run({
+          ...setup,
+          messages: [
+            { role: "user", content: "DO_NOT_SEND_AFTER_HANDOFF_ABORT" },
+          ],
+          signal: controller.signal,
+          budget: 10000,
+          onSession: async (value) => {
+            run = value;
+          },
+          onDelta: () => assert.fail("No delta after preparation abort"),
+        }),
+        { name: "AbortError" },
+      );
+      assert.ok(run && sessionProcess);
+      assert.equal(
+        readFileSync(f.calls, "utf8").includes(
+          "DO_NOT_SEND_AFTER_HANDOFF_ABORT",
+        ),
+        false,
+      );
+      assert.ok(
+        sessionProcess.exitCode !== null || sessionProcess.signalCode !== null,
+      );
+      assert.equal(
+        JSON.parse(readFileSync(join(run.cwd, "outcome.json"), "utf8")).state,
+        "stopped",
+      );
+    } finally {
+      controller.abort();
+      t.mock.restoreAll();
       f.clean();
     }
   },
