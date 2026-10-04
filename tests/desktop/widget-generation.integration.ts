@@ -471,8 +471,15 @@ test("widget editing UI: two selected formal targets are previewed and retained 
     ).toHaveCount(2);
     for (const checkbox of await f.page
       .getByRole("checkbox", { name: /^选择控件 / })
-      .all())
+      .all()) {
+      await checkbox.focus();
+      await expect(
+        checkbox.locator(
+          "xpath=ancestor::div[contains(@class,'widget-formal-controls')]",
+        ),
+      ).toHaveCSS("opacity", "1");
       await checkbox.check();
+    }
     await f.page
       .getByRole("button", { name: "修改所选 2 个控件", exact: true })
       .click();
