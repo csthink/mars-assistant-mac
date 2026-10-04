@@ -1,3 +1,4 @@
+import { Dispatcher, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
@@ -450,5 +451,125 @@ test(
       before + 10,
       "All ten cancelled response connections must close without server intervention",
     );
+  },
+);
+
+test(
+  "widget transport: managed waiting spans slow headers and body, counts semantic progress only and cancels without retry",
+  { timeout: 5000 },
+  async () => {
+    const { setTimeout: pause } = await import("node:timers/promises");
+    const originalDispatcher = getGlobalDispatcher();
+    const dispatched: { headers?: number | null; body?: number | null }[] = [];
+    class ObservedDispatcher extends Dispatcher {
+      dispatch(
+        options: Dispatcher.DispatchOptions,
+        handler: Dispatcher.DispatchHandler,
+      ) {
+        dispatched.push({
+          headers: options.headersTimeout,
+          body: options.bodyTimeout,
+        });
+        return originalDispatcher.dispatch(options, handler);
+      }
+    }
+    const inheritedDispatcher = new ObservedDispatcher();
+    setGlobalDispatcher(inheritedDispatcher);
+    let requests = 0,
+      progress = 0;
+    let response!: import("node:http").ServerResponse;
+    let received!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      received = resolve;
+    });
+    const loopback = createServer((_request, incoming) => {
+      requests++;
+      response = incoming;
+      received();
+    });
+    await new Promise<void>((done) => loopback.listen(0, "127.0.0.1", done));
+    const controller = new AbortController();
+    let settled = false;
+    const request = streamChat(
+      {
+        baseUrl: `http://127.0.0.1:${(loopback.address() as AddressInfo).port}/v1`,
+        apiKey: "synthetic",
+        model: "test",
+      },
+      [],
+      controller.signal,
+      () => {},
+      {
+        managedDeadline: true,
+        headersMs: 5,
+        idleMs: 5,
+        totalMs: 5,
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "submit_widget_candidate",
+              description: "test",
+              parameters: {},
+            },
+          },
+        ],
+        onProgress: () => progress++,
+      },
+    );
+    const stopped = assert.rejects(
+      request.finally(() => {
+        settled = true;
+      }),
+      (error: unknown) =>
+        error instanceof TransportError && error.errorClass === "stop_timeout",
+    );
+    try {
+      await ready;
+      await pause(30);
+      assert.equal(
+        settled,
+        false,
+        "slow headers must not use ordinary chat limits",
+      );
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(': heartbeat\n\ndata: {"choices":[{"delta":{}}]}\n\n');
+      await pause(30);
+      assert.equal(
+        settled,
+        false,
+        "silent body must not use ordinary chat limits",
+      );
+      assert.equal(
+        progress,
+        0,
+        "heartbeats and empty deltas are not semantic progress",
+      );
+      response.write(
+        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n\n',
+      );
+      response.write(
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"id","type":"function","function":{"name":"submit_widget_candidate","arguments":"{"}}]}}]}\n\n',
+      );
+      const deadline = performance.now() + 2000;
+      while (progress < 2 && performance.now() < deadline) await pause(5);
+      assert.equal(progress, 2);
+      assert.equal(requests, 1);
+      assert.deepEqual(
+        dispatched,
+        [{ headers: 0, body: 0 }],
+        "managed fetch retains the configured dispatcher with request-local disabled timers",
+      );
+      assert.equal(getGlobalDispatcher(), inheritedDispatcher);
+      controller.abort();
+      await stopped;
+    } finally {
+      setGlobalDispatcher(originalDispatcher);
+      controller.abort();
+      response?.end();
+      loopback.closeAllConnections();
+      await stopped;
+      await new Promise<void>((done) => loopback.close(() => done()));
+    }
   },
 );

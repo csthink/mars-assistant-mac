@@ -1,6 +1,21 @@
+import { Dispatcher, getGlobalDispatcher } from "undici";
 import { toolArgumentsLimit, toolsPerRoundLimit } from "../shared/capabilities";
 import { crc32, deflateSync } from "node:zlib";
 import type { ErrorClass } from "../shared/protocol";
+
+/** Request-local timeouts; delegate to the existing dispatcher so its proxy policy is retained. */
+class ManagedDeadlineDispatcher extends Dispatcher {
+  dispatch(
+    options: Dispatcher.DispatchOptions,
+    handler: Dispatcher.DispatchHandler,
+  ) {
+    return getGlobalDispatcher().dispatch(
+      { ...options, headersTimeout: 0, bodyTimeout: 0 },
+      handler,
+    );
+  }
+}
+const managedDeadlineDispatcher = new ManagedDeadlineDispatcher();
 
 /**
  * HTTPS transport for Chat Completions providers. Requests go only to the
@@ -524,6 +539,9 @@ export async function streamChat(
     tools?: ToolDefinition[];
     toolArgumentsLimit?: number;
     totalMs?: number;
+    /** The caller owns a mutable deadline and cancels through signal. */
+    managedDeadline?: boolean;
+    onProgress?: () => void;
   } = {},
 ): Promise<StreamResult> {
   const url = endpointUrl(endpoint.baseUrl, "chat/completions");
@@ -534,13 +552,18 @@ export async function streamChat(
     );
   const headersMs = timeouts.headersMs ?? requestTimeoutMs;
   const idleMs = timeouts.idleMs ?? streamIdleTimeoutMs;
-  const absolute = AbortSignal.timeout(timeouts.totalMs ?? 300_000);
+  const absolute = timeouts.managedDeadline
+    ? new AbortController().signal
+    : AbortSignal.timeout(timeouts.totalMs ?? 300_000);
   // The timeout owns its own controller so a user stop and a silence timeout stay distinguishable.
   const timeout = new AbortController();
-  let timer = setTimeout(() => timeout.abort("headers"), headersMs);
+  let timer = timeouts.managedDeadline
+    ? undefined
+    : setTimeout(() => timeout.abort("headers"), headersMs);
   const armIdle = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => timeout.abort("idle"), idleMs);
+    if (!timeouts.managedDeadline)
+      timer = setTimeout(() => timeout.abort("idle"), idleMs);
   };
   let response: Response;
   try {
@@ -559,6 +582,9 @@ export async function streamChat(
       }),
       redirect: "error",
       signal: AbortSignal.any([signal, timeout.signal, absolute]),
+      ...(timeouts.managedDeadline
+        ? { dispatcher: managedDeadlineDispatcher }
+        : {}),
     });
   } catch (error) {
     clearTimeout(timer);
@@ -690,12 +716,29 @@ export async function streamChat(
         )
           throw new TransportError("protocol", "工具调用参数超限，未执行。");
         calls.set(index, call);
+        if (part.function?.arguments) timeouts.onProgress?.();
       }
     }
-    if (timeouts.tools && typeof choice.delta?.reasoning_content === "string")
+    if (timeouts.tools && typeof choice.delta?.reasoning_content === "string") {
       reasoning += choice.delta.reasoning_content;
-    if (timeouts.tools && Array.isArray(choice.delta?.reasoning_details))
+      if (choice.delta.reasoning_content) timeouts.onProgress?.();
+    }
+    if (timeouts.tools && Array.isArray(choice.delta?.reasoning_details)) {
       reasoningDetails.push(...choice.delta.reasoning_details);
+      if (
+        choice.delta.reasoning_details.some(
+          (detail: unknown) =>
+            typeof detail === "object" &&
+            detail !== null &&
+            ["text", "summary", "data"].some(
+              (key) =>
+                typeof (detail as Record<string, unknown>)[key] === "string" &&
+                (detail as Record<string, string>)[key].length > 0,
+            ),
+        )
+      )
+        timeouts.onProgress?.();
+    }
     if (
       reasoning.length > 128_000 ||
       JSON.stringify(reasoningDetails).length > 128_000
@@ -711,6 +754,7 @@ export async function streamChat(
       if (content.length > 1_000_000)
         throw new TransportError("context", "输出超过本回合预算。");
       onDelta(choice.delta.content);
+      timeouts.onProgress?.();
     }
     if (choice.finish_reason) {
       finished = true;

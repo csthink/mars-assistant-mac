@@ -174,6 +174,7 @@ export class ClaudeConnector {
     budget: number;
     invoke?: (call: ToolCall, signal: AbortSignal) => Promise<string>;
     generation?: boolean;
+    onProgress?: () => void;
     resume?: ClaudeRun;
     /** Level fixed in the turn snapshot; null runs at the CLI's own default. */
     effort?: string | null;
@@ -262,8 +263,12 @@ export class ClaudeConnector {
         )
       : undefined;
     let rpc: ClaudeRpc | undefined;
+    const closeOnAbort = () => {
+      void rpc?.close().catch(() => {});
+    };
     try {
       await assertClaudePolicy(this.environment);
+      options.signal.throwIfAborted();
       rpc = new ClaudeRpc(
         current.installation.resolvedPath,
         claudeRunArgs(
@@ -283,6 +288,8 @@ export class ClaudeConnector {
           ),
         },
       );
+      options.signal.addEventListener("abort", closeOnAbort, { once: true });
+      options.signal.throwIfAborted();
       await rpc.request("initialize");
       await options.onSession(run);
       await runClaudeSession({
@@ -291,6 +298,7 @@ export class ClaudeConnector {
         messages: options.messages,
         tools: !!broker,
         generation: options.generation,
+        onProgress: options.onProgress,
         signal: options.signal,
         budget: options.budget,
         onSession: async () => {},
@@ -312,6 +320,7 @@ export class ClaudeConnector {
         );
       throw error;
     } finally {
+      options.signal.removeEventListener("abort", closeOnAbort);
       try {
         await rpc?.close();
       } finally {

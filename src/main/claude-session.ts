@@ -110,6 +110,7 @@ export async function runClaudeSession(options: {
   messages: ChatMessage[];
   tools: boolean;
   generation?: boolean;
+  onProgress?: () => void;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSession: (run: ClaudeRun) => Promise<void>;
@@ -255,6 +256,17 @@ export async function runClaudeSession(options: {
               throw failure();
             streamed = true;
             options.onDelta(delta.text);
+            if (delta.text) options.onProgress?.();
+          } else if (
+            event.type === "content_block_delta" &&
+            ["thinking_delta", "input_json_delta"].includes(String(delta.type))
+          ) {
+            const value =
+              delta.type === "thinking_delta"
+                ? delta.thinking
+                : delta.partial_json;
+            if (typeof value !== "string") throw failure();
+            if (value) options.onProgress?.();
           }
         } else if (message.type === "assistant" && !streamed) {
           if (!initialized) throw failure();
@@ -266,6 +278,7 @@ export async function runClaudeSession(options: {
               if (typeof text !== "string" || (count += text.length) > 2000000)
                 throw failure();
               options.onDelta(text);
+              if (text) options.onProgress?.();
             }
         } else if (message.type === "result") {
           resultSeen = true;
@@ -287,15 +300,17 @@ export async function runClaudeSession(options: {
         void rpc.close();
       });
   };
-  const timer = setTimeout(() => {
-    settle(
-      new TransportError(
-        "stream",
-        "Claude Code 回合等待超时，已保留部分回答。",
-      ),
-    );
-    void rpc.close();
-  }, 180000);
+  const timer = options.generation
+    ? undefined
+    : setTimeout(() => {
+        settle(
+          new TransportError(
+            "stream",
+            "Claude Code 回合等待超时，已保留部分回答。",
+          ),
+        );
+        void rpc.close();
+      }, 180000);
   try {
     // The product owns canonical history; it cannot claim that a new native session is a resume.
     signal.throwIfAborted();

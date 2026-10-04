@@ -552,3 +552,60 @@ test("claude: observed built-in plugins are disabled while an unknown loaded plu
     f.clean();
   }
 });
+
+test(
+  "claude generation: caller deadline can extend beyond the ordinary three-minute session limit",
+  { timeout: 20000 },
+  async (t) => {
+    const f = fixture();
+    let controller: AbortController | undefined;
+    let result: Promise<unknown> | undefined;
+    try {
+      const setup = await f.connector.prepare();
+      f.update({ mode: "slow" });
+      t.mock.timers.enable({
+        apis: ["setTimeout", "Date"],
+        now: 1_900_000_000_000,
+      });
+      controller = new AbortController();
+      let text = "",
+        settled = false;
+      const run = f.connector.run({
+        ...setup,
+        generation: true,
+        messages: [{ role: "user", content: "synthetic waiting" }],
+        signal: controller.signal,
+        budget: 10000,
+        onSession: async () => {},
+        onDelta: (v) => {
+          text += v;
+        },
+      });
+      result = run.then(
+        () => {
+          settled = true;
+          return null;
+        },
+        (error: unknown) => {
+          settled = true;
+          return error;
+        },
+      );
+      const deadline = performance.now() + 15000;
+      while (!text && performance.now() < deadline)
+        await new Promise<void>((r) => setImmediate(r));
+      assert(text);
+      t.mock.timers.tick(11 * 60_000);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      assert.equal(settled, false);
+      t.mock.timers.reset();
+      controller.abort();
+      assert((await result) instanceof Error);
+    } finally {
+      t.mock.timers.reset();
+      controller?.abort();
+      await result;
+      f.clean();
+    }
+  },
+);

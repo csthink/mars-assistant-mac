@@ -135,7 +135,9 @@ export class CodexConnector {
     tools: boolean | "generation" = false,
     resume?: CodexRun,
     effort: string | null = null,
+    signal?: AbortSignal,
   ) {
+    signal?.throwIfAborted();
     const preferences = this.settings();
     if (!preferences.enabled)
       throw new TransportError(
@@ -163,6 +165,10 @@ export class CodexConnector {
       env,
     });
     let inventory: CodexInventory | undefined;
+    const closeInspection = () => {
+      void inspection.close().catch(() => {});
+    };
+    signal?.addEventListener("abort", closeInspection, { once: true });
     const status = await inspectCodex(installation, {
       request: async (method, params) => {
         const r = await inspection.request(method, params);
@@ -171,7 +177,8 @@ export class CodexConnector {
       },
       notify: (method) => inspection.notify(method),
       close: () => inspection.close(),
-    });
+    }).finally(() => signal?.removeEventListener("abort", closeInspection));
+    signal?.throwIfAborted();
     if (
       status.protocol !== "available" ||
       !inventory ||
@@ -196,6 +203,7 @@ export class CodexConnector {
         `当前 Codex 安装的模型 ${selectedModel} 不支持所选推理强度档位 ${effort}，未发送。请在设置中重新检测，或为该对话改选档位。`,
       );
     await verifyCodexRuntime(installation, selectedModel, this.environment);
+    signal?.throwIfAborted();
     const rpc = new CodexRpc(
       installation.resolvedPath,
       codexPolicyArgs(installation.resolvedPath, cwd, inventory),
@@ -203,7 +211,12 @@ export class CodexConnector {
       5000,
       tools === "generation" ? widgetToolWireLimit : undefined,
     );
+    const closeOnAbort = () => {
+      void rpc.close().catch(() => {});
+    };
+    signal?.addEventListener("abort", closeOnAbort, { once: true });
     try {
+      signal?.throwIfAborted();
       const effectiveConfig = await initializeRestrictedCodex(
         rpc,
         installation.resolvedPath,
@@ -246,6 +259,7 @@ export class CodexConnector {
         !this.settings().enabled
       )
         throw conflict();
+      signal?.throwIfAborted();
       return {
         rpc,
         thread,
@@ -258,6 +272,8 @@ export class CodexConnector {
     } catch (error) {
       await rpc.close();
       throw error;
+    } finally {
+      signal?.removeEventListener("abort", closeOnAbort);
     }
   }
   async prepare(model?: string): Promise<CodexSetup> {
@@ -311,7 +327,9 @@ export class CodexConnector {
     tools: boolean | "generation",
     resume?: CodexRun,
     effort: string | null = null,
+    signal?: AbortSignal,
   ) {
+    signal?.throwIfAborted();
     if (
       resume &&
       (resume.fingerprint !== configuration.fingerprint ||
@@ -319,7 +337,7 @@ export class CodexConnector {
         resume.provider !== configuration.provider)
     )
       throw conflict();
-    const connection = await this.open(model, tools, resume, effort);
+    const connection = await this.open(model, tools, resume, effort, signal);
     if (connection.configuration.fingerprint !== configuration.fingerprint) {
       await connection.rpc.close();
       throw conflict();

@@ -1,6 +1,17 @@
 import type { ConnectionSnapshot, Message } from "./protocol";
 import type { BuiltWidget } from "./widget";
 
+export const generationWait = {
+  defaultMinutes: 10,
+  minimumMinutes: 5,
+  maximumMinutes: 30,
+  idleMs: 120_000,
+  warningMs: 60_000,
+  extensionMs: 300_000,
+} as const;
+export const validGenerationMinutes = (value: unknown): value is number =>
+  Number.isInteger(value) && Number(value) >= 5 && Number(value) <= 30;
+
 export const generationLimits = {
   active: 3,
   generation: 1,
@@ -54,6 +65,9 @@ export function validWidgetStopEvidence(v: unknown): v is WidgetStopEvidence {
   );
 }
 export interface GenerationTask {
+  startedAt?: number | null;
+  deadlineAt?: number | null;
+  lastProgressAt?: number | null;
   stopUnconfirmed?: boolean;
   id: string;
   draftId: string;
@@ -157,6 +171,13 @@ export interface WidgetGenerationSnapshot {
   selected?: { main: string | null; panel: string | null };
 }
 export type WidgetGenerationCommand =
+  | { type: "setWidgetGenerationWait"; minutes: number }
+  | {
+      type: "extendWidgetGeneration";
+      taskId: string;
+      executionId: string;
+      expectedDeadline: number;
+    }
   | { type: "checkWidgetGenerationStop"; taskId: string }
   | {
       type: "deleteWidgetDraft";
@@ -206,6 +227,12 @@ export type WidgetGenerationHostCommand =
     }
   | { type: "confirmWidgetGenerationStop"; taskId: string; executionId: string }
   | { type: "claimWidgetGeneration"; taskId: string; executionId: string }
+  | {
+      type: "widgetGenerationProgress";
+      taskId: string;
+      executionId: string;
+      at: number;
+    }
   | { type: "loadWidgetGeneration"; taskId: string; executionId: string }
   | {
       type: "widgetGenerationDelta";
@@ -314,6 +341,16 @@ export function validWidgetGenerationCommand(
     case "checkWidgetGenerationStop":
     case "stopWidgetGeneration":
       return exact(v, ["taskId"]) && id(v.taskId);
+    case "setWidgetGenerationWait":
+      return exact(v, ["minutes"]) && validGenerationMinutes(v.minutes);
+    case "extendWidgetGeneration":
+      return (
+        exact(v, ["taskId", "executionId", "expectedDeadline"]) &&
+        id(v.taskId) &&
+        id(v.executionId) &&
+        Number.isSafeInteger(v.expectedDeadline) &&
+        Number(v.expectedDeadline) > 0
+      );
     case "retryWidgetGeneration":
       return (
         exact(v, ["taskId", "attempt"]) && id(v.taskId) && revision(v.attempt)
@@ -338,6 +375,12 @@ export function validWidgetGenerationHostCommand(
     return exact(v, ["candidateId"]) && id(v.candidateId);
   if (!id(v.taskId) || !id(v.executionId)) return false;
   switch (v.type) {
+    case "widgetGenerationProgress":
+      return (
+        exact(v, ["taskId", "executionId", "at"]) &&
+        Number.isSafeInteger(v.at) &&
+        Number(v.at) > 0
+      );
     case "loadWidgetGenerationStop":
     case "confirmWidgetGenerationStop":
     case "claimWidgetGeneration":

@@ -123,7 +123,7 @@ test("conversation order: schema 26 data migrates through 28 keeping every conve
   assert.equal(before.version, 26);
   const store = new Store(dir);
   try {
-    assert.equal(schemaVersion, 33);
+    assert.equal(schemaVersion, 34);
     assert.equal(version(store.db), schemaVersion);
     const snapshot = store.snapshot();
     const expected = (before.rows.conversations as string[])

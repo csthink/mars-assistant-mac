@@ -485,7 +485,7 @@ test("projects: schema 23 migration preserves conversations and creates a comple
     assert.deepEqual(migrated.snapshot().projects, []);
     assert.equal(
       migrated.db.prepare("PRAGMA user_version").get()?.user_version,
-      33,
+      34,
     );
     const backup = readdirSync(dirname(f.data)).find((name) =>
       name.startsWith(basename(f.data) + "-schema-23-backup-"),
@@ -595,7 +595,7 @@ test("projects: organization migration preserves old identities and rolls back a
     assert.equal(project.pinnedAt, null);
     assert.equal(
       reopened.db.prepare("PRAGMA user_version").get()?.user_version,
-      33,
+      34,
     );
     reopened.close();
     const migrated = new DatabaseSync(join(f.data, "state.sqlite"));

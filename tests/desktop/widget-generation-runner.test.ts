@@ -343,3 +343,102 @@ test("widget runner: occupied capacity leaves durable task queued without dispat
     await s.close();
   }
 });
+
+test("widget runner: semantic activity and explicit extension survive the old deadline while the final deadline cancels once", async (t) => {
+  t.mock.timers.enable({
+    apis: ["Date", "setTimeout"],
+    now: 1_900_000_000_000,
+  });
+  let options: GenerationExecution | undefined,
+    calls = 0;
+  const s = setup(async (o) => {
+    calls++;
+    options = o;
+    await new Promise<void>((_resolve, reject) =>
+      o.signal.addEventListener("abort", () => reject(o.signal.reason), {
+        once: true,
+      }),
+    );
+  });
+  const drain = async () => {
+    for (let i = 0; i < 100; i++) await Promise.resolve();
+  };
+  try {
+    s.runner.adopt(s.store.snapshot(), 0);
+    await drain();
+    assert(options);
+    const started = s.task().startedAt!;
+    t.mock.timers.tick(120_000);
+    await drain();
+    assert.equal(options.signal.aborted, false);
+    assert.equal(s.task().lastProgressAt, started);
+    options.onProgress?.();
+    t.mock.timers.tick(1000);
+    await drain();
+    assert.equal(s.task().lastProgressAt, started + 120_000);
+    t.mock.timers.tick(419_000);
+    await drain(); // Nine minutes, still the same provider request.
+    const oldDeadline = s.task().deadlineAt!;
+    s.command({
+      type: "extendWidgetGeneration",
+      taskId: s.task().id,
+      executionId: s.task().executionId,
+      expectedDeadline: oldDeadline,
+    });
+    // Deliberately don't feed the new snapshot to adopt: expiry must reread the committed lease.
+    t.mock.timers.tick(60_000);
+    await drain();
+    assert.equal(options.signal.aborted, false);
+    assert.equal(s.task().state, "running");
+    assert.equal(s.task().deadlineAt, oldDeadline + 300_000);
+    t.mock.timers.tick(300_000);
+    await drain();
+    assert.equal(options.signal.aborted, true);
+    assert.equal(s.task().state, "failed");
+    assert.match(s.task().error!, /本次等待时限/);
+    assert.equal(calls, 1);
+    assert.equal(s.runner.active, 0);
+  } finally {
+    await s.close();
+  }
+});
+
+test(
+  "widget runner: a committed stop wins at the deadline even before its snapshot arrives",
+  { timeout: 5000 },
+  async (t) => {
+    t.mock.timers.enable({
+      apis: ["Date", "setTimeout"],
+      now: 1_900_000_000_000,
+    });
+    let provider: GenerationExecution | undefined;
+    const s = setup(async (options) => {
+      provider = options;
+      await new Promise<void>((_resolve, reject) =>
+        options.signal.addEventListener(
+          "abort",
+          () => reject(options.signal.reason),
+          { once: true },
+        ),
+      );
+    });
+    const drain = async () => {
+      for (let i = 0; i < 100; i++) await Promise.resolve();
+    };
+    try {
+      s.runner.adopt(s.store.snapshot(), 0);
+      await drain();
+      assert(provider);
+      s.command({ type: "stopWidgetGeneration", taskId: s.task().id });
+      assert.equal(s.task().state, "stopping");
+      t.mock.timers.tick(600000);
+      await drain();
+      assert.equal(provider.signal.aborted, true);
+      assert.equal(s.task().state, "stopped");
+      assert.equal(s.runner.active, 0);
+    } finally {
+      t.mock.timers.reset();
+      await s.close();
+    }
+  },
+);

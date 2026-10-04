@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Snapshot } from "../shared/protocol";
-import type { GenerationTask, WidgetDraft } from "../shared/widget-generation";
+import {
+  generationWait,
+  type GenerationTask,
+  type WidgetDraft,
+} from "../shared/widget-generation";
 import type { WidgetDraftModel } from "./widget-drafts";
 import { WidgetWorkspace } from "./widgets";
 import { Icon } from "./icons";
@@ -39,6 +43,40 @@ export function WidgetTaskCard({
   model: WidgetDraftModel;
   onOpen?: () => void;
 }) {
+  const [now, setNow] = useState(Date.now());
+  const [continuedAt, setContinuedAt] = useState(0);
+  const [extending, setExtending] = useState(false);
+  useEffect(() => {
+    if (task.state !== "running") return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [task.state, task.executionId]);
+  const remaining =
+    task.deadlineAt == null ? null : Math.max(0, task.deadlineAt - now);
+  const idle =
+    task.state === "running" &&
+    task.lastProgressAt != null &&
+    now - Math.max(task.lastProgressAt, continuedAt) >= generationWait.idleMs;
+  const warning =
+    task.state === "running" &&
+    remaining != null &&
+    remaining <= generationWait.warningMs;
+  const atMaximum =
+    task.startedAt != null &&
+    task.deadlineAt != null &&
+    task.deadlineAt >= task.startedAt + generationWait.maximumMinutes * 60_000;
+  const extensionMinutes =
+    task.startedAt != null && task.deadlineAt != null
+      ? Math.ceil(
+          Math.min(
+            generationWait.extensionMs,
+            task.startedAt +
+              generationWait.maximumMinutes * 60_000 -
+              task.deadlineAt,
+          ) / 60_000,
+        )
+      : 0;
   return (
     <article className="widget-task-card" data-widget-task={task.id}>
       <div className="widget-task-title">
@@ -61,6 +99,60 @@ export function WidgetTaskCard({
         <p className="error" role="alert">
           {task.error}
         </p>
+      )}
+      {task.state === "running" && remaining != null && (
+        <div className="widget-wait-status" role="status">
+          <p>
+            {remaining > 0
+              ? `本次最多还等待 ${Math.ceil(remaining / 60_000)} 分钟。`
+              : "已到等待时限，正在确认停止；草稿和已收到的内容会保留。"}
+          </p>
+          {idle && remaining > 0 && (
+            <p>
+              已2分钟没有新的生成进展。模型可能仍在处理，你可以继续等待或停止。
+            </p>
+          )}
+          {warning && remaining > 0 && (
+            <p>
+              本次等待将在1分钟内结束。
+              {atMaximum
+                ? "已达到本次30分钟上限，不能再延长。"
+                : "可延长本次等待，不改变默认设置。"}
+            </p>
+          )}
+          {idle && remaining > 0 && (
+            <button
+              className="button"
+              onClick={() => {
+                setContinuedAt(Date.now());
+                setNow(Date.now());
+              }}
+            >
+              继续等待
+            </button>
+          )}
+          {warning && remaining > 0 && !atMaximum && (
+            <button
+              className="button"
+              disabled={extending}
+              onClick={async () => {
+                setExtending(true);
+                try {
+                  await model.command({
+                    type: "extendWidgetGeneration",
+                    taskId: task.id,
+                    executionId: task.executionId,
+                    expectedDeadline: task.deadlineAt!,
+                  });
+                } finally {
+                  setExtending(false);
+                }
+              }}
+            >
+              延长{extensionMinutes}分钟
+            </button>
+          )}
+        </div>
       )}
       <div className="widget-studio-actions">
         {task.stopUnconfirmed && (
