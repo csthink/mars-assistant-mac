@@ -338,3 +338,53 @@ test("Codex widget tool is isolated from material tools and binds the candidate 
     await wrong.clean();
   }
 });
+
+test(
+  "Codex generation: caller deadline can extend beyond the ordinary ten-minute turn limit",
+  { timeout: 20000 },
+  async (t) => {
+    const f = await fixture("turn_hang", true);
+    t.mock.timers.enable({
+      apis: ["setTimeout", "Date"],
+      now: 1_900_000_000_000,
+    });
+    let settled = false;
+    const run = runCodexTurn({ ...f.options, generation: true });
+    const result = run.then(
+      () => {
+        settled = true;
+        return null;
+      },
+      (error: unknown) => {
+        settled = true;
+        return error;
+      },
+    );
+    try {
+      const deadline = performance.now() + 5000;
+      while (!f.text.length && performance.now() < deadline)
+        await new Promise<void>((r) => setImmediate(r));
+      assert(f.text.length);
+      t.mock.timers.tick(11 * 60_000);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      assert.equal(settled, false);
+      t.mock.timers.reset();
+      f.controller.abort(new Error("caller deadline"));
+      assert((await result) instanceof Error);
+      const calls = readFileSync(f.calls, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      assert.equal(calls.filter((c) => c.method === "turn/start").length, 1);
+      assert.equal(
+        calls.filter((c) => c.method === "turn/interrupt").length,
+        1,
+      );
+    } finally {
+      t.mock.timers.reset();
+      f.controller.abort();
+      await result;
+      await f.clean();
+    }
+  },
+);

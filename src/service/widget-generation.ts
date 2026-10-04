@@ -9,6 +9,7 @@ import type { BuiltWidget } from "../shared/widget";
 import type { ConnectionSnapshot, Message } from "../shared/protocol";
 import {
   generationLimits,
+  generationWait,
   defaultWidgetLayout,
   validWidgetLayout,
   type WidgetLayout,
@@ -40,7 +41,7 @@ function refuse(message: string): never {
 const draftColumns =
   "id,name,input,revision,requirement_revision AS requirementRevision,source_conversation_id AS sourceConversationId,widget_id AS widgetId,target_ids AS targetIds,deleted,created_at AS createdAt,updated_at AS updatedAt";
 const taskColumns =
-  "id,draft_id AS draftId,request_id AS requestId,execution_id AS executionId,attempt,requirement,requirement_revision AS requirementRevision,state,stop_unconfirmed AS stopUnconfirmed,connection,partial_text AS partialText,error,candidate_id AS candidateId,created_at AS createdAt,ended_at AS endedAt";
+  "id,draft_id AS draftId,request_id AS requestId,execution_id AS executionId,attempt,requirement,requirement_revision AS requirementRevision,state,stop_unconfirmed AS stopUnconfirmed,connection,partial_text AS partialText,error,candidate_id AS candidateId,created_at AS createdAt,ended_at AS endedAt,started_at AS startedAt,deadline_at AS deadlineAt,last_progress_at AS lastProgressAt";
 const candidateColumns =
   "id,task_id AS taskId,draft_id AS draftId,digest,name,requirement_revision AS requirementRevision,state,differences,widget_id AS widgetId";
 function draft(db: DatabaseSync, id: string): WidgetDraft {
@@ -605,6 +606,37 @@ export function applyWidgetGeneration(
     event(db, task(db, id), "accepted", now);
     return;
   }
+  if (c.type === "setWidgetGenerationWait") {
+    db.prepare(
+      "UPDATE settings SET widget_generation_minutes=? WHERE id=1",
+    ).run(c.minutes);
+    return;
+  }
+  if (c.type === "extendWidgetGeneration") {
+    const t = task(db, c.taskId),
+      at = Date.parse(now);
+    if (
+      t.executionId !== c.executionId ||
+      t.state !== "running" ||
+      t.startedAt == null ||
+      t.deadlineAt !== c.expectedDeadline ||
+      at >= t.deadlineAt
+    )
+      refuse("任务已停止、到期或等待时间已改变，未延长。");
+    const deadline = Math.min(
+      t.deadlineAt + generationWait.extensionMs,
+      t.startedAt + generationWait.maximumMinutes * 60_000,
+    );
+    if (deadline <= t.deadlineAt) refuse("本次等待已达到30分钟上限。");
+    db.prepare(
+      "UPDATE widget_generation_tasks SET deadline_at=? WHERE id=?",
+    ).run(deadline, t.id);
+    event(db, t, "wait-extended", now, {
+      previousDeadline: t.deadlineAt,
+      deadline,
+    });
+    return;
+  }
   if (c.type === "stopWidgetGeneration") {
     const t = task(db, c.taskId);
     if (terminal(t.state) || t.state === "stopping") return;
@@ -635,7 +667,7 @@ export function applyWidgetGeneration(
     assertQueueSpace(db);
     const executionId = randomUUID();
     db.prepare(
-      "UPDATE widget_generation_tasks SET state='queued',attempt=attempt+1,execution_id=?,candidate_id=NULL,partial_text='',error=NULL,ended_at=NULL WHERE id=?",
+      "UPDATE widget_generation_tasks SET state='queued',attempt=attempt+1,execution_id=?,candidate_id=NULL,partial_text='',error=NULL,ended_at=NULL,started_at=NULL,deadline_at=NULL,last_progress_at=NULL WHERE id=?",
     ).run(executionId, t.id);
     db.prepare(
       "INSERT INTO widget_generation_attempts(execution_id,task_id,attempt,state,created_at) VALUES(?,?,?,'queued',?)",
@@ -819,13 +851,47 @@ export function applyWidgetGenerationHost(
         .get()
     )
       refuse("生成容量已占用，任务继续等待。");
+    const started = Date.parse(now);
+    const minutes = Number(
+      db
+        .prepare(
+          "SELECT widget_generation_minutes AS minutes FROM settings WHERE id=1",
+        )
+        .get()!.minutes,
+    );
+    db.prepare(
+      "UPDATE widget_generation_tasks SET started_at=?,deadline_at=?,last_progress_at=? WHERE id=?",
+    ).run(started, started + minutes * 60_000, started, t.id);
     state(db, t, "running", now);
+    event(db, t, "wait-started", now, {
+      minutes,
+      deadline: started + minutes * 60_000,
+    });
+    return { generationTask: task(db, t.id) };
+  }
+  if (c.type === "widgetGenerationProgress") {
+    if (
+      t.state !== "running" ||
+      t.deadlineAt == null ||
+      Date.parse(now) >= t.deadlineAt
+    )
+      refuse("生成已经停止或到期。");
+    if (t.startedAt == null || c.at < t.startedAt || c.at > Date.parse(now))
+      refuse("生成进展时间无效。");
+    db.prepare(
+      "UPDATE widget_generation_tasks SET last_progress_at=MAX(last_progress_at,?) WHERE id=?",
+    ).run(c.at, t.id);
     return {};
   }
   if (c.type === "finishWidgetGeneration") {
     if (terminal(t.state)) return {};
     if (t.state === "stopping" && !["stopped", "interrupted"].includes(c.state))
       refuse("停止已先提交，迟到完成结果未应用。");
+    if (
+      c.state === "completed" &&
+      (t.deadlineAt == null || Date.parse(now) >= t.deadlineAt)
+    )
+      refuse("控件生成已达到本次等待时限，未标记完成。");
     if (c.state === "completed" && !t.candidateId)
       refuse("没有通过校验的候选，不能标记生成完成。");
     state(db, t, c.state, now, c.error);
@@ -843,9 +909,12 @@ export function applyWidgetGenerationHost(
     db.prepare(
       "UPDATE widget_generation_tasks SET partial_text=partial_text||? WHERE id=?",
     ).run(c.text, t.id);
+
     return {};
   }
   if (t.state !== "running") refuse("任务已停止或结束，迟到内容未应用。");
+  if (t.deadlineAt == null || Date.parse(now) >= t.deadlineAt)
+    refuse("控件生成已达到本次等待时限，迟到候选未应用。");
   if (t.requirementRevision !== draft(db, t.draftId).requirementRevision)
     refuse("候选采用旧需求，未进入预览。");
   const targets = generationContext(db, t).widgets ?? [];

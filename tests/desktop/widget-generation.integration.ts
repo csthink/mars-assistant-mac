@@ -628,3 +628,85 @@ test("widget stop recovery UI: missing evidence stays blocked and exact exited i
     await f.close();
   }
 });
+
+test("widget waiting IPC: idle reminders never stop generation, extensions change the host deadline and the cap keeps partial output", async ({}, info) => {
+  const f = await fixture();
+  try {
+    await expect.poll(() => f.counts.generation).toBe(1);
+    await send(f.page, { type: "selectWidgetDraft", id: f.ids.draftId });
+    await f.page
+      .getByRole("navigation", { name: "全局导航" })
+      .getByRole("button", { name: "控件", exact: true })
+      .click();
+    const card = f.page.locator(".widget-task-card").first();
+    await expect(card.getByText("正在生成", { exact: true })).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          (await snapshot(f.page)).widgetGeneration!.tasks[0].partialText,
+      )
+      .toContain("generation partial");
+    const initial = (await snapshot(f.page)).widgetGeneration!.tasks[0];
+    await f.page.clock.install({ time: initial.lastProgressAt! + 121000 });
+    await f.page.clock.runFor(1000);
+    await expect(card.getByText(/已2分钟没有新的生成进展/)).toBeVisible();
+    for (const appearance of ["light", "dark"] as const) {
+      await send(f.page, { type: "setAppearance", appearance });
+      await f.app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setContentSize(900, 680),
+      );
+      await card.scrollIntoViewIfNeeded();
+      await f.page.screenshot({
+        path: info.outputPath(`waiting-idle-${appearance}-900.png`),
+      });
+    }
+    await card.getByRole("button", { name: "继续等待", exact: true }).click();
+    await expect(card.getByText(/已2分钟没有新的生成进展/)).toHaveCount(0);
+    expect((await snapshot(f.page)).widgetGeneration!.tasks[0].state).toBe(
+      "running",
+    );
+    expect(f.counts.generation).toBe(1);
+    for (let index = 0; index < 4; index++) {
+      const current = (await snapshot(f.page)).widgetGeneration!.tasks[0];
+      await f.page.clock.setSystemTime(current.deadlineAt! - 59000);
+      await f.page.clock.runFor(1000);
+      await expect(card.getByText(/本次等待将在1分钟内结束/)).toBeVisible();
+      if (index === 0) {
+        await f.app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].setContentSize(1440, 900),
+        );
+        await card.scrollIntoViewIfNeeded();
+        await f.page.screenshot({
+          path: info.outputPath("waiting-warning-dark-1440.png"),
+        });
+      }
+      await card
+        .getByRole("button", { name: "延长5分钟", exact: true })
+        .click();
+      await expect
+        .poll(
+          async () =>
+            (await snapshot(f.page)).widgetGeneration!.tasks[0].deadlineAt,
+        )
+        .toBe(current.deadlineAt! + 300000);
+    }
+    const maximum = (await snapshot(f.page)).widgetGeneration!.tasks[0];
+    expect(maximum.deadlineAt! - maximum.startedAt!).toBe(1800000);
+    await f.page.clock.setSystemTime(maximum.deadlineAt! - 59000);
+    await f.page.clock.runFor(1000);
+    await expect(card.getByText(/已达到本次30分钟上限/)).toBeVisible();
+    await expect(card.getByRole("button", { name: /延长/ })).toHaveCount(0);
+    await send(f.page, { type: "setAppearance", appearance: "light" });
+    await f.page.screenshot({
+      path: info.outputPath("waiting-cap-light-1440.png"),
+    });
+    await card.getByRole("button", { name: "停止生成", exact: true }).click();
+    await expect(card.getByText("已停止", { exact: true })).toBeVisible();
+    const final = (await snapshot(f.page)).widgetGeneration!.tasks[0];
+    expect(final.partialText).toContain("generation partial");
+    expect(f.counts.generation).toBe(1);
+    await expect(card.getByRole("button", { name: "重试生成" })).toBeEnabled();
+  } finally {
+    await f.close();
+  }
+});

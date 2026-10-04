@@ -1,3 +1,4 @@
+import { ClaudeRpc } from "../../src/main/claude-rpc";
 import { claudeInput } from "../../src/main/claude-session";
 import { spawn } from "node:child_process";
 import { configureCodexProcessHelper } from "../../src/main/codex-process";
@@ -161,6 +162,7 @@ test("claude: cancel confirms process exit then resumes only the recorded sessio
       { name: "AbortError" },
     );
     assert.equal(text, "SYNTHETIC_RESPONSE");
+    assert.match(readFileSync(f.calls, "utf8"), /"subtype":"interrupt"/);
     assert.ok(run);
     assert.equal(
       JSON.parse(readFileSync(join(run.cwd, "outcome.json"), "utf8")).state,
@@ -552,3 +554,119 @@ test("claude: observed built-in plugins are disabled while an unknown loaded plu
     f.clean();
   }
 });
+
+test(
+  "claude generation: caller deadline can extend beyond the ordinary three-minute session limit",
+  { timeout: 20000 },
+  async (t) => {
+    const f = fixture();
+    let controller: AbortController | undefined;
+    let result: Promise<unknown> | undefined;
+    try {
+      const setup = await f.connector.prepare();
+      f.update({ mode: "slow" });
+      t.mock.timers.enable({
+        apis: ["setTimeout", "Date"],
+        now: 1_900_000_000_000,
+      });
+      controller = new AbortController();
+      let text = "",
+        settled = false;
+      const run = f.connector.run({
+        ...setup,
+        generation: true,
+        messages: [{ role: "user", content: "synthetic waiting" }],
+        signal: controller.signal,
+        budget: 10000,
+        onSession: async () => {},
+        onDelta: (v) => {
+          text += v;
+        },
+      });
+      result = run.then(
+        () => {
+          settled = true;
+          return null;
+        },
+        (error: unknown) => {
+          settled = true;
+          return error;
+        },
+      );
+      const deadline = performance.now() + 15000;
+      while (!text && performance.now() < deadline)
+        await new Promise<void>((r) => setImmediate(r));
+      assert(text);
+      t.mock.timers.tick(11 * 60_000);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      assert.equal(settled, false);
+      t.mock.timers.reset();
+      controller.abort();
+      assert((await result) instanceof Error);
+    } finally {
+      t.mock.timers.reset();
+      controller?.abort();
+      await result;
+      f.clean();
+    }
+  },
+);
+
+test(
+  "claude: abort at the preparation handoff sends no user prompt and confirms owned process exit",
+  { timeout: 15000 },
+  async (t) => {
+    const f = fixture();
+    const controller = new AbortController();
+    const originalReady = ClaudeRpc.prototype.ready;
+    let sessionProcess: ClaudeRpc["process"] | undefined,
+      run: ClaudeRun | undefined;
+    try {
+      const setup = await f.connector.prepare();
+      t.mock.method(
+        ClaudeRpc.prototype,
+        "ready",
+        async function (this: ClaudeRpc) {
+          await originalReady.call(this);
+          if (run) {
+            sessionProcess = this.process;
+            controller.abort();
+          }
+        },
+      );
+      await assert.rejects(
+        f.connector.run({
+          ...setup,
+          messages: [
+            { role: "user", content: "DO_NOT_SEND_AFTER_HANDOFF_ABORT" },
+          ],
+          signal: controller.signal,
+          budget: 10000,
+          onSession: async (value) => {
+            run = value;
+          },
+          onDelta: () => assert.fail("No delta after preparation abort"),
+        }),
+        { name: "AbortError" },
+      );
+      assert.ok(run && sessionProcess);
+      assert.equal(
+        readFileSync(f.calls, "utf8").includes(
+          "DO_NOT_SEND_AFTER_HANDOFF_ABORT",
+        ),
+        false,
+      );
+      assert.ok(
+        sessionProcess.exitCode !== null || sessionProcess.signalCode !== null,
+      );
+      assert.equal(
+        JSON.parse(readFileSync(join(run.cwd, "outcome.json"), "utf8")).state,
+        "stopped",
+      );
+    } finally {
+      controller.abort();
+      t.mock.restoreAll();
+      f.clean();
+    }
+  },
+);

@@ -423,6 +423,7 @@ export function validInterfacePreferences(
   );
 }
 export interface Settings {
+  widgetGenerationMinutes: number;
   codex: CodexSettings;
   claude: ClaudeSettings;
   appearance: Appearance;

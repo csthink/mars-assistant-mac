@@ -546,3 +546,36 @@
   padding: 12px 0 0;
   min-height: 28px;
 }
+
+.widget-wait-status {
+  margin-block: 10px;
+  padding: 12px;
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+}
+.widget-wait-status p {
+  margin: 0 0 8px;
+}
+.widget-wait-setting {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.widget-wait-setting-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.widget-wait-setting-actions input {
+  width: 5em;
+}
+
+.widget-wait-status > .button + .button {
+  margin-left: 8px;
+}
+.widget-wait-setting-actions input {
+  padding: 8px 10px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: 8px;
+  background: var(--c-surface);
+  min-width: 0;
+}

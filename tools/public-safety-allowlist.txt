@@ -81,3 +81,5 @@
 ^tests/desktop/widget-generation-runner\.test\.ts:      apiKey[:] "synthetic-generation-key",$
 # src/main/claude-broker.ts：严格比较允许的字段名列表，token 是字段名而不是凭据值
 ^src/main/claude-broker\.ts:                \(generation \? "id,package,token" [:] "attachmentId,id,token"\) \|\|$
+
+^tests/desktop/transport\.test\.ts:        apiKey[:] "synthetic",$

@@ -61,6 +61,7 @@ import {
   type MainView,
 } from "./main-shell";
 import { columnLayout, expandsAsOverlay } from "./column-layout";
+import { WidgetGenerationSettings } from "./widget-generation-settings";
 import { SettingsDialog, SettingsNav, settingTitles } from "./settings-dialog";
 import {
   defaultInterfacePreferences,
@@ -1518,6 +1519,10 @@ function App() {
         )}
         {tab === "通用" && (
           <>
+            <WidgetGenerationSettings
+              minutes={snapshot?.settings.widgetGenerationMinutes ?? 10}
+              connected={status.connected}
+            />
             <AppearanceSettings
               value={snapshot?.settings.appearance ?? "light"}
               connected={status.connected}

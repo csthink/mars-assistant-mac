@@ -180,7 +180,7 @@ test("existing data root: a schema 26 data root opens with every conversation, p
     });
     try {
       expect(migrated.prepare("PRAGMA user_version").get()!.user_version).toBe(
-        33,
+        34,
       );
       expect(
         migrated

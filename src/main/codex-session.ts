@@ -249,10 +249,12 @@ export async function runCodexTurn(options: {
   onDelta: (text: string) => void;
   invoke?: (call: ToolCall, signal: AbortSignal) => Promise<string>;
   generation?: boolean;
+  onProgress?: () => void;
   budget: number;
   onTurn?: (id: string) => Promise<void>;
 }) {
   const { rpc, thread, signal, onDelta } = options;
+  signal.throwIfAborted();
   const operationController = new AbortController();
   const toolSignal = AbortSignal.any([signal, operationController.signal]);
   let turnId: string | undefined;
@@ -305,7 +307,10 @@ export async function runCodexTurn(options: {
     if (totalOutput > 1_000_000)
       throw new TransportError("context", "Codex 输出超过本回合预算。");
     items.set(id, (items.get(id) ?? "") + text);
-    if (!signal.aborted && !settled) onDelta(text);
+    if (!signal.aborted && !settled) {
+      onDelta(text);
+      if (text) options.onProgress?.();
+    }
   };
   rpc.setEvents({
     notification(method, raw) {
@@ -317,6 +322,13 @@ export async function runCodexTurn(options: {
           if (params.threadId !== thread.id || (turnId && turnId !== id))
             throw protocolFailure();
           turnId = id;
+        } else if (
+          method === "item/reasoning/textDelta" ||
+          method === "item/reasoning/summaryTextDelta"
+        ) {
+          identity(params);
+          if (typeof params.delta !== "string") throw protocolFailure();
+          if (params.delta) options.onProgress?.();
         } else if (method === "item/agentMessage/delta") {
           identity(params);
           if (typeof params.delta !== "string") throw protocolFailure();
@@ -453,16 +465,18 @@ export async function runCodexTurn(options: {
     })();
   };
   signal.addEventListener("abort", abort, { once: true });
-  const deadline = setTimeout(
-    () =>
-      finish(
-        new TransportError(
-          "stream",
-          "Codex 回合等待超时，已返回的内容已保留。",
-        ),
-      ),
-    10 * 60_000,
-  );
+  const deadline = options.generation
+    ? undefined
+    : setTimeout(
+        () =>
+          finish(
+            new TransportError(
+              "stream",
+              "Codex 回合等待超时，已返回的内容已保留。",
+            ),
+          ),
+        10 * 60_000,
+      );
   try {
     const reply = record(
       await rpc.request("turn/start", {

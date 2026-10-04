@@ -146,7 +146,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 33;
+export const schemaVersion = 34;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -223,6 +223,10 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     26: migrateConversationOrder,
     27: migrateProjectOrganization,
     28: widgetGenerationSchema,
+    33: `ALTER TABLE settings ADD COLUMN widget_generation_minutes INTEGER NOT NULL DEFAULT 10 CHECK(widget_generation_minutes BETWEEN 5 AND 30);
+      ALTER TABLE widget_generation_tasks ADD COLUMN started_at INTEGER;
+      ALTER TABLE widget_generation_tasks ADD COLUMN deadline_at INTEGER;
+      ALTER TABLE widget_generation_tasks ADD COLUMN last_progress_at INTEGER;`,
     32: `ALTER TABLE widget_generation_tasks ADD COLUMN stop_unconfirmed INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE widget_generation_tasks ADD COLUMN stop_evidence TEXT;
       CREATE TABLE widget_draft_undo(surface TEXT PRIMARY KEY,token TEXT NOT NULL UNIQUE,draft_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL);`,
@@ -567,6 +571,13 @@ export class Store {
       interfacePreferences: string;
     };
     return {
+      widgetGenerationMinutes: Number(
+        this.db
+          .prepare(
+            "SELECT widget_generation_minutes AS minutes FROM settings WHERE id=1",
+          )
+          .get()!.minutes,
+      ),
       codex: codexSettings(this.db),
       claude: claudeSettings(this.db),
       defaultConnectionId: row.defaultConnectionId,

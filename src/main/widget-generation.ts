@@ -44,6 +44,7 @@ export interface GenerationExecution {
   messages: ChatMessage[];
   signal: AbortSignal;
   onDelta: (text: string) => void;
+  onProgress?: () => void;
   invoke: (call: ToolCall, signal?: AbortSignal) => Promise<string>;
 }
 /** Shared bounded tool loop for APIs. Only a full, validated call reaches the fixed receiver. */
@@ -62,7 +63,8 @@ export async function runApiWidgetGeneration(
     {
       tools: [widgetGenerationTool],
       toolArgumentsLimit: widgetToolWireLimit,
-      totalMs: 180_000,
+      managedDeadline: true,
+      onProgress: options.onProgress,
     },
   );
   if (result.calls.length !== 1)
@@ -88,6 +90,7 @@ export class WidgetGenerationRunner {
     executionId: string;
     controller: AbortController;
     done: Promise<void>;
+    reschedule?: (task: GenerationTask) => void;
   };
   private accepting = true;
   constructor(
@@ -130,6 +133,7 @@ export class WidgetGenerationRunner {
         t.executionId !== this.current.executionId
       )
         this.current.controller.abort();
+      else this.current.reschedule?.(t);
       return;
     }
     if (!this.accepting || occupied >= generationLimits.active) return;
@@ -163,10 +167,63 @@ export class WidgetGenerationRunner {
       pending = "",
       chain = Promise.resolve();
     let flushTimer: NodeJS.Timeout | undefined;
-    const timer = setTimeout(() => {
+    let timer: NodeJS.Timeout | undefined;
+    let progressTimer: NodeJS.Timeout | undefined;
+    let deadline = 0;
+    const expire = () => {
       timedOut = true;
-      controller.abort(new Error("控件生成达到180秒时限。"));
-    }, 180_000);
+      controller.abort(
+        new Error(
+          "控件生成已达到本次等待时限。已保留草稿、部分内容和上一版本，可检查后手动重试。",
+        ),
+      );
+    };
+    const arm = (live: GenerationTask) => {
+      if (controller.signal.aborted || live.deadlineAt == null) return;
+      deadline = live.deadlineAt;
+      clearTimeout(timer);
+      timer = setTimeout(
+        () => {
+          // Read the authoritative deadline again: an accepted extension can be waiting
+          // for its snapshot to reach this process when the old timer fires.
+          void this.request({ type: "loadWidgetGeneration", ...identity })
+            .then((reply) => {
+              if (controller.signal.aborted) return;
+              if (!reply.ok) {
+                controller.abort(new Error(reply.message));
+                return;
+              }
+              const current = reply.generationTask;
+              if (current?.state === "stopping" || current?.state === "stopped")
+                controller.abort();
+              else if (
+                current?.deadlineAt != null &&
+                Date.now() < current.deadlineAt
+              )
+                arm(current);
+              else expire();
+            })
+            .catch(() => controller.abort());
+        },
+        Math.max(0, deadline - Date.now()),
+      );
+    };
+    let progressAt = 0;
+    const progress = () => {
+      if (controller.signal.aborted) return;
+      progressAt = Date.now();
+      if (progressTimer) return;
+      // Coalesce semantic activity, never create activity from this timer itself.
+      progressTimer = setTimeout(() => {
+        progressTimer = undefined;
+        if (!controller.signal.aborted)
+          void this.request({
+            type: "widgetGenerationProgress",
+            ...identity,
+            at: progressAt,
+          }).catch(() => {});
+      }, 1000);
+    };
     const flush = () => {
       clearTimeout(flushTimer);
       flushTimer = undefined;
@@ -190,6 +247,14 @@ export class WidgetGenerationRunner {
       });
       if (!claimed.ok) return false;
       adopted = true;
+      const claimedTask =
+        claimed.generationTask ??
+        claimed.snapshot.widgetGeneration?.tasks.find((t) => t.id === task.id);
+      if (!claimedTask?.deadlineAt)
+        throw new Error("生成等待期限缺失，未发送。");
+      if (this.current?.executionId === task.executionId)
+        this.current.reschedule = arm;
+      arm(claimedTask);
       controller.signal.throwIfAborted();
       const result = await this.request({
         type: "loadWidgetGeneration",
@@ -220,6 +285,7 @@ export class WidgetGenerationRunner {
         total = 0;
       const invoke = async (call: ToolCall, signal = controller.signal) => {
         signal.throwIfAborted();
+        progress();
         if (call.function.name !== widgetSubmitToolName || ++calls > 1)
           throw new Error("未知工具或候选提交次数超过上限。");
         const args: unknown = JSON.parse(call.function.arguments);
@@ -274,6 +340,7 @@ export class WidgetGenerationRunner {
           );
           if (!receipt.ok) throw new Error(receipt.message);
           submitted = true;
+          progress();
           return JSON.stringify({
             status: "accepted",
             digest: receipt.snapshot.widgetGeneration?.candidates.find(
@@ -289,14 +356,18 @@ export class WidgetGenerationRunner {
           });
         }
       };
+      if (Date.now() >= deadline) expire();
+      controller.signal.throwIfAborted();
       await this.run({
         task,
         connection: { ...live, ...task.connection },
         messages,
         signal: controller.signal,
         invoke,
+        onProgress: progress,
         onDelta: (text) => {
           if (controller.signal.aborted) return;
+          if (text) progress();
           total += text.length;
           if (total > 1_000_000) throw new Error("生成输出超过预算。");
           pending += text;
@@ -305,7 +376,7 @@ export class WidgetGenerationRunner {
           else if (!flushTimer)
             flushTimer = setTimeout(() => {
               void flush().catch(() => controller.abort());
-            }, 50);
+            }, 250);
         },
       });
       await flush();
@@ -341,13 +412,18 @@ export class WidgetGenerationRunner {
               : controller.signal.aborted && !timedOut
                 ? "stopped"
                 : "failed",
-          error:
-            error instanceof Error
+          error: timedOut
+            ? String(
+                controller.signal.reason?.message ??
+                  "控件生成已达到本次等待时限。",
+              )
+            : error instanceof Error
               ? error.message.slice(0, 1024)
               : "控件生成失败。",
         });
     } finally {
       clearTimeout(timer);
+      clearTimeout(progressTimer);
       clearTimeout(flushTimer);
     }
     return adopted;

@@ -422,6 +422,7 @@ async function runGeneratedWidget(options: GenerationExecution) {
       onDelta: options.onDelta,
       invoke: options.invoke,
       generation: true,
+      onProgress: options.onProgress,
       budget: 640000,
       effort: options.task.connection.effort,
       onSession: async () => {},
@@ -436,6 +437,7 @@ async function runGeneratedWidget(options: GenerationExecution) {
       "generation",
       undefined,
       options.task.connection.effort,
+      options.signal,
     );
     try {
       await runCodexTurn({
@@ -446,6 +448,7 @@ async function runGeneratedWidget(options: GenerationExecution) {
         onDelta: options.onDelta,
         invoke: options.invoke,
         generation: true,
+        onProgress: options.onProgress,
         budget: 640000,
       });
     } finally {

@@ -1526,7 +1526,7 @@ test("widget stop recovery: owned evidence survives restart, explicit confirmati
   }
 });
 
-test("widget migration: schema 30 retains formal identities, candidates and input through schema 33 with a verified backup", () => {
+test("widget migration: schema 30 retains formal identities, candidates and input through schema 34 with a verified backup", () => {
   const s = setup();
   try {
     const first = candidate(s, submit(s, draft(s)).task);
@@ -1543,8 +1543,11 @@ test("widget migration: schema 30 retains formal identities, candidates and inpu
     );
     candidate(s, submit(s, draft(s, "pending preview")).task);
     draft(s, "unsent input");
-    s.store.db
-      .exec(`DROP TABLE widget_draft_undo; DROP TABLE widget_candidate_sets; DROP TABLE widget_layout;
+    s.store.db.exec(`ALTER TABLE settings DROP COLUMN widget_generation_minutes;
+      ALTER TABLE widget_generation_tasks DROP COLUMN started_at;
+      ALTER TABLE widget_generation_tasks DROP COLUMN deadline_at;
+      ALTER TABLE widget_generation_tasks DROP COLUMN last_progress_at;
+      DROP TABLE widget_draft_undo; DROP TABLE widget_candidate_sets; DROP TABLE widget_layout;
       ALTER TABLE widget_generation_tasks DROP COLUMN stop_unconfirmed;
       ALTER TABLE widget_generation_tasks DROP COLUMN stop_evidence;
       ALTER TABLE generated_candidates DROP COLUMN group_id;
@@ -1615,6 +1618,186 @@ test("widget migration: schema 30 retains formal identities, candidates and inpu
           row.rows,
           row.table,
         );
+    } finally {
+      backup.close();
+    }
+  } finally {
+    s.close();
+  }
+});
+
+test("widget waiting: settings persist, claims freeze limits and extensions reject stale, stopped and expired executions", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_900_000_000_000 });
+  const s = setup();
+  try {
+    const command = (c: Command) => s.store.execute(c, "main");
+    assert.equal(s.store.snapshot().settings.widgetGenerationMinutes, 10);
+    for (const minutes of [4, 31, 5.5, NaN])
+      assert.equal(
+        command({ type: "setWidgetGenerationWait", minutes }).ok,
+        false,
+      );
+    assert(command({ type: "setWidgetGenerationWait", minutes: 28 }).ok);
+    s.store.close();
+    s.store = new Store(s.root);
+    assert.equal(s.store.snapshot().settings.widgetGenerationMinutes, 28);
+    const id = draft(s),
+      task = submit(s, id).task;
+    t.mock.timers.setTime(Date.now() + 600_000);
+    assert.equal(s.store.snapshot().widgetGeneration!.tasks[0].startedAt, null);
+    assert(claim(s, task).ok);
+    const live = () => s.store.snapshot().widgetGeneration!.tasks[0];
+    assert.equal(live().deadlineAt! - live().startedAt!, 28 * 60_000);
+    assert(command({ type: "setWidgetGenerationWait", minutes: 5 }).ok);
+    assert.equal(live().deadlineAt! - live().startedAt!, 28 * 60_000);
+    const extend = {
+      type: "extendWidgetGeneration" as const,
+      taskId: task.id,
+      executionId: task.executionId,
+      expectedDeadline: live().deadlineAt!,
+    };
+    assert(command(extend).ok);
+    assert.equal(live().deadlineAt! - live().startedAt!, 30 * 60_000);
+    assert.equal(command(extend).ok, false);
+    assert.equal(
+      command({ ...extend, expectedDeadline: live().deadlineAt! }).ok,
+      false,
+    );
+    assert.equal(command({ ...extend, executionId: randomUUID() }).ok, false);
+    assert(command({ type: "stopWidgetGeneration", taskId: task.id }).ok);
+    assert.equal(
+      command({ ...extend, expectedDeadline: live().deadlineAt! }).ok,
+      false,
+    );
+    assert(
+      host(s.store, {
+        type: "finishWidgetGeneration",
+        taskId: task.id,
+        executionId: task.executionId,
+        state: "stopped",
+        error: null,
+      }).ok,
+    );
+    assert(
+      command({ type: "retryWidgetGeneration", taskId: task.id, attempt: 1 })
+        .ok,
+    );
+    const retry = live();
+    assert(claim(s, retry).ok);
+    assert.equal(live().deadlineAt! - live().startedAt!, 300_000);
+    t.mock.timers.setTime(live().deadlineAt!); // No timeout callback runs: model a suspended event loop.
+    assert.equal(
+      command({
+        type: "extendWidgetGeneration",
+        taskId: retry.id,
+        executionId: retry.executionId,
+        expectedDeadline: live().deadlineAt!,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      host(s.store, {
+        type: "receiveWidgetCandidate",
+        taskId: retry.id,
+        executionId: retry.executionId,
+        build: built(),
+      }).ok,
+      false,
+    );
+    assert.equal(s.store.snapshot().widgetGeneration!.candidates.length, 0);
+    assert.equal(
+      s.store.snapshot().widgetGeneration!.drafts[0].requirementRevision,
+      1,
+    );
+    const extensions = s.store.db
+      .prepare(
+        "SELECT detail FROM widget_generation_events WHERE kind='wait-extended'",
+      )
+      .all();
+    assert.equal(extensions.length, 1);
+  } finally {
+    s.close();
+  }
+});
+
+test("widget waiting migration: schema 33 preserves widget data and settings with a verified backup and default ten minutes", () => {
+  const s = setup();
+  try {
+    const generated = candidate(s, submit(s, draft(s)).task);
+    assert(
+      s.store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: generated.id,
+          digest: generated.digest,
+          requirementRevision: generated.requirementRevision,
+        },
+        "main",
+      ).ok,
+    );
+    draft(s, "preserved unsent requirement");
+    assert(
+      s.store.execute({ type: "setAppearance", appearance: "dark" }, "main").ok,
+    );
+    s.store.db.exec(`ALTER TABLE settings DROP COLUMN widget_generation_minutes;
+      ALTER TABLE widget_generation_tasks DROP COLUMN started_at;
+      ALTER TABLE widget_generation_tasks DROP COLUMN deadline_at;
+      ALTER TABLE widget_generation_tasks DROP COLUMN last_progress_at;
+      PRAGMA user_version=33;`);
+    const tables = [
+      "settings",
+      "saved_widgets",
+      "generated_candidates",
+      "widget_drafts",
+      "widget_generation_tasks",
+      "widget_generation_attempts",
+      "widget_generation_events",
+    ];
+    const before = tables.map((table) => ({
+      table,
+      columns: s.store.db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((r) => String(r.name)),
+      rows: s.store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
+    }));
+    s.store.close();
+    s.store = new Store(s.root);
+    assert.equal(s.store.snapshot().settings.widgetGenerationMinutes, 10);
+    assert.equal(s.store.snapshot().settings.appearance, "dark");
+    assert.equal(
+      s.store.db.prepare("PRAGMA user_version").get()?.user_version,
+      34,
+    );
+    assert.equal(
+      s.store.db.prepare("PRAGMA quick_check").get()?.quick_check,
+      "ok",
+    );
+    assert.deepEqual(s.store.db.prepare("PRAGMA foreign_key_check").all(), []);
+    const backups = readdirSync(dirname(s.root)).filter((n) =>
+      n.startsWith(basename(s.root) + "-schema-33-backup-"),
+    );
+    assert.equal(backups.length, 1);
+    const backup = new DatabaseSync(
+      join(dirname(s.root), backups[0], "data", "state.sqlite"),
+      { readOnly: true },
+    );
+    try {
+      assert.equal(
+        backup.prepare("PRAGMA user_version").get()?.user_version,
+        33,
+      );
+      for (const b of before)
+        for (const db of [s.store.db, backup])
+          assert.deepEqual(
+            db
+              .prepare(
+                `SELECT ${b.columns.map((c) => '"' + c + '"').join(",")} FROM ${b.table} ORDER BY rowid`,
+              )
+              .all(),
+            b.rows,
+            b.table,
+          );
     } finally {
       backup.close();
     }

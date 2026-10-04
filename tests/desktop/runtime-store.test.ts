@@ -88,10 +88,10 @@ function instance(overrides: Partial<RuntimeInstance> = {}): RuntimeInstance {
   };
 }
 
-test("安装与实例记录：主进程报告的记录原样进入快照，实例可更新，重开数据库后仍在；schema 版本为 33", () => {
+test("安装与实例记录：主进程报告的记录原样进入快照，实例可更新，重开数据库后仍在；schema 版本为 34", () => {
   const dir = open();
   let store = new Store(dir);
-  assert.equal(schemaVersion, 33);
+  assert.equal(schemaVersion, 34);
   const fresh = store.snapshot();
   assert.deepEqual(fresh.runtimeInstallations, []);
   assert.deepEqual(fresh.runtimeInstances, []);

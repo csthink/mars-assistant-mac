@@ -224,3 +224,59 @@ test("settings dialog: other entries open the same dialog at their category and 
     await closeLocal(app);
   }
 });
+
+test("settings dialog: widget waiting accepts only five to thirty whole minutes and persists the explicit save", async ({}, info) => {
+  const { app, page } = await launch();
+  try {
+    await avatar(page).click();
+    const row = settingsDialog(page).locator(".widget-wait-setting");
+    const minutes = row.getByRole("spinbutton", { name: "控件生成等待时间" });
+    const save = row.getByRole("button", { name: "保存", exact: true });
+    await expect(minutes).toHaveValue("10");
+    for (const value of ["4", "31", "5.5", ""]) {
+      await minutes.fill(value);
+      await expect(save).toBeDisabled();
+    }
+    await minutes.fill("15");
+    await save.click();
+    await expect(save).toBeDisabled();
+    for (const [appearance, size] of [
+      ["light", 900],
+      ["dark", 1440],
+    ] as const) {
+      await page.evaluate(
+        (appearance) =>
+          window.desktop.command({ type: "setAppearance", appearance }),
+        appearance,
+      );
+      await app.evaluate(
+        ({ BrowserWindow }, width) =>
+          BrowserWindow.getAllWindows()[0].setContentSize(
+            width,
+            width === 900 ? 680 : 900,
+          ),
+        size,
+      );
+      await row.scrollIntoViewIfNeeded();
+      const bounds = await row.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(size);
+      await page.screenshot({
+        path: info.outputPath(`waiting-settings-${appearance}-${size}.png`),
+      });
+    }
+    await settingsDialog(page)
+      .getByRole("button", { name: "关闭设置" })
+      .click();
+    await avatar(page).click();
+    await expect(minutes).toHaveValue("15");
+    const reply = await page.evaluate(() =>
+      window.desktop.command({ type: "snapshot" }),
+    );
+    expect(reply.ok && reply.snapshot.settings.widgetGenerationMinutes).toBe(
+      15,
+    );
+  } finally {
+    await closeLocal(app);
+  }
+});
