@@ -57,6 +57,32 @@ test("native: widget editing focus, deletion undo, fullscreen state and restart 
     });
     const page = await app.firstWindow();
     await ready(page);
+    const window = await app.browserWindow(page);
+    const windowId = await window.evaluate((w) => w.id);
+    const display = await app.evaluate(({ BrowserWindow, screen }, id) => {
+      const w = BrowserWindow.fromId(id)!;
+      const bounds = w.getBounds();
+      const content = w.getContentBounds();
+      const primary = screen.getPrimaryDisplay().id;
+      const target = screen
+        .getAllDisplays()
+        .find(
+          (d) =>
+            d.id !== primary &&
+            d.workArea.width >= 1440 + bounds.width - content.width &&
+            d.workArea.height >= 900 + bounds.height - content.height,
+        );
+      if (!target)
+        throw new Error(
+          "No existing secondary display fits the required content size",
+        );
+      w.setPosition(target.workArea.x, target.workArea.y);
+      return { id: target.id, workArea: target.workArea, windowId: id };
+    }, windowId);
+    await info.attach("selected-display", {
+      body: JSON.stringify(display),
+      contentType: "application/json",
+    });
     return page;
   };
   try {
@@ -98,6 +124,8 @@ test("native: widget editing focus, deletion undo, fullscreen state and restart 
     await page.getByRole("button", { name: "撤销删除", exact: true }).click();
     await expect(input).toHaveValue("前台修改输入，保留到下次用户操作");
     await page.getByRole("button", { name: "返回控件草稿" }).click();
+    await page.getByRole("button", { name: "返回控件", exact: true }).click();
+    await expect(page.locator("[data-formal-widget]")).toHaveCount(2);
     const formal = (await snapshot()).widgetGeneration!.widgets;
     const instance = async (id: string) => {
       const status = () =>
