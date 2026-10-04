@@ -10,13 +10,15 @@ import { seedWidgetCandidate } from "./widget-generation-fixture";
 import { Store } from "../../src/service/store";
 import { launchLocal, closeLocal } from "./local-client";
 import { goTo, requestSize } from "./shell";
+import { widgetAppearance } from "../../src/shared/appearance";
+const { light, dark } = widgetAppearance;
 const source = (short = false) =>
   JSON.stringify({
     schemaVersion: 1,
     name: short ? "单时间卡" : "双时间卡",
     view: {
       html: `<main><section><h1>本地时间</h1><p>09:41</p><label>备注<input id="note" aria-label="备注"></label><button id="toggle">展开详情</button></section>${short ? "" : '<section id="second"><h2>另一个时区</h2><p>18:41</p><p id="bottom">第二时间卡底部文字</p></section>'}<div id="extra" hidden></div></main>`,
-      css: "body{margin:0;background:#edf5ed;color:#21412e;font:16px system-ui}main{padding:20px}section{height:300px;border:1px solid #8bad95;border-radius:12px;box-sizing:border-box;padding:24px;margin-bottom:16px}h1,h2{margin-top:0}p{font-size:24px}input{display:block;width:90%;padding:8px;margin:8px 0}button{padding:8px;font:inherit}#extra{height:500px;background:#cce4d2}#extra[hidden]{display:none}@media(max-width:400px){section{height:360px}}",
+      css: `:root{color-scheme:light dark}body{margin:0;background:light-dark(${light.surface},${dark.surface});color:light-dark(${light.text},${dark.text});font:16px system-ui}main{padding:20px}section{height:300px;border:1px solid light-dark(${light.line},${dark.line});border-radius:12px;box-sizing:border-box;padding:24px;margin-bottom:16px}h1,h2{margin-top:0}p{font-size:24px}input{display:block;width:90%;padding:8px;margin:8px 0}button{padding:8px;font:inherit}#extra{height:500px;background:light-dark(${light.raised},${dark.raised})}#extra[hidden]{display:none}@media(max-width:400px){section{height:360px}}`,
       js: "document.querySelector('#toggle').onclick=()=>{const e=document.querySelector('#extra');e.hidden=!e.hidden;document.querySelector('#toggle').textContent=e.hidden?'展开详情':'收起详情'}",
     },
     config: [],
@@ -93,10 +95,13 @@ async function isolated(app: ElectronApplication, shell: Page, slot: string) {
         .some((p) => p.url() === `csthink-widget://${generation}/index.html`),
     )
     .toBe(true);
-  return app
+  const page = app
     .context()
     .pages()
     .find((p) => p.url() === `csthink-widget://${generation}/index.html`)!;
+  // Release Playwright's default light emulation; exercise the actual native App theme.
+  await page.emulateMedia({ colorScheme: null });
+  return page;
 }
 test("widget sizing: workspace, fullscreen and panel preserve natural geometry, order and input", async ({}, info) => {
   const f = await setup(true);
@@ -113,6 +118,13 @@ test("widget sizing: workspace, fullscreen and panel preserve natural geometry, 
     );
     expect(heights[1]).toBeGreaterThan(heights[0]);
     await first.getByLabel("备注").fill("保持输入");
+    await expect(
+      f.shell.locator("[data-formal-widget]").first(),
+    ).toHaveAttribute("data-native-focus", "true");
+    await expect(f.shell.locator(".widget-formal-controls").first()).toHaveCSS(
+      "opacity",
+      "1",
+    );
     const initialURL = first.url();
     const order = await f.shell
       .locator("[data-formal-widget]")
@@ -285,6 +297,83 @@ test("widget sizing: edit preview grows while requirement and candidate actions 
       body: await view.screenshot(),
       contentType: "image/png",
     });
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget sizing: isolated backgrounds follow the saved App appearance without rewriting packages", async () => {
+  const f = await setup(true);
+  try {
+    const first = await isolated(f.app, f.shell, `formal:${f.widgets[0].id}`);
+    const second = await isolated(f.app, f.shell, `formal:${f.widgets[1].id}`);
+    const before = await f.shell.evaluate(() =>
+      window.desktop.command({ type: "snapshot" }),
+    );
+    await first.getByLabel("备注").fill("保留主题切换输入");
+    const url = first.url();
+    // A document without author styles exercises the host's weaker default stylesheet.
+    await second.evaluate(() =>
+      document.querySelector('link[rel="stylesheet"]')?.remove(),
+    );
+    for (const appearance of ["dark", "light", "dark"] as const) {
+      const reply = await f.shell.evaluate(
+        (appearance) =>
+          window.desktop.command({ type: "setAppearance", appearance }),
+        appearance,
+      );
+      expect(reply.ok).toBe(true);
+      await expect(f.shell.locator("html")).toHaveAttribute(
+        "data-theme",
+        appearance,
+      );
+      await expect
+        .poll(() =>
+          f.app.evaluate(({ nativeTheme }) => nativeTheme.themeSource),
+        )
+        .toBe(appearance);
+      const colors = await f.shell.evaluate(() => {
+        const s = getComputedStyle(document.documentElement);
+        const c = document.createElement("div");
+        c.style.color = s.getPropertyValue("--c-surface");
+        document.body.append(c);
+        const surface = getComputedStyle(c).color;
+        c.style.color = s.getPropertyValue("--c-text");
+        const text = getComputedStyle(c).color;
+        c.remove();
+        return { surface, text };
+      });
+      for (const page of [first, second]) {
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () => matchMedia("(prefers-color-scheme:dark)").matches,
+            ),
+          )
+          .toBe(appearance === "dark");
+        await expect
+          .poll(() =>
+            page.evaluate(() => ({
+              surface: getComputedStyle(document.documentElement)
+                .backgroundColor,
+              text: getComputedStyle(document.body).color,
+            })),
+          )
+          .toEqual(colors);
+      }
+      await expect(first.locator("body")).toHaveCSS(
+        "background-color",
+        colors.surface,
+      );
+      expect(first.url()).toBe(url);
+      await expect(first.getByLabel("备注")).toHaveValue("保留主题切换输入");
+    }
+    const after = await f.shell.evaluate(() =>
+      window.desktop.command({ type: "snapshot" }),
+    );
+    expect(before.ok && after.ok && after.snapshot.widgetGeneration).toEqual(
+      before.ok && before.snapshot.widgetGeneration,
+    );
   } finally {
     await f.close();
   }

@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test";
 import { launchLocal, closeLocal } from "./local-client";
 import { compileWidget } from "../../src/main/widget-build";
 import { mkdirSync, mkdtempSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname, join } from "node:path";
+import { execFileSync } from "node:child_process";
 import type {
   WidgetRuntime,
   WidgetInstance,
@@ -338,6 +339,184 @@ test("widget sizing: compatibility diagnosis preserves package CSS and transform
       height: 360,
       diagnostic: "viewport-layout",
     });
+  } finally {
+    await closeLocal(client);
+  }
+});
+
+test("widget sizing: native clipping preserves hit testing and layout across resize and disposal", async () => {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const directory = mkdtempSync(
+    resolve(".test-data/disposable/native-clipping-"),
+  );
+  const module = join(directory, "native-probe.node");
+  execFileSync("/usr/bin/clang++", [
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-O2",
+    "-std=c++17",
+    "-fobjc-arc",
+    "-bundle",
+    "-undefined",
+    "dynamic_lookup",
+    "-framework",
+    "AppKit",
+    "-framework",
+    "QuartzCore",
+    "-I",
+    resolve(dirname(process.execPath), "../include/node"),
+    "tests/desktop/widget-native-probe.mm",
+    "-o",
+    module,
+  ]);
+  const client = await setup();
+  try {
+    const read = () =>
+      client.evaluate(({ BrowserWindow }, module) => {
+        const probe = process.getBuiltinModule("module").createRequire(module)(
+          module,
+        );
+        return JSON.parse(
+          probe.inspect(
+            BrowserWindow.getAllWindows()[0].getNativeWindowHandle(),
+          ),
+        ) as {
+          rootHeight: number;
+          clips: {
+            frame: Electron.Rectangle;
+            bounds: Electron.Rectangle;
+            clips: boolean;
+            mask: boolean;
+            hidden: boolean;
+            children: Electron.Rectangle[];
+            insideHitsWidget: boolean;
+            aboveHitsWidget: boolean;
+          }[];
+        };
+      }, module);
+    for (const [width, height, y] of [
+      [500, 720, -200],
+      [420, 720, 140],
+      [550, 900, -350],
+    ]) {
+      await client.evaluate(
+        ({ BrowserWindow }, { width, height, y }) => {
+          const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+          BrowserWindow.getAllWindows()[0].setContentSize(width + 400, 680);
+          h.runtime.place(
+            h.instance,
+            h.owner,
+            { x: 300, y, width, height },
+            false,
+            false,
+            { x: 300, y: 180, width, height: 400 },
+          );
+        },
+        { width, height, y },
+      );
+      await expect
+        .poll(async () => {
+          const result = await read();
+          const c = result.clips[0];
+          return (
+            !!c &&
+            c.clips &&
+            c.mask &&
+            !c.hidden &&
+            c.insideHitsWidget &&
+            !c.aboveHitsWidget &&
+            c.children[0]?.height === height
+          );
+        })
+        .toBe(true);
+      const result = await read(),
+        clip = result.clips[0];
+      expect(clip.frame).toEqual(clip.bounds);
+      expect(clip.frame.y + clip.frame.height).toBe(result.rootHeight - 180);
+      expect(clip.children).toHaveLength(1);
+      expect(clip.children[0]).toEqual({
+        x: 300,
+        y: result.rootHeight - y - height,
+        width,
+        height,
+      });
+      expect(
+        await client.evaluate(async () => {
+          const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+          return h.instance.contents.executeJavaScript(
+            "({width:innerWidth,height:innerHeight})",
+          );
+        }),
+      ).toEqual({ width, height });
+    }
+    const stopped = await client.evaluate(({ BrowserWindow }, module) => {
+      const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+      process
+        .getBuiltinModule("module")
+        .createRequire(module)(module)
+        .detach(BrowserWindow.getAllWindows()[0].getNativeWindowHandle());
+      h.runtime.place(
+        h.instance,
+        h.owner,
+        { x: 300, y: 150, width: 500, height: 720 },
+        false,
+      );
+      return !h.instance.active;
+    }, module);
+    expect(stopped).toBe(true);
+    await client.evaluate(async () => {
+      const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+      await h.runtime.retire(h.instance);
+      await h.runtime.retire(h.instance);
+    });
+    await expect.poll(async () => (await read()).clips.length).toBe(0);
+    const rejected = await client.evaluate(({ BrowserWindow }, file) => {
+      const native = process.getBuiltinModule("module").createRequire(file)(
+        file,
+      );
+      const pending = native.beginAttach(
+        BrowserWindow.getAllWindows()[0].getNativeWindowHandle(),
+      );
+      try {
+        native.finishAttach(pending);
+        return false;
+      } catch {
+        native.dispose(pending);
+        native.dispose(pending);
+        return true;
+      }
+    }, resolve("dist/widget-clip.node"));
+    expect(rejected).toBe(true);
+    const ambiguous = await client.evaluate(
+      ({ BrowserWindow, WebContentsView }, file) => {
+        const owner = BrowserWindow.getAllWindows()[0];
+        const native = process.getBuiltinModule("module").createRequire(file)(
+          file,
+        );
+        const pending = native.beginAttach(owner.getNativeWindowHandle());
+        const views = [new WebContentsView(), new WebContentsView()];
+        for (const view of views) {
+          view.setVisible(false);
+          owner.contentView.addChildView(view);
+        }
+        try {
+          native.finishAttach(pending);
+          return false;
+        } catch {
+          return true;
+        } finally {
+          native.dispose(pending);
+          for (const view of views) {
+            owner.contentView.removeChildView(view);
+            view.webContents.close();
+          }
+        }
+      },
+      resolve("dist/widget-clip.node"),
+    );
+    expect(ambiguous).toBe(true);
+    expect((await read()).clips).toHaveLength(0);
   } finally {
     await closeLocal(client);
   }

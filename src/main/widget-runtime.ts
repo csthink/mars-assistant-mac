@@ -2,6 +2,7 @@ import {
   BrowserWindow,
   WebContentsView,
   View,
+  nativeTheme,
   session,
   type Rectangle,
   type Session,
@@ -23,6 +24,8 @@ import {
 } from "../shared/widget-runtime";
 import type { WidgetLayoutSignal } from "../shared/widget-ui";
 import { verifyBuiltWidget } from "./widget-package";
+import { nativeWidgetClip } from "./widget-clip";
+import { widgetAppearance } from "../shared/appearance";
 
 const csp =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-scripts allow-same-origin; webrtc 'block'";
@@ -41,6 +44,7 @@ export interface WidgetInstance {
   readonly owner: BrowserWindow;
   readonly view: WebContentsView;
   readonly clip: View;
+  nativeClip?: object;
   layout: WidgetLayoutSignal;
   heightChanges: number[];
   measuredRevision: number;
@@ -165,6 +169,16 @@ export class WidgetRuntime {
         preload: join(__dirname, "widget-preload.cjs"),
       },
     });
+    const paintBackground = () =>
+      view.setBackgroundColor(
+        widgetAppearance[nativeTheme.shouldUseDarkColors ? "dark" : "light"]
+          .surface,
+      );
+    paintBackground();
+    nativeTheme.on("updated", paintBackground);
+    view.webContents.once("destroyed", () =>
+      nativeTheme.removeListener("updated", paintBackground),
+    );
     view.setBorderRadius(8);
     view.setVisible(false);
     const clip = new View();
@@ -431,7 +445,19 @@ export class WidgetRuntime {
       }
     }, 1000);
     contents.once("destroyed", () => clearInterval(watchdog));
-    owner.contentView.addChildView(clip);
+    try {
+      // No await between the native snapshot and the unique attachment check.
+      if (nativeWidgetClip)
+        instance.nativeClip = nativeWidgetClip.beginAttach(
+          owner.getNativeWindowHandle(),
+        );
+      owner.contentView.addChildView(clip);
+      if (instance.nativeClip)
+        nativeWidgetClip!.finishAttach(instance.nativeClip);
+    } catch {
+      await this.retire(instance);
+      throw new Error("控件显示边界无法建立，请重新打开预览。");
+    }
     const retire = () => {
       void this.retire(instance);
     };
@@ -475,6 +501,12 @@ export class WidgetRuntime {
       );
       if (!valid) throw new Error("控件图片尺寸或解码无效。");
       await this.deadline(contents.loadURL(url));
+      // User-origin defaults are weaker than authored package styles; existing widgets
+      // keep their CSS and data unchanged while unstyled content follows the App theme.
+      await contents.insertCSS(
+        `:root{color-scheme:light dark;color:light-dark(${widgetAppearance.light.text},${widgetAppearance.dark.text});background:light-dark(${widgetAppearance.light.surface},${widgetAppearance.dark.surface})}`,
+        { cssOrigin: "user" },
+      );
       if (!instance.active || owner.isDestroyed())
         throw new Error("控件实例已关闭。");
       instance.ready = true;
@@ -524,6 +556,7 @@ export class WidgetRuntime {
     ) {
       instance.view.setVisible(false);
       instance.clip.setVisible(false);
+      this.clipNative(instance, { x: 0, y: 0, width: 0, height: 0 }, false);
       return;
     }
     const layoutWidth = Math.ceil(rectangle.width),
@@ -564,6 +597,7 @@ export class WidgetRuntime {
     const shown = right > x && bottom > y;
     instance.view.setVisible(shown);
     instance.clip.setVisible(shown);
+    if (!this.clipNative(instance, instance.clip.getBounds(), shown)) return;
     if (instance.layout.width !== layoutWidth) {
       instance.layout = {
         ...instance.layout,
@@ -591,6 +625,21 @@ export class WidgetRuntime {
     }
   }
 
+  private clipNative(
+    instance: WidgetInstance,
+    bounds: Rectangle,
+    shown: boolean,
+  ) {
+    if (!instance.nativeClip) return true;
+    try {
+      nativeWidgetClip!.place(instance.nativeClip, bounds, shown);
+      return true;
+    } catch {
+      this.fail(instance, "控件显示边界失效，已关闭预览，请重新打开。");
+      return false;
+    }
+  }
+
   private fail(instance: WidgetInstance, message: string) {
     if (!instance.active) return;
     void this.retire(instance);
@@ -607,6 +656,10 @@ export class WidgetRuntime {
     if (!instance.contents.isDestroyed()) {
       instance.view.setVisible(false);
       instance.clip.setVisible(false);
+    }
+    if (instance.nativeClip) {
+      nativeWidgetClip!.dispose(instance.nativeClip);
+      instance.nativeClip = undefined;
     }
     this.instances.delete(instance.id);
     const retiring = (async () => {
