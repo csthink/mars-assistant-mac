@@ -298,7 +298,6 @@
 }
 .widget-candidate-panel .widget-frame {
   margin: 0 10px;
-  height: 280px;
 }
 .widget-candidate-panel .widget-scope,
 .widget-candidate-panel .widget-save-status {
@@ -465,7 +464,7 @@
   position: fixed;
   top: 0;
   right: 0;
-  width: 132px;
+  width: 56px;
   height: 48px;
   z-index: 200;
   display: flex;
@@ -476,7 +475,7 @@
   opacity: 0;
 }
 .widget-restore-zone:hover .widget-restore,
-.widget-restore:focus {
+.widget-restore-zone:focus-within .widget-restore {
   opacity: 1;
 }
 .widget-restore kbd {
@@ -578,4 +577,44 @@
   border-radius: 8px;
   background: var(--c-surface);
   min-width: 0;
+}
+
+.widget-formal-grid .widget-saved-card,
+.widget-formal-grid[data-density="compact"] .widget-saved-card {
+  padding: 0;
+  position: relative;
+  min-width: 0;
+}
+.widget-formal-controls {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 12px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-line);
+  border-radius: 12px 12px 0 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.widget-formal-controls h2 {
+  flex: 1;
+  font-size: 14px;
+}
+.widget-formal-controls p {
+  font-size: 11px;
+  color: var(--c-muted);
+  margin: 0;
+}
+.widget-saved-card:hover > .widget-formal-controls,
+.widget-saved-card:focus-within > .widget-formal-controls,
+.widget-saved-card[data-native-hover="true"] > .widget-formal-controls,
+.widget-saved-card[data-native-focus="true"] > .widget-formal-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+.widget-retained.widget-shell {
+  border: 0;
 }

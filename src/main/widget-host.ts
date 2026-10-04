@@ -120,6 +120,25 @@ export class WidgetHost {
           identity.surface,
         );
       },
+      (identity, layout) => {
+        for (const entry of this.entries.values())
+          if (
+            entry.instance?.identity.generation === identity.generation &&
+            !entry.owner.isDestroyed()
+          )
+            entry.owner.webContents.send("widget:layout", layout);
+      },
+      (identity, input) => {
+        for (const entry of this.entries.values())
+          if (
+            entry.instance?.identity.generation === identity.generation &&
+            !entry.owner.isDestroyed()
+          )
+            entry.owner.webContents.send("widget:display-input", {
+              generation: identity.generation,
+              ...input,
+            });
+      },
     );
   }
   hasUnconfirmed() {
@@ -263,9 +282,17 @@ export class WidgetHost {
           ![
             "action,generation,height,width,x,y",
             "action,contentOnly,generation,height,width,x,y",
+            "action,clip,contentOnly,generation,height,width,x,y",
+            "action,clip,generation,height,width,x,y",
           ].includes(keys) ||
           (command.contentOnly !== undefined &&
             typeof command.contentOnly !== "boolean") ||
+          (command.clip !== undefined &&
+            (typeof command.clip !== "object" ||
+              command.clip === null ||
+              Object.keys(command.clip).sort().join(",") !==
+                "height,width,x,y" ||
+              !Object.values(command.clip).every(Number.isFinite))) ||
           !entry.instance ||
           entry.instance.identity.generation !== command.generation
         )
@@ -282,6 +309,7 @@ export class WidgetHost {
           },
           false,
           command.contentOnly === true,
+          command.clip,
         );
       } else if (command.action === "draftConfig") {
         if (keys !== "action,field,revision,value" || !entry.preview)

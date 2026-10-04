@@ -156,10 +156,10 @@ test("widget runtime: bounded resources, isolated bridge identity, capabilities 
       h.runtime.place(
         h.instance,
         h.owner,
-        { x: -100, y: -100, width: 5000, height: 5000 },
+        { x: -100, y: -100, width: 5000, height: 4096 },
         false,
       );
-      const bounds = h.instance.view.getBounds();
+      const bounds = h.instance.clip.getBounds();
       h.runtime.place(
         h.instance,
         h.owner,

@@ -1039,6 +1039,17 @@ export interface DesktopBridge {
   widgetEnabled: boolean;
   widgetControl: (command: WidgetControl) => Promise<WidgetUIReply>;
   widgetOcclude: (slot?: string) => void;
+  onWidgetLayout: (
+    callback: (signal: import("./widget-ui").WidgetLayoutSignal) => void,
+  ) => () => void;
+  onWidgetDisplayInput: (
+    callback: (
+      signal: { generation: string } & (
+        | { kind: "hover" | "focus"; value: boolean }
+        | { kind: "scroll"; x: number; y: number }
+      ),
+    ) => void,
+  ) => () => void;
   onWidgetStatus: (callback: (signal: WidgetSignal) => void) => () => void;
   onWidgetVisibility: (callback: (visible: boolean) => void) => () => void;
   onWidgetRestore: (callback: () => void) => () => void;

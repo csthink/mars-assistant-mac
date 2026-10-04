@@ -318,11 +318,12 @@ export function WidgetStudio({
       {full && (
         <div className="widget-restore-zone">
           <button
-            className="button widget-restore"
-            aria-label="还原控件 Esc"
+            className="icon-button widget-restore"
+            aria-label="还原（Esc）"
+            title="还原（Esc）"
             onClick={() => onFull?.(false)}
           >
-            还原 <kbd>Esc</kbd>
+            <Icon name="fullscreenExit" />
           </button>
         </div>
       )}
@@ -375,14 +376,16 @@ export function WidgetStudio({
             onFull && (
               <button
                 ref={fullButton}
-                className="button"
+                className="icon-button"
+                aria-label="控件全屏"
+                title="控件全屏"
                 onClick={() => {
                   scroll.current =
                     studio.current?.closest(".viewport")?.scrollTop ?? 0;
                   onFull(true);
                 }}
               >
-                控件全屏
+                <Icon name="fullscreenEnter" />
               </button>
             )}
           {draft &&

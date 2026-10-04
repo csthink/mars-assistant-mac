@@ -47,8 +47,9 @@
   margin: 0;
 }
 .widget-frame {
+  box-sizing: content-box;
   margin: 0 16px;
-  height: clamp(250px, 48vh, 410px);
+  height: 240px;
   border: 1px solid var(--c-line);
   border-radius: 8px;
   background: var(--c-raised);
@@ -108,7 +109,6 @@
 }
 .panel-app .widget-frame {
   margin: 0 10px;
-  height: 320px;
 }
 
 .widget-config-field {
@@ -118,4 +118,22 @@
   width: 18px;
   height: 18px;
   accent-color: var(--c-green);
+}
+
+.widget-retained > .widget-heading,
+.widget-retained > .widget-scope,
+.widget-retained > .widget-save-status:not(.error) {
+  display: none;
+}
+.widget-retained .widget-frame {
+  margin: 0;
+  border: 0;
+}
+.widget-layout-diagnostic {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--c-muted);
+  background: var(--c-surface);
 }
