@@ -124,130 +124,169 @@ test("classification: EPERM denies, ESRCH on both probes proves absence, partial
   assert.equal(inTargetSession({ session: 7 }, { pid: 4242 }), false);
 });
 
-test("helper observation and guarded signals: a detached grandchild is outside the target session and is never signalled; the ledger refuses a changed identity, sends SIGTERM only to the live matched target, and the budget bounds every stage", async () => {
-  const root = mkdtempSync(join(tmpdir(), "csthink-execution-process-")),
-    helper = join(root, "identity");
-  buildProcessHelper(helper);
-  const observer = new ProcessObserver(helper, 200);
-  // The target is its own session leader (detached), like an execution target; it spawns one
-  // child in its session and one grandchild that escapes into a new session.
-  const target = spawn(
-    process.execPath,
-    [
-      "-e",
-      `const {spawn}=require('node:child_process');
-       const inside=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
-       const escaped=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});
+test(
+  "helper observation and guarded signals: a detached grandchild is outside the target session and is never signalled; the ledger refuses a changed identity, sends SIGTERM only to the live matched target, and the budget bounds every stage",
+  { timeout: 30_000 },
+  async (context) => {
+    const root = mkdtempSync(join(tmpdir(), "csthink-execution-process-")),
+      helper = join(root, "identity");
+    context.after(() => rmSync(root, { recursive: true, force: true }));
+    buildProcessHelper(helper, 10_000);
+    const observer = new ProcessObserver(helper, 200);
+    // The target is its own session leader (detached), like an execution target; it spawns one
+    // child in its session and one grandchild that escapes into a new session.
+    const target = spawn(
+      process.execPath,
+      [
+        "-e",
+        `const {spawn}=require('node:child_process');
+       const inside=spawn(process.execPath,['-e','setTimeout(()=>{},30000)'],{stdio:'ignore'});
+       const escaped=spawn(process.execPath,['-e','setTimeout(()=>{},30000)'],{detached:true,stdio:'ignore'});
        console.log(JSON.stringify({inside:inside.pid,escaped:escaped.pid}));
-       setInterval(()=>{},1000);`,
-    ],
-    { detached: true, stdio: ["ignore", "pipe", "ignore"] },
-  );
-  const spectator = spawn(
-    process.execPath,
-    ["-e", "setInterval(()=>{},1000)"],
-    {
-      stdio: "ignore",
-    },
-  );
-  let escapedPid = 0;
-  try {
-    const [data] = await once(target.stdout!, "data");
-    const pids = JSON.parse(String(data)) as {
-      inside: number;
-      escaped: number;
-    };
-    escapedPid = pids.escaped;
-    const observed = await observer.inspect(target.pid!);
-    const reg = registration(observed, {
-      uid: process.getuid!(),
-      parent: process.pid,
-      image: process.execPath,
-    });
-    assert.equal(reg.session, target.pid);
-    assert.ok(reg.group !== process.pid);
-    const table = await observer.scan(target.pid!);
-    const inside = table.find((row) => row.pid === pids.inside)!;
-    const escaped = table.find((row) => row.pid === pids.escaped)!;
-    assert.ok(inside && escaped, "both descendants are in the scan");
-    assert.equal(inTargetSession(inside, reg), true);
-    assert.equal(inTargetSession(escaped, reg), false);
-    assert.equal(escaped.session, pids.escaped);
-    assert.equal(inside.uid, process.getuid!());
-    assert.match(await bootId(), /^boot:\d+\/[0-9A-Fa-f-]+$/);
-    const insideReg = registration(await observer.inspect(pids.inside), {
-      uid: process.getuid!(),
-    });
-    const escapedReg = registration(await observer.inspect(pids.escaped), {
-      uid: process.getuid!(),
-    });
-    const ledger = new SignalLedger(observer, reg, { TERM: 1, KILL: 1 });
-    // Outside the target session: refused before any syscall, the process stays alive.
-    const refusedSession = await ledger.send(escapedReg, "TERM", "escaped");
-    assert.equal(refusedSession.sent, false);
-    assert.equal(refusedSession.reason, "outside the target session");
-    assert.doesNotThrow(() => process.kill(pids.escaped, 0));
-    // A changed identity (another start time) is refused even inside the session.
-    const refusedIdentity = await ledger.send(
-      { ...insideReg, startMicros: insideReg.startMicros + 1 },
-      "TERM",
-      "inside-conflict",
+       setTimeout(()=>{},30000);`,
+      ],
+      { detached: true, stdio: ["ignore", "pipe", "ignore"] },
     );
-    assert.equal(refusedIdentity.sent, false);
-    assert.equal(refusedIdentity.classification, "IDENTITY_CONFLICT");
-    assert.doesNotThrow(() => process.kill(pids.inside, 0));
-    assert.deepEqual(ledger.counts(), { TERM: 0, KILL: 0 });
-    // The matched target receives SIGTERM; node exits on it, the parent waits, the pid is gone.
-    const sent = await ledger.send(reg, "TERM", "target");
-    assert.equal(sent.sent, true);
-    await once(target, "exit");
-    const gone = await observer.waitAbsent(reg, 2000);
-    assert.equal(gone.state, "ABSENT");
-    // The child inside the session survives its parent (still LIVE); the TERM budget is spent, so
-    // a second TERM is refused before any syscall and the child stays alive.
-    const insideAfter = classify(
-      insideReg,
-      await observer.inspect(pids.inside),
+    const spectator = spawn(
+      process.execPath,
+      ["-e", "setTimeout(()=>{},30000)"],
+      {
+        stdio: "ignore",
+      },
     );
-    assert.equal(insideAfter, "LIVE");
-    assert.equal(inTargetSession(insideReg, reg), true);
-    await assert.rejects(
-      () => ledger.send(insideReg, "TERM", "over-budget"),
-      (error: unknown) =>
-        error instanceof ProcessObservationError &&
-        error.code === "SIGNAL_BUDGET",
-    );
-    assert.doesNotThrow(() => process.kill(pids.inside, 0));
-    // KILL by identity inside the session is allowed once.
-    const killed = await ledger.send(insideReg, "KILL", "inside");
-    assert.equal(killed.sent, true);
-    assert.equal((await observer.waitAbsent(insideReg, 2000)).state, "ABSENT");
-    assert.deepEqual(ledger.counts(), { TERM: 1, KILL: 1 });
-    // The escaped grandchild was never touched; the spectator neither.
-    assert.doesNotThrow(() => process.kill(pids.escaped, 0));
-    assert.doesNotThrow(() => process.kill(spectator.pid!, 0));
-    assert.equal(ledger.rows.filter((r) => r.sent).length, 2);
-    assert.equal(ledger.rows.filter((r) => !r.sent).length, 3);
-    assert.ok(observer.count > 0);
-    const small = new ProcessObserver(helper, 1);
-    await small.inspect(process.pid);
-    await assert.rejects(
-      () => small.inspect(process.pid),
-      (error: unknown) =>
-        error instanceof ProcessObservationError &&
-        error.code === "OBSERVER_BUDGET",
-    );
-  } finally {
-    for (const pid of [target.pid!, escapedPid, spectator.pid!])
-      try {
-        if (pid) process.kill(pid, "SIGKILL");
-      } catch {
-        /* gone */
-      }
-    await wait(50);
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+    // Subscribe before any signal can be sent. Abort on the test deadline, not on an arbitrary sleep.
+    const targetExited = once(target, "exit", { signal: context.signal });
+    void targetExited.catch(() => undefined);
+    let insidePid = 0;
+    let escapedPid = 0;
+    try {
+      const [data] = await once(target.stdout!, "data", {
+        signal: AbortSignal.any([context.signal, AbortSignal.timeout(5000)]),
+      });
+      const pids = JSON.parse(String(data)) as {
+        inside: number;
+        escaped: number;
+      };
+      insidePid = pids.inside;
+      escapedPid = pids.escaped;
+      const observed = await observer.inspect(target.pid!);
+      const reg = registration(observed, {
+        uid: process.getuid!(),
+        parent: process.pid,
+        image: process.execPath,
+      });
+      assert.equal(reg.session, target.pid);
+      assert.ok(reg.group !== process.pid);
+      const table = await observer.scan(target.pid!);
+      const inside = table.find((row) => row.pid === pids.inside)!;
+      const escaped = table.find((row) => row.pid === pids.escaped)!;
+      assert.ok(inside && escaped, "both descendants are in the scan");
+      assert.equal(inTargetSession(inside, reg), true);
+      assert.equal(inTargetSession(escaped, reg), false);
+      assert.equal(escaped.session, pids.escaped);
+      assert.equal(inside.uid, process.getuid!());
+      assert.match(await bootId(), /^boot:\d+\/[0-9A-Fa-f-]+$/);
+      const insideReg = registration(await observer.inspect(pids.inside), {
+        uid: process.getuid!(),
+      });
+      const escapedReg = registration(await observer.inspect(pids.escaped), {
+        uid: process.getuid!(),
+      });
+      const ledger = new SignalLedger(observer, reg, { TERM: 1, KILL: 1 });
+      // Outside the target session: refused before any syscall, the process stays alive.
+      const refusedSession = await ledger.send(escapedReg, "TERM", "escaped");
+      assert.equal(refusedSession.sent, false);
+      assert.equal(refusedSession.reason, "outside the target session");
+      assert.doesNotThrow(() => process.kill(pids.escaped, 0));
+      // A changed identity (another start time) is refused even inside the session.
+      const refusedIdentity = await ledger.send(
+        { ...insideReg, startMicros: insideReg.startMicros + 1 },
+        "TERM",
+        "inside-conflict",
+      );
+      assert.equal(refusedIdentity.sent, false);
+      assert.equal(refusedIdentity.classification, "IDENTITY_CONFLICT");
+      assert.doesNotThrow(() => process.kill(pids.inside, 0));
+      assert.deepEqual(ledger.counts(), { TERM: 0, KILL: 0 });
+      // The matched target receives SIGTERM; node exits on it, the parent waits, the pid is gone.
+      // Deterministically deliver the real target exit before the helper reply is observed.
+      const signal = observer.signal.bind(observer);
+      observer.signal = async (identity, stage) => {
+        const sent = await signal(identity, stage);
+        if (identity.pid === target.pid && stage === "TERM") await targetExited;
+        return sent;
+      };
+      const sent = await ledger.send(reg, "TERM", "target");
+      assert.equal(sent.sent, true);
+      await targetExited;
+      const gone = await observer.waitAbsent(reg, 2000);
+      assert.equal(gone.state, "ABSENT");
+      // The child inside the session survives its parent (still LIVE); the TERM budget is spent, so
+      // a second TERM is refused before any syscall and the child stays alive.
+      const insideAfter = classify(
+        insideReg,
+        await observer.inspect(pids.inside),
+      );
+      assert.equal(insideAfter, "LIVE");
+      assert.equal(inTargetSession(insideReg, reg), true);
+      await assert.rejects(
+        () => ledger.send(insideReg, "TERM", "over-budget"),
+        (error: unknown) =>
+          error instanceof ProcessObservationError &&
+          error.code === "SIGNAL_BUDGET",
+      );
+      assert.doesNotThrow(() => process.kill(pids.inside, 0));
+      // KILL by identity inside the session is allowed once.
+      const killed = await ledger.send(insideReg, "KILL", "inside");
+      assert.equal(killed.sent, true);
+      assert.equal(
+        (await observer.waitAbsent(insideReg, 2000)).state,
+        "ABSENT",
+      );
+      assert.deepEqual(ledger.counts(), { TERM: 1, KILL: 1 });
+      // The escaped grandchild was never touched; the spectator neither.
+      assert.doesNotThrow(() => process.kill(pids.escaped, 0));
+      assert.doesNotThrow(() => process.kill(spectator.pid!, 0));
+      assert.equal(ledger.rows.filter((r) => r.sent).length, 2);
+      assert.equal(ledger.rows.filter((r) => !r.sent).length, 3);
+      assert.ok(observer.count > 0);
+      const small = new ProcessObserver(helper, 1);
+      await small.inspect(process.pid);
+      await assert.rejects(
+        () => small.inspect(process.pid),
+        (error: unknown) =>
+          error instanceof ProcessObservationError &&
+          error.code === "OBSERVER_BUDGET",
+      );
+    } finally {
+      // Own children are reaped even when an assertion fails before the ledger reclaims them.
+      // A failed startup may not have reported descendants yet; the fixture's 30 s lifetime bounds that case.
+      const exited = [target, spectator].map((child) => {
+        if (child.exitCode !== null || child.signalCode !== null)
+          return Promise.resolve();
+        return once(child, "exit", { signal: AbortSignal.timeout(5000) });
+      });
+      const cleanupErrors: unknown[] = [];
+      for (const pid of [insidePid, escapedPid])
+        try {
+          if (pid) process.kill(pid, "SIGKILL");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH")
+            cleanupErrors.push(error);
+        }
+      for (const child of [target, spectator])
+        try {
+          child.kill("SIGKILL");
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      for (const result of await Promise.allSettled(exited))
+        if (result.status === "rejected") cleanupErrors.push(result.reason);
+      if (cleanupErrors.length)
+        throw new AggregateError(cleanupErrors, "fixture cleanup failed");
+    }
+  },
+);
 
 /** A detached target (its own session leader) with `inside` same-session children and `escaped` own-session descendants. */
 function tree(inside: number, escaped: number) {
