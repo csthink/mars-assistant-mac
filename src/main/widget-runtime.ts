@@ -1,7 +1,7 @@
 import {
   BrowserWindow,
   WebContentsView,
-  View,
+  type View,
   nativeTheme,
   session,
   type Rectangle,
@@ -26,6 +26,10 @@ import type { WidgetLayoutSignal } from "../shared/widget-ui";
 import { verifyBuiltWidget } from "./widget-package";
 import { nativeWidgetClip } from "./widget-clip";
 import { widgetAppearance } from "../shared/appearance";
+import {
+  WidgetDrawingClip,
+  assertWidgetDrawingClipVersion,
+} from "./widget-drawing-clip";
 
 const csp =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-scripts allow-same-origin; webrtc 'block'";
@@ -44,6 +48,7 @@ export interface WidgetInstance {
   readonly owner: BrowserWindow;
   readonly view: WebContentsView;
   readonly clip: View;
+  readonly drawingClip: WidgetDrawingClip;
   nativeClip?: object;
   layout: WidgetLayoutSignal;
   heightChanges: number[];
@@ -118,6 +123,7 @@ export class WidgetRuntime {
     )
       throw new Error("请等待窗口就绪后再打开预览。");
     if (!verifyBuiltWidget(built)) throw new Error("控件资源校验失败。");
+    assertWidgetDrawingClipVersion(process.versions.electron);
     const fixed = freezeWidget(structuredClone(built));
     const generation = randomUUID();
     const subject = freezeWidget({
@@ -179,11 +185,9 @@ export class WidgetRuntime {
     view.webContents.once("destroyed", () =>
       nativeTheme.removeListener("updated", paintBackground),
     );
-    view.setBorderRadius(8);
     view.setVisible(false);
-    const clip = new View();
-    clip.setBorderRadius(8);
-    clip.addChildView(view);
+    const drawingClip = new WidgetDrawingClip(view);
+    const clip = drawingClip.root;
     const contents = view.webContents;
     const instance: WidgetInstance = {
       owner,
@@ -192,6 +196,7 @@ export class WidgetRuntime {
       contents,
       view,
       clip,
+      drawingClip,
       layout: {
         generation,
         version: fixed.digest,
@@ -581,23 +586,34 @@ export class WidgetRuntime {
       Math.floor(rectangle.y + rectangle.height),
       Math.floor(visibleRectangle.y + visibleRectangle.height),
     );
-    // The child retains its full viewport; the parent owns clipping and position.
-    instance.clip.setBounds({
-      x,
-      y,
-      width: Math.max(0, right - x),
-      height: Math.max(0, bottom - y),
-    });
-    instance.view.setBounds({
-      x: Math.floor(rectangle.x) - x,
-      y: Math.floor(rectangle.y) - y,
-      width: layoutWidth,
-      height: layoutHeight,
-    });
-    const shown = right > x && bottom > y;
-    instance.view.setVisible(shown);
-    instance.clip.setVisible(shown);
-    if (!this.clipNative(instance, instance.clip.getBounds(), shown)) return;
+    let visible: Rectangle;
+    try {
+      visible = instance.drawingClip.place(
+        {
+          x: Math.floor(rectangle.x),
+          y: Math.floor(rectangle.y),
+          width: layoutWidth,
+          height: layoutHeight,
+        },
+        {
+          x,
+          y,
+          width: Math.max(0, right - x),
+          height: Math.max(0, bottom - y),
+        },
+      );
+    } catch {
+      this.fail(instance, "控件显示边界失效，已关闭预览，请重新打开。");
+      return;
+    }
+    if (
+      !this.clipNative(
+        instance,
+        visible,
+        visible.width > 0 && visible.height > 0,
+      )
+    )
+      return;
     if (instance.layout.width !== layoutWidth) {
       instance.layout = {
         ...instance.layout,
@@ -661,6 +677,7 @@ export class WidgetRuntime {
       nativeWidgetClip!.dispose(instance.nativeClip);
       instance.nativeClip = undefined;
     }
+    instance.drawingClip.dispose();
     this.instances.delete(instance.id);
     const retiring = (async () => {
       let timer: ReturnType<typeof setTimeout> | undefined;

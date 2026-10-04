@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { launchLocal, closeLocal } from "./local-client";
 import { compileWidget } from "../../src/main/widget-build";
+import {
+  assertWidgetDrawingClipVersion,
+  widgetDrawingClipPlanes,
+} from "../../src/main/widget-drawing-clip";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -517,6 +521,142 @@ test("widget sizing: native clipping preserves hit testing and layout across res
     );
     expect(ambiguous).toBe(true);
     expect((await read()).clips).toHaveLength(0);
+  } finally {
+    await closeLocal(client);
+  }
+});
+
+test("widget sizing: compositor masks retain narrow visible strips without changing the document viewport", async () => {
+  expect(() => assertWidgetDrawingClipVersion("44.2.0")).not.toThrow();
+  expect(() => assertWidgetDrawingClipVersion("44.2.1")).toThrow();
+  expect(() =>
+    widgetDrawingClipPlanes({ x: 0, y: 0, width: NaN, height: 1 }),
+  ).toThrow();
+  expect(() =>
+    widgetDrawingClipPlanes({ x: 0, y: 0, width: 1, height: -1 }),
+  ).toThrow();
+  const client = await setup();
+  try {
+    const result = await client.evaluate(async () => {
+      const h = Reflect.get(globalThis, "sizingHarness") as SizingHarness;
+      const original: Electron.View[] = [];
+      for (
+        let view: Electron.View = h.instance.clip;
+        view !== h.instance.view;
+        view = view.children[0]
+      )
+        original.push(view);
+      const outputs = [];
+      for (const axis of ["height", "width"] as const) {
+        for (const size of [33, 32, 31, 1, 0, 1, 33]) {
+          const full = { x: 300, y: 140, width: 500, height: 720 };
+          const visible = {
+            x: 320,
+            y: 220,
+            width: 420,
+            height: 300,
+            [axis]: size,
+          };
+          h.runtime.place(h.instance, h.owner, full, false, false, visible);
+          await new Promise((r) => setTimeout(r, 20));
+          const masks = [];
+          let x = 0,
+            y = 0,
+            index = 0;
+          let stable = true;
+          for (
+            let view: Electron.View = h.instance.clip;
+            view !== h.instance.view;
+            view = view.children[0]
+          ) {
+            stable &&= view === original[index++];
+            const bounds = view.getBounds();
+            x += bounds.x;
+            y += bounds.y;
+            masks.push({ ...bounds, x, y });
+          }
+          const intersection = masks.reduce((a, b) => {
+            const x = Math.max(a.x, b.x),
+              y = Math.max(a.y, b.y);
+            return {
+              x,
+              y,
+              width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
+              height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y),
+            };
+          });
+          const child = h.instance.view.getBounds();
+          outputs.push({
+            axis,
+            size,
+            stable,
+            masks,
+            intersection,
+            expected: visible,
+            childInWindow: { ...child, x: child.x + x, y: child.y + y },
+            full,
+            visible: h.instance.clip.getVisible(),
+            viewport: await h.instance.contents.executeJavaScript(
+              "({width:innerWidth,height:innerHeight})",
+            ),
+          });
+        }
+      }
+      const short = [];
+      for (const height of [33, 32, 31, 1]) {
+        h.runtime.place(
+          h.instance,
+          h.owner,
+          { x: 300, y: 200, width: 500, height },
+          false,
+        );
+        await new Promise((r) => setTimeout(r, 20));
+        short.push({
+          height,
+          viewport: await h.instance.contents.executeJavaScript(
+            "({width:innerWidth,height:innerHeight})",
+          ),
+          visible: h.instance.view.getVisible(),
+        });
+      }
+      await h.runtime.retire(h.instance);
+      await h.runtime.retire(h.instance);
+      let rejected = false;
+      try {
+        h.instance.drawingClip.place(
+          { x: 0, y: 0, width: 500, height: 720 },
+          { x: 0, y: 0, width: 1, height: 1 },
+        );
+      } catch {
+        rejected = true;
+      }
+      return {
+        outputs,
+        short,
+        rejected,
+        detached: !h.owner.contentView.children.includes(h.instance.clip),
+        childrenReleased: original.every((view) => view.children.length === 0),
+      };
+    });
+    expect(result.outputs).toHaveLength(14);
+    for (const state of result.outputs) {
+      expect(state.stable).toBe(true);
+      expect(state.masks).toHaveLength(4);
+      expect(state.masks.every((r) => r.width >= 32 && r.height >= 32)).toBe(
+        true,
+      );
+      expect(state.intersection).toEqual(state.expected);
+      expect(state.childInWindow).toEqual(state.full);
+      expect(state.viewport).toEqual({ width: 500, height: 720 });
+      expect(state.visible).toBe(state.size > 0);
+    }
+    for (const state of result.short) {
+      expect(state.viewport).toEqual({ width: 500, height: state.height });
+      expect(state.visible).toBe(true);
+    }
+    expect(result.rejected).toBe(true);
+    expect(result.detached).toBe(true);
+    expect(result.childrenReleased).toBe(true);
   } finally {
     await closeLocal(client);
   }

@@ -1,4 +1,5 @@
-// A macOS drawing and hit-testing boundary for a complete WebContentsView viewport.
+// A macOS hit-testing boundary for a complete WebContentsView viewport.
+// Pixel clipping belongs to the Electron compositor View hierarchy.
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 #include <node_api.h>
