@@ -8,19 +8,24 @@ import { resolve } from "node:path";
  * suite's load, KB-233), so the first call is paid here rather than inside a test's timed
  * observation.
  */
-export function buildProcessHelper(output: string) {
-  execFileSync("/usr/bin/clang", [
-    "-Wall",
-    "-Wextra",
-    "-Werror",
-    "-O2",
-    resolve("src/main/codex-process.c"),
-    "-o",
-    output,
-  ]);
+export function buildProcessHelper(output: string, timeout?: number) {
+  execFileSync(
+    "/usr/bin/clang",
+    [
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-O2",
+      resolve("src/main/codex-process.c"),
+      "-o",
+      output,
+    ],
+    { timeout },
+  );
   execFileSync(output, ["inspect", String(process.pid)], {
     env: { PATH: "/usr/bin:/bin" },
     encoding: "utf8",
+    timeout,
   });
   return output;
 }
