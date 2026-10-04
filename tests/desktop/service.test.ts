@@ -315,6 +315,7 @@ test("版本 1 与版本 2 数据库顺序迁移到当前版本并保留数据�
           defaultConnectionId: null,
           defaultModelId: null,
           telemetryEnabled: false,
+          widgetGenerationMinutes: 10,
           appearance: "light",
           interface: {
             sidebarCollapsed: false,
