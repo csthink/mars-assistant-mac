@@ -408,8 +408,41 @@ test("widget candidate: native owner hide and show recreate a fresh preview whil
     await expect(
       live()[0].getByRole("button", { name: "0", exact: true }),
     ).toBeVisible();
+    // macOS can omit hide when the owner is already occluded. Suppress only that
+    // native event; the runtime must retire from isVisible and show must reconcile it.
+    const beforeMissingHide = live()[0],
+      missingHideURL = beforeMissingHide.url();
+    await f.app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().endsWith("index.html"),
+      )!;
+      const emit = w.emit.bind(w);
+      w.emit = ((event: string | symbol, ...args: unknown[]) => {
+        if (event === "hide" && !w.isVisible()) return false;
+        return emit(event, ...args);
+      }) as typeof w.emit;
+      w.once("show", () => {
+        w.emit = emit;
+      });
+      w.hide();
+    });
+    await expect.poll(() => beforeMissingHide.isClosed()).toBe(true);
+    await expect.poll(() => live().length).toBe(0);
+    expect(await owner("show")).toEqual({ visible: true });
+    await expect.poll(() => live().length).toBe(1);
+    expect(live()[0].url()).not.toBe(missingHideURL);
+    await expect(
+      live()[0].getByRole("button", { name: "0", exact: true }),
+    ).toBeVisible();
     const second = live()[0],
       secondURL = second.url();
+    await f.page.evaluate(() => {
+      const state = window as unknown as { visibilityEvents: boolean[] };
+      state.visibilityEvents = [];
+      window.desktop.onWidgetVisibility((shown) =>
+        state.visibilityEvents.push(shown),
+      );
+    });
     const rapid = await f.app.evaluate(async ({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows().find((w) =>
         w.webContents.getURL().endsWith("index.html"),
@@ -424,12 +457,39 @@ test("widget candidate: native owner hide and show recreate a fresh preview whil
         };
         w.on("hide", hidden);
         w.hide();
+        // This subcase exercises reentrant native event handling. macOS may omit
+        // hide for an already occluded window (covered above), so deliver that
+        // event only when native visibility confirms hide and no handler ran.
+        if (!w.isVisible()) w.emit("hide");
       });
       return { visible: w.isVisible() };
     });
     expect(rapid).toEqual({ visible: true });
     await expect.poll(() => second.isClosed()).toBe(true);
-    await expect.poll(() => live().length).toBe(1);
+    try {
+      await expect.poll(() => live().length).toBe(1);
+    } catch (error) {
+      await info.attach("rapid-owner-diagnostics", {
+        body: JSON.stringify({
+          native: await f.app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows().map((w) => ({
+              visible: w.isVisible(),
+              url: w.webContents.getURL(),
+            })),
+          ),
+          renderer: await f.page.evaluate(async () => ({
+            hidden: document.hidden,
+            visibilityEvents: (
+              window as unknown as { visibilityEvents: boolean[] }
+            ).visibilityEvents,
+            text: document.body.innerText,
+            status: await window.desktop.widgetControl({ action: "status" }),
+          })),
+        }),
+        contentType: "application/json",
+      });
+      throw error;
+    }
     expect(live()[0].url()).not.toBe(secondURL);
     await expect(
       live()[0].getByRole("button", { name: "0", exact: true }),

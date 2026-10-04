@@ -216,21 +216,41 @@ export class WidgetHost {
       const visibility = () => {
         const next = owner.isVisible();
         // macOS also emits hide for occlusion. Only native visibility revokes the preview.
-        if (next === visible) return;
+        // A hidden, already-occluded window can omit the native hide event. The runtime
+        // still retires its views from native visibility, so reconcile those retired
+        // instances on show even if the cached visibility never changed.
+        const retired = [...this.entries.values()].filter(
+          (entry) =>
+            entry.owner === owner && entry.instance && !entry.instance.active,
+        );
+        if (next === visible && retired.length === 0) return;
         visible = next;
         if (!next) this.occlude(owner);
+        else for (const entry of retired) this.closeEntry(entry);
         if (!owner.webContents.isDestroyed())
           owner.webContents.send("widget:visibility", next);
       };
-      owner.on("hide", visibility);
-      owner.on("show", visibility);
-      owner.on("minimize", visibility);
-      owner.on("restore", visibility);
+      let visibilityCheck: ReturnType<typeof setImmediate> | undefined;
+      const observeVisibility = () => {
+        visibility();
+        // A hide listener can show the owner reentrantly without a second native
+        // event. Reconcile once after the event stack, without delaying revocation.
+        if (visibilityCheck) return;
+        visibilityCheck = setImmediate(() => {
+          visibilityCheck = undefined;
+          if (!owner.isDestroyed()) visibility();
+        });
+      };
+      owner.on("hide", observeVisibility);
+      owner.on("show", observeVisibility);
+      owner.on("minimize", observeVisibility);
+      owner.on("restore", observeVisibility);
       owner.once("closed", () => {
-        owner.removeListener("hide", visibility);
-        owner.removeListener("show", visibility);
-        owner.removeListener("minimize", visibility);
-        owner.removeListener("restore", visibility);
+        if (visibilityCheck) clearImmediate(visibilityCheck);
+        owner.removeListener("hide", observeVisibility);
+        owner.removeListener("show", observeVisibility);
+        owner.removeListener("minimize", observeVisibility);
+        owner.removeListener("restore", observeVisibility);
         this.occlude(owner);
         for (const [key, entry] of this.entries)
           if (entry.owner === owner) this.entries.delete(key);

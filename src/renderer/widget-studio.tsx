@@ -258,7 +258,7 @@ export function WidgetStudio({
           />
         ) : (
           <h1 tabIndex={-1} data-center-title>
-            {section === "drafts" ? "控件草稿" : "控件"}
+            {panel ? "工作台" : section === "drafts" ? "控件草稿" : "控件"}
           </h1>
         )}
         {!draft && (
@@ -666,18 +666,24 @@ export function WidgetStudio({
           </div>
         </div>
       ) : (
-        <div className="widget-empty">
-          <span className="widget-canvas-empty-icon">
+        <div className={panel ? "empty" : "widget-empty"}>
+          <span className={panel ? "empty-icon" : "widget-canvas-empty-icon"}>
             <Icon name="grid" />
           </span>
-          <h2>还没有控件</h2>
-          <p>从一个想法开始，创建属于自己的小工具。</p>
+          <h2>{panel ? "工作台还是空的" : "还没有控件"}</h2>
+          <p>
+            {panel
+              ? "在主窗口创建控件，保留后可在工作台查看。"
+              : "从一个想法开始，创建属于自己的小工具。"}
+          </p>
           <button
             className="button"
             disabled={!connected}
-            onClick={() => void create()}
+            onClick={() =>
+              panel ? void window.desktop.openMain() : void create()
+            }
           >
-            新建控件
+            {panel ? "打开主窗口" : "新建控件"}
           </button>
         </div>
       )}
