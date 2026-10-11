@@ -599,8 +599,11 @@
   opacity: 0;
   pointer-events: none;
 }
+/* A CJK title's min-content is one character; the floor makes the actions wrap
+   to the next row instead of collapsing the title to one character per line. */
 .widget-formal-controls h2 {
-  flex: 1;
+  flex: 1 1 8em;
+  min-width: 8em;
   font-size: 14px;
 }
 .widget-formal-controls p {

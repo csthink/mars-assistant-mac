@@ -128,6 +128,23 @@ Module._load = function (request, parent, isMain) {
   return load.call(this, request, parent, isMain);
 };
 
+// On layout changes Chromium synthesizes a mouse move at the real cursor even though the
+// window ignores mouse events, so a widget under the user's cursor would report hover.
+// No background test drives widget hover; drop that signal and keep scroll and focus.
+app.on("web-contents-created", (_event, contents) => {
+  const on = contents.ipc.on.bind(contents.ipc);
+  contents.ipc.on = (channel, listener) =>
+    on(
+      channel,
+      channel === "widget:display-input"
+        ? (event, raw) => {
+            if (raw && typeof raw === "object" && raw.kind === "hover") return;
+            return listener(event, raw);
+          }
+        : listener,
+    );
+});
+
 app.on("browser-window-created", (_event, window) => {
   // Keep native visibility/lifecycle observable, but make windows invisible and
   // click-through. Protocol input and webContents screenshots still reach Chromium.
