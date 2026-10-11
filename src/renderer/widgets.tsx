@@ -122,6 +122,11 @@ export function WidgetWorkspace({
   }, [unconfirmed, draftPending, onUnconfirmed]);
   const frame = useRef<HTMLDivElement>(null);
   const current = useRef<string | undefined>(undefined);
+  // The last measured height of the opened version. A temporary close (settings, occlusion) reopens
+  // the same version; keeping this height until it measures again stops the page from shrinking and
+  // clamping its reading position.
+  const measured = useRef<{ version: string; height: number }>(undefined);
+  const openedVersion = useRef<string | undefined>(undefined);
   const opening = useRef(false);
   const serial = useRef(0);
   const latest = useRef({ wanted, settings, occluded });
@@ -146,6 +151,9 @@ export function WidgetWorkspace({
       return;
     }
     if (!reply.generation || !reply.preview) return;
+    if (measured.current?.version !== reply.preview.version)
+      measured.current = undefined;
+    openedVersion.current = reply.preview.version;
     setLayout(undefined);
     current.current = reply.generation;
     setGeneration(reply.generation);
@@ -180,6 +188,11 @@ export function WidgetWorkspace({
         );
       const before = anchor?.getBoundingClientRect().top;
       setLayout(signal);
+      if (openedVersion.current)
+        measured.current = {
+          version: openedVersion.current,
+          height: signal.height,
+        };
       requestAnimationFrame(() =>
         window.dispatchEvent(new Event("widget-display-change")),
       );
@@ -509,7 +522,7 @@ export function WidgetWorkspace({
         <div
           className="widget-frame"
           ref={frame}
-          style={{ height: layout?.height ?? 240 }}
+          style={{ height: layout?.height ?? measured.current?.height ?? 240 }}
           data-height-mode={layout?.mode ?? "loading"}
         >
           {!generation && (

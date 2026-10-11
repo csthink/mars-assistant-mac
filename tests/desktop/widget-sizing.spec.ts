@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { seedWidgetCandidate } from "./widget-generation-fixture";
 import { Store } from "../../src/service/store";
 import { launchLocal, closeLocal } from "./local-client";
-import { goTo, requestSize } from "./shell";
+import { goTo, closeSettings, requestSize } from "./shell";
 import { widgetAppearance } from "../../src/shared/appearance";
 const { light, dark } = widgetAppearance;
 const source = (short = false) =>
@@ -329,6 +329,42 @@ test("widget sizing: edit preview grows while requirement and candidate actions 
       body: await view.screenshot(),
       contentType: "image/png",
     });
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget sizing: edit preview keeps its reading position when settings closes and reopens the widget", async () => {
+  const f = await setup(false);
+  try {
+    await requestSize(f.app, f.shell, 1180, 600);
+    const frame = f.shell.locator(".widget-candidate-panel .widget-frame");
+    await expect
+      .poll(() => frame.getAttribute("data-height-mode"))
+      .toBe("natural");
+    const height = await frame.evaluate((e) => e.clientHeight);
+    const body = f.shell.locator(".right-body");
+    const bottom = await body.evaluate((e) => {
+      e.scrollTop = e.scrollHeight;
+      return e.scrollTop;
+    });
+    expect(bottom).toBeGreaterThan(300);
+    const generation = () =>
+      f.shell.evaluate(async () => {
+        const r = await window.desktop.widgetControl({ action: "status" });
+        return r.ok ? (r.generation ?? "") : "";
+      });
+    const before = await generation();
+    // Settings hides the isolated preview; closing it reopens the same version.
+    await goTo(f.shell, "设置");
+    await closeSettings(f.shell);
+    await expect.poll(generation).not.toBe("");
+    expect(await generation()).not.toBe(before);
+    await expect
+      .poll(() => frame.getAttribute("data-height-mode"))
+      .toBe("natural");
+    expect(await frame.evaluate((e) => e.clientHeight)).toBe(height);
+    expect(await body.evaluate((e) => e.scrollTop)).toBe(bottom);
   } finally {
     await f.close();
   }
