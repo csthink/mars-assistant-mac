@@ -40,6 +40,31 @@ if (process.platform === "darwin")
     ],
     { stdio: "inherit" },
   );
+if (process.platform === "darwin")
+  execFileSync(
+    "/usr/bin/clang++",
+    [
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-O2",
+      "-std=c++17",
+      "-fobjc-arc",
+      "-bundle",
+      "-undefined",
+      "dynamic_lookup",
+      "-framework",
+      "AppKit",
+      "-framework",
+      "QuartzCore",
+      "-I",
+      resolve(dirname(process.execPath), "../include/node"),
+      "src/main/widget-clip.mm",
+      "-o",
+      "dist/widget-clip.node",
+    ],
+    { stdio: "inherit" },
+  );
 await Promise.all([
   build({
     entryPoints: {

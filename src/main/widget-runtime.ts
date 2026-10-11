@@ -1,6 +1,8 @@
 import {
   BrowserWindow,
   WebContentsView,
+  type View,
+  nativeTheme,
   session,
   type Rectangle,
   type Session,
@@ -20,7 +22,14 @@ import {
   type WidgetReply,
   type WidgetRequest,
 } from "../shared/widget-runtime";
+import type { WidgetLayoutSignal } from "../shared/widget-ui";
 import { verifyBuiltWidget } from "./widget-package";
+import { nativeWidgetClip } from "./widget-clip";
+import { widgetAppearance } from "../shared/appearance";
+import {
+  WidgetDrawingClip,
+  assertWidgetDrawingClipVersion,
+} from "./widget-drawing-clip";
 
 const csp =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-scripts allow-same-origin; webrtc 'block'";
@@ -38,6 +47,13 @@ export interface WidgetInstance {
   readonly id: number;
   readonly owner: BrowserWindow;
   readonly view: WebContentsView;
+  readonly clip: View;
+  readonly drawingClip: WidgetDrawingClip;
+  nativeClip?: object;
+  layout: WidgetLayoutSignal;
+  heightChanges: number[];
+  measuredRevision: number;
+  measurementTimer?: ReturnType<typeof setTimeout>;
   readonly contents: Electron.WebContents;
   readonly url: string;
   readonly partition: Session;
@@ -63,6 +79,16 @@ export class WidgetRuntime {
     private onFailure: (identity: WidgetIdentity, message: string) => void,
     private register: (identity: WidgetIdentity) => Promise<void>,
     private revoke: (identity: WidgetIdentity) => Promise<void>,
+    private onLayout: (
+      identity: WidgetIdentity,
+      layout: WidgetLayoutSignal,
+    ) => void = () => {},
+    private onInput: (
+      identity: WidgetIdentity,
+      input:
+        | { kind: "hover" | "focus"; value: boolean }
+        | { kind: "scroll"; x: number; y: number },
+    ) => void = () => {},
   ) {}
 
   private denyProxy(): Promise<string> {
@@ -97,6 +123,7 @@ export class WidgetRuntime {
     )
       throw new Error("请等待窗口就绪后再打开预览。");
     if (!verifyBuiltWidget(built)) throw new Error("控件资源校验失败。");
+    assertWidgetDrawingClipVersion(process.versions.electron);
     const fixed = freezeWidget(structuredClone(built));
     const generation = randomUUID();
     const subject = freezeWidget({
@@ -148,8 +175,19 @@ export class WidgetRuntime {
         preload: join(__dirname, "widget-preload.cjs"),
       },
     });
-    view.setBorderRadius(8);
+    const paintBackground = () =>
+      view.setBackgroundColor(
+        widgetAppearance[nativeTheme.shouldUseDarkColors ? "dark" : "light"]
+          .surface,
+      );
+    paintBackground();
+    nativeTheme.on("updated", paintBackground);
+    view.webContents.once("destroyed", () =>
+      nativeTheme.removeListener("updated", paintBackground),
+    );
     view.setVisible(false);
+    const drawingClip = new WidgetDrawingClip(view);
+    const clip = drawingClip.root;
     const contents = view.webContents;
     const instance: WidgetInstance = {
       owner,
@@ -157,6 +195,18 @@ export class WidgetRuntime {
       id: contents.id,
       contents,
       view,
+      clip,
+      drawingClip,
+      layout: {
+        generation,
+        version: fixed.digest,
+        widthRevision: 0,
+        width: 0,
+        height: 240,
+        mode: "natural",
+      },
+      heightChanges: [],
+      measuredRevision: -1,
       url,
       partition,
       active: true,
@@ -224,7 +274,7 @@ export class WidgetRuntime {
     contents.once("destroyed", () => {
       void this.retire(instance);
       this.instances.delete(contentsId);
-      if (!owner.isDestroyed()) owner.contentView.removeChildView(view);
+      if (!owner.isDestroyed()) owner.contentView.removeChildView(clip);
     });
     let epoch = Date.now(),
       count = 0,
@@ -274,6 +324,100 @@ export class WidgetRuntime {
         return work;
       },
     );
+    contents.ipc.on("widget:measure", (event, raw: unknown) => {
+      if (!this.authorized(instance, event) || !raw || typeof raw !== "object")
+        return;
+      const r = raw as Record<string, unknown>;
+      const layout = instance.layout;
+      if (
+        Object.keys(r).sort().join(",") !==
+          "diagnostic,generation,height,version,width,widthRevision" ||
+        r.generation !== subject.generation ||
+        r.version !== subject.version ||
+        r.widthRevision !== layout.widthRevision ||
+        r.width !== layout.width ||
+        typeof r.height !== "number" ||
+        !Number.isFinite(r.height) ||
+        r.height < 0 ||
+        r.height > 1_000_000 ||
+        ![
+          "",
+          "internal-clipping",
+          "viewport-layout",
+          "content-width",
+          "measurement-limit",
+        ].includes(String(r.diagnostic))
+      )
+        return;
+      if (layout.mode === "unstable") return;
+      const initial = instance.measuredRevision !== layout.widthRevision;
+      instance.measuredRevision = layout.widthRevision;
+      clearTimeout(instance.measurementTimer);
+      const height = Math.max(1, Math.min(4096, Math.ceil(r.height)));
+      const changed =
+        Math.abs(r.height - layout.height) >= 1 && height !== layout.height;
+      const now = performance.now();
+      instance.heightChanges = instance.heightChanges.filter(
+        (t) => now - t < 2000,
+      );
+      if (changed) instance.heightChanges.push(now);
+      const diagnostic = String(r.diagnostic);
+      const unstable = instance.heightChanges.length > 20;
+      instance.layout = {
+        ...layout,
+        height:
+          unstable ||
+          diagnostic === "viewport-layout" ||
+          diagnostic === "measurement-limit"
+            ? 360
+            : changed
+              ? height
+              : layout.height,
+        mode: unstable
+          ? "unstable"
+          : diagnostic
+            ? "compatibility"
+            : r.height > 4096
+              ? "limited"
+              : "natural",
+        diagnostic: unstable
+          ? "unstable-height"
+          : diagnostic || (r.height > 4096 ? "height-limit" : undefined),
+      };
+      if (
+        initial ||
+        changed ||
+        layout.mode !== instance.layout.mode ||
+        layout.diagnostic !== instance.layout.diagnostic
+      )
+        this.onLayout(subject, { ...instance.layout });
+    });
+    let lastInput = 0;
+    contents.ipc.on("widget:display-input", (event, raw: unknown) => {
+      if (!this.authorized(instance, event) || !raw || typeof raw !== "object")
+        return;
+      const r = raw as Record<string, unknown>;
+      if (
+        (r.kind === "hover" || r.kind === "focus") &&
+        typeof r.value === "boolean"
+      )
+        this.onInput(subject, { kind: r.kind, value: r.value });
+      if (
+        r.kind === "scroll" &&
+        typeof r.x === "number" &&
+        typeof r.y === "number" &&
+        Number.isFinite(r.x) &&
+        Number.isFinite(r.y) &&
+        performance.now() - lastInput >= 8
+      ) {
+        lastInput = performance.now();
+        this.onInput(subject, {
+          kind: "scroll",
+          x: Math.max(-2000, Math.min(2000, r.x)),
+          y: Math.max(-2000, Math.min(2000, r.y)),
+        });
+      }
+    });
     let ping: { nonce: string; sent: number } | undefined;
     contents.ipc.on("widget:pong", (event, nonce: unknown) => {
       if (
@@ -306,7 +450,19 @@ export class WidgetRuntime {
       }
     }, 1000);
     contents.once("destroyed", () => clearInterval(watchdog));
-    owner.contentView.addChildView(view);
+    try {
+      // No await between the native snapshot and the unique attachment check.
+      if (nativeWidgetClip)
+        instance.nativeClip = nativeWidgetClip.beginAttach(
+          owner.getNativeWindowHandle(),
+        );
+      owner.contentView.addChildView(clip);
+      if (instance.nativeClip)
+        nativeWidgetClip!.finishAttach(instance.nativeClip);
+    } catch {
+      await this.retire(instance);
+      throw new Error("控件显示边界无法建立，请重新打开预览。");
+    }
     const retire = () => {
       void this.retire(instance);
     };
@@ -350,6 +506,12 @@ export class WidgetRuntime {
       );
       if (!valid) throw new Error("控件图片尺寸或解码无效。");
       await this.deadline(contents.loadURL(url));
+      // User-origin defaults are weaker than authored package styles; existing widgets
+      // keep their CSS and data unchanged while unstyled content follows the App theme.
+      await contents.insertCSS(
+        `:root{color-scheme:light dark;color:light-dark(${widgetAppearance.light.text},${widgetAppearance.dark.text});background:light-dark(${widgetAppearance.light.surface},${widgetAppearance.dark.surface})}`,
+        { cssOrigin: "user" },
+      );
       if (!instance.active || owner.isDestroyed())
         throw new Error("控件实例已关闭。");
       instance.ready = true;
@@ -370,13 +532,17 @@ export class WidgetRuntime {
       event.senderFrame?.url === instance.url
     );
   }
-  /** Only the trusted host supplies geometry; reserve a toolbar and outer gutters. */
+  /**
+   * Only the trusted host supplies geometry. It computes the visible area from its own scroll
+   * containers, which already exclude toolbars, so the clip is bounded by that area and the window
+   * content only. A fixed reserve would cut content wherever the toolbar scrolls away.
+   */
   place(
     instance: WidgetInstance,
     owner: BrowserWindow,
     rectangle: Rectangle,
     occluded: boolean,
-    contentOnly = false,
+    visibleRectangle: Rectangle = rectangle,
   ) {
     if (
       !instance.active ||
@@ -389,28 +555,122 @@ export class WidgetRuntime {
     if (
       occluded ||
       !owner.isVisible() ||
-      !Object.values(rectangle).every(Number.isFinite)
+      !Object.values(rectangle).every(Number.isFinite) ||
+      !Object.values(visibleRectangle).every(Number.isFinite) ||
+      rectangle.width < 1 ||
+      rectangle.width > 8192 ||
+      rectangle.height < 1 ||
+      rectangle.height > 4096
     ) {
       instance.view.setVisible(false);
+      instance.clip.setVisible(false);
+      this.clipNative(instance, { x: 0, y: 0, width: 0, height: 0 }, false);
       return;
     }
-    const x = Math.max(contentOnly ? 0 : 16, Math.ceil(rectangle.x));
-    const y = Math.max(contentOnly ? 0 : 96, Math.ceil(rectangle.y));
+    const layoutWidth = Math.ceil(rectangle.width),
+      layoutHeight = Math.ceil(rectangle.height);
+    const x = Math.max(
+      0,
+      Math.ceil(rectangle.x),
+      Math.ceil(visibleRectangle.x),
+    );
+    const y = Math.max(
+      0,
+      Math.ceil(rectangle.y),
+      Math.ceil(visibleRectangle.y),
+    );
     const right = Math.min(
-      width - (contentOnly ? 0 : 16),
+      width,
       Math.floor(rectangle.x + rectangle.width),
+      Math.floor(visibleRectangle.x + visibleRectangle.width),
     );
     const bottom = Math.min(
-      height - (contentOnly ? 0 : 16),
+      height,
       Math.floor(rectangle.y + rectangle.height),
+      Math.floor(visibleRectangle.y + visibleRectangle.height),
     );
-    if (right <= x || bottom <= y) {
-      instance.view.setVisible(false);
+    let visible: Rectangle;
+    try {
+      visible = instance.drawingClip.place(
+        {
+          x: Math.floor(rectangle.x),
+          y: Math.floor(rectangle.y),
+          width: layoutWidth,
+          height: layoutHeight,
+        },
+        {
+          x,
+          y,
+          width: Math.max(0, right - x),
+          height: Math.max(0, bottom - y),
+        },
+      );
+    } catch {
+      this.fail(instance, "控件显示边界失效，已关闭预览，请重新打开。");
       return;
     }
-    instance.view.setBounds({ x, y, width: right - x, height: bottom - y });
-    instance.view.setVisible(true);
+    if (
+      !this.clipNative(
+        instance,
+        visible,
+        visible.width > 0 && visible.height > 0,
+        {
+          x: Math.floor(rectangle.x),
+          y: Math.floor(rectangle.y),
+          width: layoutWidth,
+          height: layoutHeight,
+        },
+      )
+    )
+      return;
+    if (instance.layout.width !== layoutWidth) {
+      instance.layout = {
+        ...instance.layout,
+        width: layoutWidth,
+        widthRevision: instance.layout.widthRevision + 1,
+      };
+      instance.contents.send("widget:layout", { ...instance.layout });
+      clearTimeout(instance.measurementTimer);
+      const revision = instance.layout.widthRevision;
+      instance.measurementTimer = setTimeout(() => {
+        if (
+          !instance.active ||
+          instance.measuredRevision === revision ||
+          instance.layout.widthRevision !== revision
+        )
+          return;
+        instance.layout = {
+          ...instance.layout,
+          height: 360,
+          mode: "compatibility",
+          diagnostic: "measurement-timeout",
+        };
+        this.onLayout(instance.identity, { ...instance.layout });
+      }, 2000);
+    }
   }
+
+  private clipNative(
+    instance: WidgetInstance,
+    bounds: Rectangle,
+    shown: boolean,
+    full?: Rectangle,
+  ) {
+    if (!instance.nativeClip) return true;
+    try {
+      nativeWidgetClip!.place(
+        instance.nativeClip,
+        bounds,
+        shown,
+        ...(full ? ([full] as const) : []),
+      );
+      return true;
+    } catch {
+      this.fail(instance, "控件显示边界失效，已关闭预览，请重新打开。");
+      return false;
+    }
+  }
+
   private fail(instance: WidgetInstance, message: string) {
     if (!instance.active) return;
     void this.retire(instance);
@@ -421,9 +681,18 @@ export class WidgetRuntime {
     const pending = this.retiring.get(id);
     if (pending) return pending;
     if (instance.retired) return Promise.resolve();
+    clearTimeout(instance.measurementTimer);
     instance.retired = true;
     instance.active = false;
-    if (!instance.contents.isDestroyed()) instance.view.setVisible(false);
+    if (!instance.contents.isDestroyed()) {
+      instance.view.setVisible(false);
+      instance.clip.setVisible(false);
+    }
+    if (instance.nativeClip) {
+      nativeWidgetClip!.dispose(instance.nativeClip);
+      instance.nativeClip = undefined;
+    }
+    instance.drawingClip.dispose();
     this.instances.delete(instance.id);
     const retiring = (async () => {
       let timer: ReturnType<typeof setTimeout> | undefined;

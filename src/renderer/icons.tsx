@@ -1,4 +1,8 @@
 const icons: Record<string, string> = {
+  fullscreenEnter:
+    "M8 3H3v5M3 3l6 6M16 3h5v5M21 3l-6 6M3 16v5h5M3 21l6-6M21 16v5h-5M21 21l-6-6",
+  fullscreenExit:
+    "M3 8h5V3M8 8 3 3M16 3v5h5M16 8l5-5M3 16h5v5M8 16l-5 5M16 21v-5h5M16 16l5 5",
   folder: "M3 7V5h7l2 3h9v12H3Z",
   chevronDown: "m6 9 6 6 6-6",
   grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",

@@ -156,10 +156,33 @@ test("widget runtime: bounded resources, isolated bridge identity, capabilities 
       h.runtime.place(
         h.instance,
         h.owner,
-        { x: -100, y: -100, width: 5000, height: 5000 },
+        { x: -100, y: -100, width: 5000, height: 4096 },
         false,
       );
-      const bounds = h.instance.view.getBounds();
+      // Drawing masks include padding; their intersection is the visible boundary.
+      const masks = [];
+      let x = 0,
+        y = 0;
+      for (
+        let view: Electron.View = h.instance.clip;
+        view !== h.instance.view;
+        view = view.children[0]
+      ) {
+        const rect = view.getBounds();
+        x += rect.x;
+        y += rect.y;
+        masks.push({ ...rect, x, y });
+      }
+      const bounds = masks.reduce((a, b) => {
+        const x = Math.max(a.x, b.x),
+          y = Math.max(a.y, b.y);
+        return {
+          x,
+          y,
+          width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
+          height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y),
+        };
+      });
       h.runtime.place(
         h.instance,
         h.owner,
@@ -170,6 +193,8 @@ test("widget runtime: bounded resources, isolated bridge identity, capabilities 
         page,
         calls: h.calls.filter((call) => call.request.method !== "readView"),
         bounds,
+        content: h.owner.getContentBounds(),
+        maskCount: masks.length,
         hidden: !h.instance.view.getVisible(),
         partition: h.instance.partition.isPersistent(),
       };
@@ -199,8 +224,14 @@ test("widget runtime: bounded resources, isolated bridge identity, capabilities 
     });
     expect(outcome.calls[0].identity.generation).toMatch(/^[0-9a-f-]{36}$/);
     expect(outcome.partition).toBe(false);
-    expect(outcome.bounds.x).toBe(16);
-    expect(outcome.bounds.y).toBe(96);
+    expect(outcome.maskCount).toBe(4);
+    // Oversized host geometry is bounded by the window content, not by a fixed reserve.
+    expect(outcome.bounds).toEqual({
+      x: 0,
+      y: 0,
+      width: outcome.content.width,
+      height: outcome.content.height,
+    });
     expect(outcome.hidden).toBe(true);
     const stale = await client.evaluate(async () => {
       const h = Reflect.get(globalThis, "widgetHarness") as Harness;

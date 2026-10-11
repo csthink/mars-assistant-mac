@@ -11,6 +11,7 @@ export type WidgetControl = { slot?: string } & (
       width: number;
       height: number;
       contentOnly?: boolean;
+      clip?: { x: number; y: number; width: number; height: number };
     }
   | {
       action: "configure";
@@ -33,4 +34,14 @@ export interface WidgetSignal {
   unconfirmed: boolean;
   state: "saving" | "saved" | "failed" | "closed" | "stopped";
   message: string;
+}
+
+export interface WidgetLayoutSignal {
+  generation: string;
+  version: string;
+  widthRevision: number;
+  width: number;
+  height: number;
+  mode: "natural" | "limited" | "unstable" | "compatibility";
+  diagnostic?: string;
 }

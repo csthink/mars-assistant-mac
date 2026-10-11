@@ -133,7 +133,7 @@ test("widget fullscreen: same instances preserve order, scroll, inputs and data 
     ).toBeHidden();
     await expect(shell.locator(".sidebar")).toBeHidden();
     await expect(shell.locator(".widget-studio-heading")).toBeHidden();
-    const restore = shell.getByRole("button", { name: "还原控件 Esc" });
+    const restore = shell.getByRole("button", { name: "还原（Esc）" });
     await shell.mouse.move(300, 300);
     await expect(restore).toHaveCSS("opacity", "0");
     await restore.focus();

@@ -87,6 +87,8 @@ const bridge: DesktopBridge = {
   widgetEnabled,
   widgetControl: (command) => ipcRenderer.invoke("widget:control", command),
   widgetOcclude: occlude,
+  onWidgetLayout: (callback) => listen("widget:layout", callback),
+  onWidgetDisplayInput: (callback) => listen("widget:display-input", callback),
   onWidgetStatus: (callback) => listen("widget:status", callback),
   onWidgetVisibility: (callback) => listen("widget:visibility", callback),
   onWidgetRestore: (callback) => listen("widget:restore", callback),
