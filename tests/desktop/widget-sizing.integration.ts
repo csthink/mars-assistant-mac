@@ -125,7 +125,6 @@ test("widget sizing: natural height grows and shrinks independently of the curre
         h.owner,
         { x: 300, y: 1500, width: 370, height: 240 },
         false,
-        false,
         { x: 300, y: 1500, width: 370, height: 0 },
       );
     });
@@ -464,7 +463,6 @@ test("widget sizing: native clipping preserves hit testing and layout across res
             h.owner,
             { x: 300, y, width, height },
             false,
-            false,
             { x: 300, y: 180, width, height: 400 },
           );
         },
@@ -513,7 +511,6 @@ test("widget sizing: native clipping preserves hit testing and layout across res
           h.owner,
           { x: 300, y: 150, width: 500, height: 720 },
           occluded,
-          false,
           { x: 300, y: 180, width: 500, height: occluded ? 400 : 0 },
         );
       }, occluded);
@@ -640,7 +637,7 @@ test("widget sizing: compositor masks retain narrow visible strips without chang
             height: 300,
             [axis]: size,
           };
-          h.runtime.place(h.instance, h.owner, full, false, false, visible);
+          h.runtime.place(h.instance, h.owner, full, false, visible);
           await new Promise((r) => setTimeout(r, 20));
           const masks = [];
           let x = 0,

@@ -193,6 +193,7 @@ test("widget runtime: bounded resources, isolated bridge identity, capabilities 
         page,
         calls: h.calls.filter((call) => call.request.method !== "readView"),
         bounds,
+        content: h.owner.getContentBounds(),
         maskCount: masks.length,
         hidden: !h.instance.view.getVisible(),
         partition: h.instance.partition.isPersistent(),
@@ -224,8 +225,13 @@ test("widget runtime: bounded resources, isolated bridge identity, capabilities 
     expect(outcome.calls[0].identity.generation).toMatch(/^[0-9a-f-]{36}$/);
     expect(outcome.partition).toBe(false);
     expect(outcome.maskCount).toBe(4);
-    expect(outcome.bounds.x).toBe(16);
-    expect(outcome.bounds.y).toBe(96);
+    // Oversized host geometry is bounded by the window content, not by a fixed reserve.
+    expect(outcome.bounds).toEqual({
+      x: 0,
+      y: 0,
+      width: outcome.content.width,
+      height: outcome.content.height,
+    });
     expect(outcome.hidden).toBe(true);
     const stale = await client.evaluate(async () => {
       const h = Reflect.get(globalThis, "widgetHarness") as Harness;

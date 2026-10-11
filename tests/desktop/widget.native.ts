@@ -36,24 +36,41 @@ test("native: widget focus, trusted search occlusion and generation recovery", a
       const contents = webContents
         .getAllWebContents()
         .find((item) => item.getURL().startsWith("csthink-widget:"))!;
-      const child = owner.contentView.children[0];
+      const root = owner.contentView.children[0];
+      // The four drawing masks intersect in the visible boundary.
+      let view: Electron.View = root,
+        x = 0,
+        y = 0,
+        bounds = {
+          x: -Infinity,
+          y: -Infinity,
+          right: Infinity,
+          bottom: Infinity,
+        };
+      for (let depth = 0; depth < 4; depth++, view = view.children[0]) {
+        const rect = view.getBounds();
+        x += rect.x;
+        y += rect.y;
+        bounds = {
+          x: Math.max(bounds.x, x),
+          y: Math.max(bounds.y, y),
+          right: Math.min(bounds.right, x + rect.width),
+          bottom: Math.min(bounds.bottom, y + rect.height),
+        };
+      }
       return {
         focused: contents.isFocused(),
-        bounds: child.getBounds(),
-        visible: child.getVisible(),
+        bounds,
+        visible: root.getVisible(),
         content: owner.getContentBounds(),
       };
     });
     expect(frame.focused).toBe(true);
     expect(frame.visible).toBe(true);
-    expect(frame.bounds.x).toBeGreaterThanOrEqual(16);
-    expect(frame.bounds.y).toBeGreaterThanOrEqual(96);
-    expect(frame.bounds.x + frame.bounds.width).toBeLessThanOrEqual(
-      frame.content.width - 16,
-    );
-    expect(frame.bounds.y + frame.bounds.height).toBeLessThanOrEqual(
-      frame.content.height - 16,
-    );
+    expect(frame.bounds.x).toBeGreaterThanOrEqual(0);
+    expect(frame.bounds.y).toBeGreaterThanOrEqual(0);
+    expect(frame.bounds.right).toBeLessThanOrEqual(frame.content.width);
+    expect(frame.bounds.bottom).toBeLessThanOrEqual(frame.content.height);
     await info.attach("native-widget-view", {
       body: JSON.stringify(frame),
       contentType: "application/json",

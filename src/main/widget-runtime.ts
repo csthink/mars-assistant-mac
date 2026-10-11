@@ -532,13 +532,16 @@ export class WidgetRuntime {
       event.senderFrame?.url === instance.url
     );
   }
-  /** Only the trusted host supplies geometry; reserve a toolbar and outer gutters. */
+  /**
+   * Only the trusted host supplies geometry. It computes the visible area from its own scroll
+   * containers, which already exclude toolbars, so the clip is bounded by that area and the window
+   * content only. A fixed reserve would cut content wherever the toolbar scrolls away.
+   */
   place(
     instance: WidgetInstance,
     owner: BrowserWindow,
     rectangle: Rectangle,
     occluded: boolean,
-    contentOnly = false,
     visibleRectangle: Rectangle = rectangle,
   ) {
     if (
@@ -567,22 +570,22 @@ export class WidgetRuntime {
     const layoutWidth = Math.ceil(rectangle.width),
       layoutHeight = Math.ceil(rectangle.height);
     const x = Math.max(
-      contentOnly ? 0 : 16,
+      0,
       Math.ceil(rectangle.x),
       Math.ceil(visibleRectangle.x),
     );
     const y = Math.max(
-      contentOnly ? 0 : 96,
+      0,
       Math.ceil(rectangle.y),
       Math.ceil(visibleRectangle.y),
     );
     const right = Math.min(
-      width - (contentOnly ? 0 : 16),
+      width,
       Math.floor(rectangle.x + rectangle.width),
       Math.floor(visibleRectangle.x + visibleRectangle.width),
     );
     const bottom = Math.min(
-      height - (contentOnly ? 0 : 16),
+      height,
       Math.floor(rectangle.y + rectangle.height),
       Math.floor(visibleRectangle.y + visibleRectangle.height),
     );

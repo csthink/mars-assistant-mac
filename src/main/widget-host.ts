@@ -308,7 +308,6 @@ export class WidgetHost {
             height: command.height,
           },
           false,
-          command.contentOnly === true,
           command.clip,
         );
       } else if (command.action === "draftConfig") {

@@ -297,6 +297,82 @@ test("widget sizing: workspace, fullscreen and panel preserve natural geometry, 
     await f.close();
   }
 });
+test("widget sizing: workspace clip follows the scrolled viewport without a fixed top reserve", async () => {
+  const f = await setup(true);
+  try {
+    await requestSize(f.app, f.shell, 1180, 600);
+    const frames = f.shell.locator("[data-formal-widget] .widget-frame");
+    await expect
+      .poll(() => frames.nth(1).getAttribute("data-height-mode"))
+      .toBe("natural");
+    // Each widget's expected visible area: its frame content box within the scroll viewport.
+    const expected = () =>
+      f.shell.evaluate(() => {
+        const viewport = document
+          .querySelector(".center .viewport")!
+          .getBoundingClientRect();
+        return [
+          ...document.querySelectorAll<HTMLElement>(
+            "[data-formal-widget] .widget-frame",
+          ),
+        ].map((e) => {
+          const r = e.getBoundingClientRect();
+          const x = Math.max(r.left + e.clientLeft, viewport.left),
+            y = Math.max(r.top + e.clientTop, viewport.top);
+          const right = Math.min(
+              r.left + e.clientLeft + e.clientWidth,
+              viewport.right,
+            ),
+            bottom = Math.min(
+              r.top + e.clientTop + e.clientHeight,
+              viewport.bottom,
+            );
+          return {
+            x: Math.ceil(x),
+            y: Math.ceil(y),
+            right: Math.floor(right),
+            bottom: Math.floor(bottom),
+          };
+        });
+      });
+    const actual = () =>
+      f.app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]
+          .contentView.children.filter((root) => root.getVisible())
+          .map((root) => {
+            let view: Electron.View = root,
+              x = 0,
+              y = 0,
+              b = { x: -1e9, y: -1e9, right: 1e9, bottom: 1e9 };
+            for (let depth = 0; depth < 4; depth++, view = view.children[0]) {
+              const r = view.getBounds();
+              x += r.x;
+              y += r.y;
+              b = {
+                x: Math.max(b.x, x),
+                y: Math.max(b.y, y),
+                right: Math.min(b.right, x + r.width),
+                bottom: Math.min(b.bottom, y + r.height),
+              };
+            }
+            return b;
+          })
+          .sort((a, b) => a.x - b.x),
+      );
+    for (const top of [0, 150]) {
+      await f.shell.evaluate(
+        (top) => (document.querySelector(".center .viewport")!.scrollTop = top),
+        top,
+      );
+      const want = (await expected()).sort((a, b) => a.x - b.x);
+      expect(want[0].y).toBeLessThan(96);
+      await expect.poll(actual).toEqual(want);
+    }
+  } finally {
+    await f.close();
+  }
+});
+
 test("widget sizing: edit preview grows while requirement and candidate actions stay reachable", async ({}, info) => {
   const f = await setup(false);
   try {
