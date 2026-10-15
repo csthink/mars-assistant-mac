@@ -298,12 +298,19 @@ export function classifyFailure(error: unknown): TransportError {
     `网络请求失败${detail ? `：${detail}` : ""}。请检查网络连接与地址。`,
   );
 }
+/** Per-request override of the non-streaming window; omitted, requestTimeoutMs applies. */
+export interface RequestTimeouts {
+  requestMs?: number;
+}
+const networkCode =
+  /\b(ECONNRESET|ETIMEDOUT|EPIPE|ENETUNREACH|EHOSTUNREACH|UND_ERR_[A-Z_]+)\b/;
 async function send(
   endpoint: Endpoint,
   path: string,
   init: RequestInit,
   signal: AbortSignal | undefined,
   context: "models" | "chat",
+  timeouts: RequestTimeouts = {},
 ): Promise<unknown> {
   const url = endpointUrl(endpoint.baseUrl, path);
   if (!/^[\x21-\x7e]+$/.test(endpoint.apiKey))
@@ -311,7 +318,12 @@ async function send(
       "auth",
       "已保存的 API key 含有无法放入 HTTP 头的字符，请重新填写密钥。",
     );
-  const signals = [AbortSignal.timeout(requestTimeoutMs)];
+  const windowMs = timeouts.requestMs ?? requestTimeoutMs;
+  const seconds = windowMs / 1000;
+  // One window covers the headers and the whole body; it is kept separately so
+  // a user stop and the deadline stay distinguishable in both phases.
+  const deadline = AbortSignal.timeout(windowMs);
+  const signals = [deadline];
   if (signal) signals.push(signal);
   let response: Response;
   try {
@@ -326,15 +338,67 @@ async function send(
       signal: AbortSignal.any(signals),
     });
   } catch (error) {
+    if (signal?.aborted) throw classifyFailure({ name: "AbortError" });
+    if (deadline.aborted)
+      throw new TransportError(
+        "network",
+        `网络超时：${seconds} 秒内没有收到响应。`,
+      );
     throw classifyFailure(error);
   }
-  const body = await response.text().catch(() => "");
-  if (!response.ok) throw classifyStatus(response.status, body, context);
+  if (!response.ok) {
+    // The status decides the class; the body only supplies the provider's
+    // explanation, so an unreadable error body leaves the excerpt empty.
+    const detail = await response.text().catch(() => {
+      if (signal?.aborted) throw classifyFailure({ name: "AbortError" });
+      return "";
+    });
+    throw classifyStatus(response.status, detail, context);
+  }
   const type = response.headers.get("content-type") ?? "";
-  if (!type.includes("json"))
+  if (!type.includes("json")) {
+    void response.body?.cancel().catch(() => {});
     throw new TransportError(
       "protocol",
       `响应类型不是 JSON（${type || "未知"}），该地址可能不是 Chat Completions 接口。`,
+    );
+  }
+  // Some providers send blank lines while a non-streaming request is queued,
+  // so only non-whitespace text counts as having received result content.
+  let body = "";
+  let received = false;
+  if (response.body) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        body += decoder.decode(value, { stream: true });
+        if (!received && body.trim()) received = true;
+      }
+      body += decoder.decode();
+    } catch (error) {
+      void reader.cancel().catch(() => {});
+      if (signal?.aborted) throw classifyFailure({ name: "AbortError" });
+      if (deadline.aborted)
+        throw new TransportError(
+          "network",
+          received
+            ? `网络超时：${seconds} 秒内没有收到完整响应，响应正文在传输中途停止。`
+            : `网络超时：提供方已返回响应头，但 ${seconds} 秒内没有返回结果内容，服务可能繁忙，请稍后重试。`,
+        );
+      const code = (causeChain(error).match(networkCode) ?? [])[0];
+      throw new TransportError(
+        "network",
+        `连接中断：提供方在响应正文传完前断开了连接${code ? `（${code}）` : ""}，请稍后重试。`,
+      );
+    }
+  }
+  if (!body.trim())
+    throw new TransportError(
+      "protocol",
+      `响应正文为空：提供方返回 HTTP ${response.status}，但没有返回任何内容。`,
     );
   try {
     return JSON.parse(body);
@@ -346,6 +410,7 @@ async function send(
 export async function listModels(
   endpoint: Endpoint,
   signal?: AbortSignal,
+  timeouts: RequestTimeouts = {},
 ): Promise<string[]> {
   const parsed = (await send(
     endpoint,
@@ -353,6 +418,7 @@ export async function listModels(
     { method: "GET" },
     signal,
     "models",
+    timeouts,
   )) as {
     data?: unknown;
   };
@@ -369,6 +435,7 @@ export async function listModels(
 export async function probeChat(
   endpoint: Endpoint,
   signal?: AbortSignal,
+  timeouts: RequestTimeouts = {},
 ): Promise<void> {
   const parsed = (await send(
     endpoint,
@@ -385,6 +452,7 @@ export async function probeChat(
     },
     signal,
     "chat",
+    timeouts,
   )) as { choices?: unknown };
   if (!Array.isArray(parsed.choices) || !parsed.choices.length)
     throw new TransportError(
@@ -471,6 +539,7 @@ export interface StreamResult {
 export async function probeImage(
   endpoint: Endpoint,
   signal?: AbortSignal,
+  timeouts: RequestTimeouts = {},
 ): Promise<{ described: boolean; answer: string }> {
   const parsed = (await send(
     endpoint,
@@ -498,6 +567,7 @@ export async function probeImage(
     },
     signal,
     "chat",
+    timeouts,
   )) as { choices?: { message?: { content?: unknown } }[] };
   if (!Array.isArray(parsed.choices) || !parsed.choices.length)
     throw new TransportError(

@@ -12,6 +12,7 @@ import {
   probeChat,
   probeImage,
   probePng,
+  requestTimeoutMs,
   streamChat,
   TransportError,
 } from "../../src/main/transport";
@@ -84,6 +85,32 @@ before(async () => {
         return response.end();
       }
       if (route === "hang") return;
+      // Headers arrive at once; the body then behaves as the route names.
+      if (route?.startsWith("body-")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.flushHeaders();
+        const done = request.url?.endsWith("/models")
+          ? JSON.stringify({ data: [{ id: "m-1" }] })
+          : JSON.stringify({ choices: [{ message: { content: "红" } }] });
+        if (route === "body-empty") return response.end();
+        if (route === "body-blank") return response.end("\n\n  \n");
+        if (route === "body-cut-silent")
+          return setTimeout(() => request.socket.destroy(), 20);
+        if (route === "body-cut")
+          return response.write(done.slice(0, 8), () =>
+            setTimeout(() => request.socket.destroy(), 20),
+          );
+        if (route === "body-partial") return response.write(done.slice(0, 8));
+        // Queued requests: blank lines keep the connection open.
+        const keep = setInterval(() => response.write("\n"), 20);
+        response.once("close", () => clearInterval(keep));
+        if (route === "body-queued-ok")
+          setTimeout(() => {
+            clearInterval(keep);
+            response.end(done);
+          }, 120);
+        return;
+      }
       if (route?.startsWith("stream")) {
         response.writeHead(200, { "content-type": "text/event-stream" });
         const chunk = (content: string) =>
@@ -573,3 +600,109 @@ test(
     }
   },
 );
+
+test("非流式请求：响应头到达后，正文超时、断流、空正文与用户停止分别如实分类，不报成无效 JSON", async () => {
+  const fast = { requestMs: 400 };
+  // Normal: blank keep-alive lines before the JSON still parse, for every caller.
+  await probeChat(endpoint("body-queued-ok"), undefined, fast);
+  assert.deepEqual(
+    await listModels(endpoint("body-queued-ok"), undefined, fast),
+    ["m-1"],
+  );
+  assert.equal(
+    (await probeImage(endpoint("body-queued-ok"), undefined, fast)).described,
+    true,
+  );
+  const cases: [
+    string,
+    (e: ReturnType<typeof endpoint>) => Promise<unknown>,
+    string,
+    RegExp,
+  ][] = [
+    // 2xx with JSON headers, then only blank lines until the deadline.
+    [
+      "body-queued",
+      (e) => probeChat(e, undefined, fast),
+      "network",
+      /网络超时：提供方已返回响应头，但 0\.4 秒内没有返回结果内容/,
+    ],
+    [
+      "body-queued",
+      (e) => listModels(e, undefined, fast),
+      "network",
+      /没有返回结果内容/,
+    ],
+    [
+      "body-queued",
+      (e) => probeImage(e, undefined, fast),
+      "network",
+      /没有返回结果内容/,
+    ],
+    // Part of the JSON arrived, then the body stalled.
+    [
+      "body-partial",
+      (e) => probeChat(e, undefined, fast),
+      "network",
+      /0\.4 秒内没有收到完整响应，响应正文在传输中途停止/,
+    ],
+    // The connection closed mid-body, with and without content.
+    [
+      "body-cut",
+      (e) => probeChat(e, undefined, fast),
+      "network",
+      /连接中断：提供方在响应正文传完前断开了连接/,
+    ],
+    ["body-cut", (e) => listModels(e, undefined, fast), "network", /连接中断/],
+    [
+      "body-cut-silent",
+      (e) => probeImage(e, undefined, fast),
+      "network",
+      /连接中断/,
+    ],
+    // A finished but empty body is reported as such.
+    [
+      "body-empty",
+      (e) => probeChat(e, undefined, fast),
+      "protocol",
+      /响应正文为空：提供方返回 HTTP 200/,
+    ],
+    [
+      "body-blank",
+      (e) => listModels(e, undefined, fast),
+      "protocol",
+      /响应正文为空/,
+    ],
+    // The header phase keeps its own wording.
+    [
+      "hang",
+      (e) => probeChat(e, undefined, fast),
+      "network",
+      /^网络超时：0\.4 秒内没有收到响应。$/,
+    ],
+  ];
+  for (const [route, run, expected, pattern] of cases) {
+    const started = Date.now();
+    const error = (await failure(run(endpoint(route)))) as TransportError;
+    assert.equal(error.errorClass, expected, `${route}: ${error.message}`);
+    assert.match(error.message, pattern, route);
+    assert.doesNotMatch(error.message, /不是有效的 JSON/, route);
+    assert.equal(error.message.includes("test-secret"), false);
+    assert.ok(
+      Date.now() - started < 5_000,
+      `${route} must end near its deadline`,
+    );
+  }
+  // A malformed but non-empty body is still the protocol error it always was.
+  const malformed = classifyFailure(new SyntaxError("Unexpected token"));
+  assert.equal(malformed.errorClass, "protocol");
+  // A user stop while the body is still arriving is a stop, not a timeout.
+  const controller = new AbortController();
+  const pending = failure(
+    probeChat(endpoint("body-queued"), controller.signal, { requestMs: 5_000 }),
+  );
+  setTimeout(() => controller.abort(), 80);
+  const stopped = (await pending) as TransportError;
+  assert.equal(stopped.errorClass, "stop_timeout", stopped.message);
+  // The default window is unchanged.
+  assert.equal(requestTimeoutMs, 45_000);
+});
