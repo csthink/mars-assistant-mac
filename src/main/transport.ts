@@ -308,6 +308,36 @@ export interface RequestTimeouts {
 }
 const networkCode =
   /\b(ECONNRESET|ETIMEDOUT|EPIPE|ENETUNREACH|EHOSTUNREACH|UND_ERR_[A-Z_]+)\b/;
+/** A deadline whose timer holds it strongly; AbortSignal.timeout keeps its signal only weakly. */
+function deadlineSignal(ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("deadline"), ms);
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+/**
+ * Once the response has arrived, undici reaches the fetch from its signal only through a
+ * weak reference, so after a garbage collection an abort no longer ends the body read.
+ * The listeners here sit on the source signals themselves and cancel the reader, and
+ * the read loop checks the sources after every read.
+ */
+function guardBody(
+  sources: AbortSignal[],
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+  const cancel = () => void reader.cancel().catch(() => {});
+  for (const source of sources)
+    source.addEventListener("abort", cancel, { once: true });
+  if (sources.some((source) => source.aborted)) cancel();
+  return {
+    throwIfAborted() {
+      if (sources.some((source) => source.aborted))
+        throw new DOMException("The body read was aborted.", "AbortError");
+    },
+    release() {
+      for (const source of sources) source.removeEventListener("abort", cancel);
+    },
+  };
+}
 async function send(
   endpoint: Endpoint,
   path: string,
@@ -326,9 +356,35 @@ async function send(
   const seconds = windowMs / 1000;
   // One window covers the headers and the whole body; it is kept separately so
   // a user stop and the deadline stay distinguishable in both phases.
-  const deadline = AbortSignal.timeout(windowMs);
+  const requestWindow = deadlineSignal(windowMs);
+  const deadline = requestWindow.signal;
   const signals = [deadline];
   if (signal) signals.push(signal);
+  try {
+    return await sendWithin(
+      endpoint,
+      init,
+      url,
+      signal,
+      deadline,
+      signals,
+      seconds,
+      context,
+    );
+  } finally {
+    requestWindow.clear();
+  }
+}
+async function sendWithin(
+  endpoint: Endpoint,
+  init: RequestInit,
+  url: URL,
+  signal: AbortSignal | undefined,
+  deadline: AbortSignal,
+  signals: AbortSignal[],
+  seconds: number,
+  context: "models" | "chat",
+): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -373,10 +429,12 @@ async function send(
   let received = false;
   if (response.body) {
     const reader = response.body.getReader();
+    const guard = guardBody(signals, reader);
     const decoder = new TextDecoder();
     try {
       for (;;) {
         const { value, done } = await reader.read();
+        guard.throwIfAborted();
         if (done) break;
         body += decoder.decode(value, { stream: true });
         if (!received && body.trim()) received = true;
@@ -397,6 +455,8 @@ async function send(
         "network",
         `连接中断：提供方在响应正文传完前断开了连接${code ? `（${code}）` : ""}，请稍后重试。`,
       );
+    } finally {
+      guard.release();
     }
   }
   if (!body.trim())
@@ -626,11 +686,13 @@ export async function streamChat(
     );
   const headersMs = timeouts.headersMs ?? requestTimeoutMs;
   const idleMs = timeouts.idleMs ?? streamIdleTimeoutMs;
-  const absolute = timeouts.managedDeadline
-    ? new AbortController().signal
-    : AbortSignal.timeout(timeouts.totalMs ?? 300_000);
+  const total = timeouts.managedDeadline
+    ? undefined
+    : deadlineSignal(timeouts.totalMs ?? 300_000);
+  const absolute = total?.signal ?? new AbortController().signal;
   // The timeout owns its own controller so a user stop and a silence timeout stay distinguishable.
   const timeout = new AbortController();
+  const sources = [signal, timeout.signal, absolute];
   let timer = timeouts.managedDeadline
     ? undefined
     : setTimeout(() => timeout.abort("headers"), headersMs);
@@ -655,13 +717,14 @@ export async function streamChat(
         ...(timeouts.tools ? { tools: timeouts.tools } : {}),
       }),
       redirect: "error",
-      signal: AbortSignal.any([signal, timeout.signal, absolute]),
+      signal: AbortSignal.any(sources),
       ...(timeouts.managedDeadline
         ? { dispatcher: managedDeadlineDispatcher }
         : {}),
     });
   } catch (error) {
     clearTimeout(timer);
+    total?.clear();
     if (signal.aborted) throw classifyFailure({ name: "AbortError" });
     if (absolute.aborted)
       throw new TransportError(
@@ -677,6 +740,7 @@ export async function streamChat(
   }
   if (!response.ok) {
     clearTimeout(timer);
+    total?.clear();
     throw classifyStatus(
       response.status,
       await response.text().catch(() => ""),
@@ -686,6 +750,7 @@ export async function streamChat(
   const type = response.headers.get("content-type") ?? "";
   if (!type.includes("text/event-stream") && !type.includes("json")) {
     clearTimeout(timer);
+    total?.clear();
     throw new TransportError(
       "protocol",
       `响应类型不是事件流（${type || "未知"}），该地址可能不是 Chat Completions 接口。`,
@@ -693,10 +758,12 @@ export async function streamChat(
   }
   if (!response.body) {
     clearTimeout(timer);
+    total?.clear();
     throw new TransportError("protocol", "响应没有正文。");
   }
   armIdle();
   const reader = response.body.getReader();
+  const guard = guardBody(sources, reader);
   const decoder = new TextDecoder();
   let buffer = "";
   let finished = false;
@@ -850,6 +917,7 @@ export async function streamChat(
   try {
     for (;;) {
       const { value, done } = await reader.read();
+      guard.throwIfAborted();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       if (
@@ -892,8 +960,10 @@ export async function streamChat(
     );
   } finally {
     clearTimeout(timer);
+    total?.clear();
     // Abort the owned request even when the stream cancellation handshake stalls.
     // Cleanup must never keep a stopped caller waiting for a provider response.
+    guard.release();
     timeout.abort("cleanup");
     void reader.cancel().catch(() => {});
   }

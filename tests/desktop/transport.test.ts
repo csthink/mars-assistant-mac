@@ -3,6 +3,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import {
   classifyFailure,
   classifyStatus,
@@ -891,3 +893,71 @@ test("非流式请求：响应头到达后，正文超时、断流、空正文�
   // The default window is unchanged.
   assert.equal(requestTimeoutMs, 45_000);
 });
+
+test(
+  "garbage collection while a body is read: user stop, idle window and request deadline still end the request",
+  { timeout: 30_000 },
+  async () => {
+    // Undici keeps the request reachable from its signal only weakly once the response
+    // has arrived; collect aggressively so an abort that relies on that link is lost.
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const collector = setInterval(gc, 2);
+    const bounded = (name: string, run: () => Promise<unknown>) =>
+      Promise.race([
+        run().then(
+          () => assert.fail(`${name}: expected a failure`),
+          (error: unknown) => {
+            assert.ok(error instanceof TransportError, String(error));
+            return error;
+          },
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`${name}: the request never ended`)),
+            3_000,
+          ),
+        ),
+      ]);
+    try {
+      const stop = new AbortController();
+      setTimeout(() => stop.abort(), 60);
+      const stopped = await bounded("stream stop", () =>
+        streamChat(endpoint("stream-open"), [], stop.signal, () => {}),
+      );
+      assert.equal(stopped.errorClass, "stop_timeout");
+      const idle = await bounded("stream idle", () =>
+        streamChat(
+          endpoint("stream-open"),
+          [],
+          new AbortController().signal,
+          () => {},
+          { idleMs: 200 },
+        ),
+      );
+      assert.equal(idle.errorClass, "network");
+      const total = await bounded("stream total", () =>
+        streamChat(
+          endpoint("sse-think"),
+          [],
+          new AbortController().signal,
+          () => {},
+          { idleMs: 5_000, totalMs: 200 },
+        ),
+      );
+      assert.match(total.message, /总时限/);
+      const deadline = await bounded("body deadline", () =>
+        probeChat(endpoint("body-queued"), undefined, { requestMs: 300 }),
+      );
+      assert.match(deadline.message, /没有返回结果内容/);
+      const cancel = new AbortController();
+      setTimeout(() => cancel.abort(), 80);
+      const cancelled = await bounded("body stop", () =>
+        probeChat(endpoint("body-queued"), cancel.signal, { requestMs: 5_000 }),
+      );
+      assert.equal(cancelled.errorClass, "stop_timeout");
+    } finally {
+      clearInterval(collector);
+    }
+  },
+);
