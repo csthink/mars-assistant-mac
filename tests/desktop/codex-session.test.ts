@@ -10,6 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { createCodexFixture } from "./codex-fixture";
 import { CodexRpc } from "../../src/main/codex-rpc";
 import {
@@ -385,6 +387,86 @@ test(
       f.controller.abort();
       await result;
       await f.clean();
+    }
+  },
+);
+
+test(
+  "Codex model test's composed deadline, user stop and tool signal still end a hung turn under forced garbage collection",
+  { timeout: 60_000 },
+  async () => {
+    // Same composition as the Codex model test in src/main/index.ts; runCodexTurn composes the turn
+    // signal again with its own operation signal for tool calls. Collect every 2 ms so an abort that
+    // relies only on the weak links of AbortSignal.timeout and AbortSignal.any is lost.
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const modelTest = async (
+      mode: string,
+      stopAfter: number | null,
+      ms: number,
+    ) => {
+      const f = await fixture(mode);
+      const stop = new AbortController();
+      const deadline = AbortSignal.timeout(ms);
+      let toolAborted = false;
+      if (stopAfter !== null) setTimeout(() => stop.abort(), stopAfter);
+      try {
+        await runCodexTurn({
+          ...f.options,
+          signal: AbortSignal.any([stop.signal, deadline]),
+          invoke: (_call, signal) =>
+            new Promise<string>((_, reject) =>
+              signal.addEventListener(
+                "abort",
+                () => {
+                  toolAborted = true;
+                  reject(signal.reason);
+                },
+                { once: true },
+              ),
+            ),
+        });
+        return { end: "completed", toolAborted };
+      } catch (error) {
+        if (deadline.aborted && !stop.signal.aborted)
+          return { end: "deadline", toolAborted };
+        return {
+          end: stop.signal.aborted ? "stopped" : `failed: ${String(error)}`,
+          toolAborted,
+        };
+      } finally {
+        await f.clean();
+      }
+    };
+    const bounded = (run: Promise<{ end: string; toolAborted: boolean }>) =>
+      Promise.race([
+        run,
+        new Promise<{ end: string; toolAborted: boolean }>((done) =>
+          setTimeout(
+            () => done({ end: "never ended", toolAborted: false }),
+            5_000,
+          ),
+        ),
+      ]);
+    const collector = setInterval(gc, 2);
+    try {
+      for (let round = 0; round < 2; round++) {
+        assert.equal(
+          (await bounded(modelTest("turn_hang", null, 300))).end,
+          "deadline",
+        );
+        assert.equal(
+          (await bounded(modelTest("turn_hang", 150, 60_000))).end,
+          "stopped",
+        );
+        // A tool call waiting on the turn's composed tool signal sees the stop.
+        assert.deepEqual(await bounded(modelTest("turn_tool", 300, 60_000)), {
+          end: "stopped",
+          toolAborted: true,
+        });
+      }
+    } finally {
+      clearInterval(collector);
     }
   },
 );
