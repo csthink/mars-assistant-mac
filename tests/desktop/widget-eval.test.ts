@@ -16,6 +16,8 @@ import type { Execution } from "./widget-eval/execute";
 import { responseServer } from "./widget-eval/execute";
 import { streamBody, syntheticFixtures } from "./widget-eval/fixtures";
 import {
+  attemptCost,
+  callUpperBound,
   liveAuthorization,
   redact,
   runLive,
@@ -637,12 +639,14 @@ const authorization = (over: Partial<LiveAuthorization> = {}) => ({
   waitMinutes: 5,
   maxCalls: 1,
   stopAfterProviderFailures: 3,
+  costLimit: 2,
   selections: [
     {
       provider: "offline",
       baseUrl: "https://provider.invalid/v1",
       model: "offline-model",
       keyEnv: "WIDGET_EVAL_OFFLINE_KEY",
+      pricing: { inputPerMillion: 1, outputPerMillion: 2 },
     },
   ],
   ...over,
@@ -681,6 +685,20 @@ test("控件评测：真实调用授权在任何请求前完整校验", () => {
       env,
     ],
     ["key not set", authorization(), "1", {}],
+    ["no cost limit", authorization({ costLimit: 0 }), "1", env],
+    [
+      "no prices",
+      authorization({
+        selections: [
+          {
+            ...authorization().selections[0],
+            pricing: { inputPerMillion: 0, outputPerMillion: 1 },
+          },
+        ],
+      }),
+      "1",
+      env,
+    ],
     [
       "plain http",
       authorization({
@@ -738,6 +756,21 @@ test("控件评测：真实调用授权在任何请求前完整校验", () => {
     { promptTokens: 1200, completionTokens: 800 },
   );
   assert.equal(streamUsage("data: [DONE]\n\n"), null);
+  const selection = authorization().selections[0];
+  const recorded = (usage: Fixture["recorded"]["usage"], body = "") =>
+    attemptCost(selection, {
+      ...syntheticFixtures()[0].fixture,
+      recorded: { ...syntheticFixtures()[0].fixture.recorded, usage },
+      response: { status: 200, contentType: "text/event-stream", body },
+    });
+  // Reported usage is priced exactly: 1,000 input at 1 and 2,000 output at 2 per million.
+  assert.equal(
+    recorded({ promptTokens: 1000, completionTokens: 2000 }).cost,
+    0.005,
+  );
+  assert.equal(recorded(null).basis, "assumed");
+  assert.equal(recorded(null).cost, callUpperBound(selection));
+  assert.equal(recorded(null, "x".repeat(90_000)).completionTokens, 30_000);
 });
 
 test("控件评测：真实调用经录制转发只发一次请求，录制可回放到同一判定且不含密钥", async () => {
@@ -876,6 +909,35 @@ test("控件评测：同一选择连续在提供方阶段失败达到上限后�
       skipped.map((s) => s.repeat),
       [3, 4, 5],
     );
+    // The cost guard: with no reported usage each call counts at least the assumed upper bound,
+    // so a limit of one and a half calls lets exactly one call through.
+    const perCall = callUpperBound(auth.selections[0]);
+    const limited = liveAuthorization(
+      authorization({
+        repeats: 3,
+        maxCalls: 3,
+        stopAfterProviderFailures: 5,
+        costLimit: perCall * 1.5,
+        selections: [{ ...authorization().selections[0], baseUrl }],
+      }),
+      "1",
+      env,
+      set,
+    );
+    const before = requests;
+    const guarded = await runLive(limited, set, env, {
+      beforeCall: () => {},
+      onAttempt: () => {},
+    });
+    assert.equal(requests - before, 1);
+    assert.equal(guarded.costs.length, 1);
+    assert.equal(guarded.costs[0].basis, "assumed");
+    assert.ok(guarded.spent >= perCall);
+    assert.deepEqual(
+      guarded.skipped.map((s) => s.repeat),
+      [2, 3],
+    );
+    assert.match(guarded.skipped[0].reason, /would pass the limit/);
   } finally {
     upstream.closeAllConnections();
     await new Promise<void>((done) => upstream.close(() => done()));

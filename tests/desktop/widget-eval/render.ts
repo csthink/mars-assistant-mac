@@ -7,7 +7,7 @@
  */
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { closeLocal, launchLocal } from "../local-client";
 import { goTo, ready } from "../shell";
@@ -202,7 +202,11 @@ export const baselineSource = JSON.stringify({
 });
 
 /** Renders every item in one client, one selected draft at a time. */
-export async function renderCandidates(items: RenderItem[]): Promise<{
+export async function renderCandidates(
+  items: RenderItem[],
+  /** When set, each view is captured after load and after its rules, for human review. */
+  screenshots?: string,
+): Promise<{
   observations: Map<string, RenderObservation>;
   baseline: string[];
 }> {
@@ -305,10 +309,20 @@ export async function renderCandidates(items: RenderItem[]): Promise<{
           document.body.querySelector("svg, canvas, img, input, button") ===
             null,
       );
+      const capture = (stage: string) =>
+        screenshots
+          ? view
+              .screenshot({
+                path: join(screenshots, `${item.id}.${stage}.png`),
+              })
+              .catch(() => undefined)
+          : undefined;
+      await capture("loaded");
       const rules: RuleResult[] = [];
       if (!empty && !errors.length)
         for (const rule of item.requirement.rules)
           if (!isStaticRule(rule)) rules.push(await judgeRule(view, rule));
+      await capture("after-rules");
       observations.set(item.id, { loaded: true, empty, errors, rules });
     }
     return { observations, baseline };

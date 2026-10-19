@@ -26,6 +26,8 @@ export interface LiveSelection {
   model: string;
   /** Name of the environment variable holding the key; the value is never written anywhere. */
   keyEnv: string;
+  /** The provider's published price per million tokens, in the unit of costLimit. */
+  pricing: { inputPerMillion: number; outputPerMillion: number };
 }
 export interface LiveAuthorization {
   task: "widget-generation-evaluation";
@@ -41,6 +43,11 @@ export interface LiveAuthorization {
    * selection's remaining attempts are not sent, so an outage does not spend the whole budget.
    */
   stopAfterProviderFailures: number;
+  /**
+   * Spending limit for the whole run. A call is sent only while the cost so far plus the upper
+   * bound of one more call stays within it.
+   */
+  costLimit: number;
   selections: LiveSelection[];
 }
 
@@ -94,7 +101,21 @@ export function liveAuthorization(
       notRun("duplicate provider and model selection");
     seen.add(`${s.provider}/${s.model}`);
     if (!env[s.keyEnv]) notRun(`${s.keyEnv} is not set`);
+    const price = s.pricing;
+    if (
+      !price ||
+      ![price.inputPerMillion, price.outputPerMillion].every(
+        (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
+      )
+    )
+      notRun("each selection needs positive input and output prices");
   }
+  if (
+    typeof a.costLimit !== "number" ||
+    !Number.isFinite(a.costLimit) ||
+    a.costLimit <= 0
+  )
+    notRun("costLimit must be a positive amount");
   if (
     !Number.isInteger(a.stopAfterProviderFailures) ||
     a.stopAfterProviderFailures! < 1
@@ -233,6 +254,45 @@ export async function recordingProxy(upstreamBase: string, key: string) {
 }
 
 const timeoutMessage = "控件生成已达到本次等待时限";
+/** Token counts assumed when the provider reports no usage, chosen above the expected sizes. */
+export const assumedUsage = { promptTokens: 1500, completionTokens: 8000 };
+const price = (
+  selection: LiveSelection,
+  usage: { promptTokens: number; completionTokens: number },
+) =>
+  (usage.promptTokens * selection.pricing.inputPerMillion +
+    usage.completionTokens * selection.pricing.outputPerMillion) /
+  1_000_000;
+/** The most one more call is expected to cost when nothing about it is known yet. */
+export const callUpperBound = (selection: LiveSelection) =>
+  price(selection, assumedUsage);
+export interface AttemptCost {
+  id: string;
+  basis: "reported" | "assumed";
+  promptTokens: number;
+  completionTokens: number;
+  cost: number;
+}
+/**
+ * Cost of one attempt: from the usage the provider reported, or else from assumed counts that
+ * grow with the size of the recorded response, so an unreported long answer is not undercounted.
+ */
+export function attemptCost(selection: LiveSelection, fixture: Fixture) {
+  const reported = fixture.recorded.usage;
+  const usage = reported ?? {
+    promptTokens: assumedUsage.promptTokens,
+    completionTokens: Math.max(
+      assumedUsage.completionTokens,
+      Math.ceil((fixture.response?.body.length ?? 0) / 3),
+    ),
+  };
+  return {
+    id: fixture.id,
+    basis: reported ? "reported" : "assumed",
+    ...usage,
+    cost: price(selection, usage),
+  } satisfies AttemptCost;
+}
 export interface SkippedAttempt {
   provider: string;
   model: string;
@@ -243,8 +303,9 @@ export interface SkippedAttempt {
 /**
  * Runs every authorized attempt once, in order. The call count is checked and reported before
  * each send; a provider failure is recorded as that attempt's outcome and never retried. A
- * selection that fails at the provider stage stopAfterProviderFailures times in a row stops;
- * its remaining attempts are reported as skipped, never sent.
+ * selection that fails at the provider stage stopAfterProviderFailures times in a row stops,
+ * and no call is sent once the cost so far plus one more call's upper bound passes costLimit;
+ * attempts stopped this way are reported as skipped, never sent.
  */
 export async function runLive(
   auth: LiveAuthorization,
@@ -252,11 +313,17 @@ export async function runLive(
   env: Record<string, string | undefined>,
   hooks: {
     beforeCall: (calls: number) => void;
-    onAttempt: (fixture: Fixture, executed: Executed) => void;
+    onAttempt: (
+      fixture: Fixture,
+      executed: Executed,
+      cost: AttemptCost,
+    ) => void;
   },
 ) {
   let calls = 0;
+  let spent = 0;
   const results: Executed[] = [];
+  const costs: AttemptCost[] = [];
   const skipped: SkippedAttempt[] = [];
   for (const selection of auth.selections) {
     let consecutive = 0;
@@ -265,13 +332,19 @@ export async function runLive(
         const requirement = set.requirements.find(
           (r) => r.id === requirementId,
         )!;
-        if (consecutive >= auth.stopAfterProviderFailures) {
+        const skip =
+          spent + callUpperBound(selection) > auth.costLimit
+            ? `cost so far ${spent.toFixed(4)} plus one more call would pass the limit ${auth.costLimit}`
+            : consecutive >= auth.stopAfterProviderFailures
+              ? `${consecutive} consecutive provider-stage failures`
+              : null;
+        if (skip) {
           skipped.push({
             provider: selection.provider,
             model: selection.model,
             requirement: requirement.id,
             repeat,
-            reason: `${consecutive} consecutive provider-stage failures`,
+            reason: skip,
           });
           continue;
         }
@@ -342,10 +415,13 @@ export async function runLive(
           await proxy.close();
         }
         results.push(executed);
+        const cost = attemptCost(selection, fixture);
+        costs.push(cost);
+        spent += cost.cost;
         consecutive =
           executed.product.failure?.stage === "provider" ? consecutive + 1 : 0;
-        hooks.onAttempt(fixture, executed);
+        hooks.onAttempt(fixture, executed, cost);
       }
   }
-  return { executed: results, skipped };
+  return { executed: results, skipped, costs, spent };
 }
