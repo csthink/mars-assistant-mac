@@ -14,6 +14,7 @@ import {
   probePng,
   requestTimeoutMs,
   streamChat,
+  streamIdleTimeoutMs,
   TransportError,
 } from "../../src/main/transport";
 
@@ -109,6 +110,79 @@ before(async () => {
             clearInterval(keep);
             response.end(done);
           }, 120);
+        return;
+      }
+      // Streams that stay open on keep-alive data, empty frames or model progress.
+      if (route?.startsWith("sse-")) {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.flushHeaders();
+        const frame = (delta: unknown) =>
+          `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+        const alive = [": keep-alive\n\n", "\n", ": OPENROUTER PROCESSING\n\n"];
+        const empty = [
+          frame({}),
+          frame({ role: "assistant", content: "" }),
+          frame({ reasoning_content: "", reasoning: "" }),
+          frame({ reasoning_details: [{ type: "reasoning.text", text: "" }] }),
+          frame({ content: null }),
+          `data: ${JSON.stringify({ choices: [] })}\n\n`,
+        ];
+        const thoughts = [
+          frame({ reasoning_content: "想" }),
+          frame({ reasoning: "想" }),
+          frame({
+            reasoning_details: [{ type: "reasoning.text", text: "想" }],
+          }),
+        ];
+        const pieces = '{"path":"material-a.md"}'.match(/.{1,2}/g)!;
+        if (route === "sse-content-then-alive")
+          response.write(frame({ content: "你好" }));
+        if (route === "sse-think-then-alive") response.write(thoughts[0]);
+        let tick = 0;
+        const timer = setInterval(() => {
+          tick++;
+          if (route === "sse-empty")
+            return response.write(empty[tick % empty.length]);
+          if (route === "sse-think") {
+            if (tick <= 12)
+              return response.write(
+                thoughts[tick % thoughts.length] + alive[0],
+              );
+            clearInterval(timer);
+            response.write(frame({ content: "想好了" }));
+            return response.end("data: [DONE]\n\n");
+          }
+          if (route === "sse-tool-args") {
+            if (tick === 1)
+              return response.write(
+                frame({
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_1",
+                      type: "function",
+                      function: { name: "read_material", arguments: "" },
+                    },
+                  ],
+                }),
+              );
+            if (tick - 2 < pieces.length)
+              return response.write(
+                frame({
+                  tool_calls: [
+                    { index: 0, function: { arguments: pieces[tick - 2] } },
+                  ],
+                }) + alive[0],
+              );
+            clearInterval(timer);
+            response.write(
+              `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}\n\n`,
+            );
+            return response.end("data: [DONE]\n\n");
+          }
+          response.write(alive[tick % alive.length]);
+        }, 50);
+        response.once("close", () => clearInterval(timer));
         return;
       }
       if (route?.startsWith("stream")) {
@@ -314,7 +388,7 @@ test("流式问答：思考增量视为活动而不是正文；空闲无数据�
     ),
   )) as TransportError;
   assert.equal(error.errorClass, "network");
-  assert.match(error.message, /没有新数据/);
+  assert.match(error.message, /没有新的模型输出，已收到的部分内容已保留/);
   assert.deepEqual(idle, ["你好"]);
   const silent = (await failure(
     streamChat(
@@ -327,6 +401,117 @@ test("流式问答：思考增量视为活动而不是正文；空闲无数据�
   )) as TransportError;
   assert.equal(silent.errorClass, "network");
   assert.match(silent.message, /响应头/);
+});
+
+test("流式问答：保活注释、空行与空帧不延长空闲时限；正文、思考与工具参数增量才算进展；保活期间停止仍是停止", async () => {
+  const fast = { idleMs: 250, totalMs: 4_000 };
+  const run = (
+    route: string,
+    options: Parameters<typeof streamChat>[4] = fast,
+    signal = new AbortController().signal,
+  ) => {
+    const parts: string[] = [];
+    const started = Date.now();
+    return streamChat(
+      endpoint(route),
+      [{ role: "user", content: "hi" }],
+      signal,
+      (text) => parts.push(text),
+      options,
+    ).then(
+      (result) => ({ parts, result, error: null, ms: Date.now() - started }),
+      (error: unknown) => {
+        assert.ok(error instanceof TransportError, String(error));
+        return { parts, result: null, error, ms: Date.now() - started };
+      },
+    );
+  };
+  // Keep-alive comments and blank lines only: a timeout at the idle window, not the total limit.
+  const alive = await run("sse-alive");
+  assert.equal(alive.error?.errorClass, "network", alive.error?.message);
+  assert.match(
+    alive.error!.message,
+    /^等待输出超时：0\.25 秒内没有收到模型输出。$/,
+  );
+  assert.ok(
+    alive.ms < 2_000,
+    `keep-alive must not extend the window (${alive.ms} ms)`,
+  );
+  // Empty frames (no delta, role only, empty reasoning, null content, no choices) are not progress either.
+  const empty = await run("sse-empty");
+  assert.equal(empty.error?.errorClass, "network", empty.error?.message);
+  assert.match(empty.error!.message, /没有收到模型输出/);
+  assert.ok(
+    empty.ms < 2_000,
+    `empty frames must not extend the window (${empty.ms} ms)`,
+  );
+  // Answer text, then keep-alive only: a mid-stream timeout that keeps the delivered text.
+  const partial = await run("sse-content-then-alive");
+  assert.equal(partial.error?.errorClass, "network", partial.error?.message);
+  assert.match(
+    partial.error!.message,
+    /^输出中途超过 0\.25 秒没有新的模型输出，已收到的部分内容已保留。$/,
+  );
+  assert.deepEqual(partial.parts, ["你好"]);
+  assert.ok(partial.ms < 2_000, `${partial.ms} ms`);
+  // Reasoning, then keep-alive only: a timeout after thinking, with no answer to keep.
+  const thought = await run("sse-think-then-alive");
+  assert.equal(thought.error?.errorClass, "network", thought.error?.message);
+  assert.match(
+    thought.error!.message,
+    /^输出中途超过 0\.25 秒没有新的模型输出。$/,
+  );
+  assert.deepEqual(thought.parts, []);
+  // Reasoning in each provider shape keeps a long think alive, with and without tools.
+  for (const options of [fast, { ...fast, tools: [] }]) {
+    const thinking = await run("sse-think", options);
+    assert.equal(thinking.error, null, thinking.error?.message);
+    assert.deepEqual(thinking.parts, ["想好了"]);
+    assert.ok(
+      thinking.ms > 500,
+      "the provider thinks for longer than the idle window",
+    );
+  }
+  // Tool argument deltas are progress for a tool round.
+  const tool = await run("sse-tool-args", {
+    ...fast,
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "read_material",
+          description: "test",
+          parameters: {},
+        },
+      },
+    ],
+  });
+  assert.equal(tool.error, null, tool.error?.message);
+  assert.equal(
+    tool.result?.calls[0].function.arguments,
+    '{"path":"material-a.md"}',
+  );
+  assert.ok(
+    tool.ms > 500,
+    "the arguments arrive over longer than the idle window",
+  );
+  // A user stop during keep-alive data is a stop, not a timeout.
+  const controller = new AbortController();
+  const pending = run(
+    "sse-alive",
+    { idleMs: 5_000, totalMs: 10_000 },
+    controller.signal,
+  );
+  setTimeout(() => controller.abort(), 120);
+  const stopped = await pending;
+  assert.equal(
+    stopped.error?.errorClass,
+    "stop_timeout",
+    stopped.error?.message,
+  );
+  // The default windows are unchanged.
+  assert.equal(streamIdleTimeoutMs, 120_000);
+  assert.equal(requestTimeoutMs, 45_000);
 });
 
 test("离线时的解析失败归为网络错误并提示恢复后重试；在线时同一错误仍是地址错误", () => {

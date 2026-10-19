@@ -80,7 +80,11 @@ let isOnline: () => boolean = () => true;
 export function configureTransport(options: { isOnline?: () => boolean }) {
   if (options.isOnline) isOnline = options.isOnline;
 }
-/** A stream that stays silent (no bytes at all, reasoning included) for this long is a network timeout. */
+/**
+ * A stream without model progress for this long is a network timeout. Progress is a
+ * non-empty answer, reasoning or tool-argument delta; keep-alive comments, blank lines
+ * and empty frames keep the connection open but do not extend the window.
+ */
 export const streamIdleTimeoutMs = 120_000;
 
 /** Joins a path onto the Base URL and refuses anything that leaves its origin. */
@@ -697,6 +701,13 @@ export async function streamChat(
   let buffer = "";
   let finished = false;
   let sawDelta = false;
+  let sawProgress = false;
+  // One judgement drives both the idle window and the caller's progress signal.
+  const progress = () => {
+    sawProgress = true;
+    armIdle();
+    timeouts.onProgress?.();
+  };
   let content = "",
     reasoning = "",
     finishReason = "";
@@ -712,6 +723,7 @@ export async function streamChat(
         delta?: {
           content?: unknown;
           reasoning_content?: unknown;
+          reasoning?: unknown;
           tool_calls?: unknown;
           reasoning_details?: unknown;
         };
@@ -786,15 +798,19 @@ export async function streamChat(
         )
           throw new TransportError("protocol", "工具调用参数超限，未执行。");
         calls.set(index, call);
-        if (part.function?.arguments) timeouts.onProgress?.();
+        if (part.function?.arguments) progress();
       }
     }
-    if (timeouts.tools && typeof choice.delta?.reasoning_content === "string") {
-      reasoning += choice.delta.reasoning_content;
-      if (choice.delta.reasoning_content) timeouts.onProgress?.();
+    // Reasoning is progress on every path; only tool rounds keep it for the continuation.
+    if (typeof choice.delta?.reasoning_content === "string") {
+      if (timeouts.tools) reasoning += choice.delta.reasoning_content;
+      if (choice.delta.reasoning_content) progress();
     }
-    if (timeouts.tools && Array.isArray(choice.delta?.reasoning_details)) {
-      reasoningDetails.push(...choice.delta.reasoning_details);
+    if (typeof choice.delta?.reasoning === "string" && choice.delta.reasoning)
+      progress();
+    if (Array.isArray(choice.delta?.reasoning_details)) {
+      if (timeouts.tools)
+        reasoningDetails.push(...choice.delta.reasoning_details);
       if (
         choice.delta.reasoning_details.some(
           (detail: unknown) =>
@@ -807,7 +823,7 @@ export async function streamChat(
             ),
         )
       )
-        timeouts.onProgress?.();
+        progress();
     }
     if (
       reasoning.length > 128_000 ||
@@ -824,7 +840,7 @@ export async function streamChat(
       if (content.length > 1_000_000)
         throw new TransportError("context", "输出超过本回合预算。");
       onDelta(choice.delta.content);
-      timeouts.onProgress?.();
+      progress();
     }
     if (choice.finish_reason) {
       finished = true;
@@ -835,7 +851,6 @@ export async function streamChat(
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
-      armIdle();
       buffer += decoder.decode(value, { stream: true });
       if (
         buffer.length >
@@ -862,8 +877,10 @@ export async function streamChat(
       throw new TransportError(
         "network",
         sawDelta
-          ? `输出中途超过 ${idleMs / 1000} 秒没有新数据，已收到的部分内容已保留。`
-          : `等待输出超时：${idleMs / 1000} 秒内没有收到任何数据。`,
+          ? `输出中途超过 ${idleMs / 1000} 秒没有新的模型输出，已收到的部分内容已保留。`
+          : sawProgress
+            ? `输出中途超过 ${idleMs / 1000} 秒没有新的模型输出。`
+            : `等待输出超时：${idleMs / 1000} 秒内没有收到模型输出。`,
       );
     if (error instanceof TransportError) throw error;
     // The response had started, so a transport failure here is a cut stream, not an unreachable address.
