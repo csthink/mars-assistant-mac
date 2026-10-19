@@ -649,3 +649,272 @@ test("widget sizing: retained panel widgets start after either data and connecti
     }
   }
 });
+
+// mac-feature-t53 (repo:KB-16, OD-01 A): the card action overlay is one row at every card width.
+/** A timer whose large reading sits at the very top of the widget, as in the reported card. */
+const overlayTimer = (name: string) =>
+  JSON.stringify({
+    schemaVersion: 1,
+    name,
+    view: {
+      html: `<main><p id="clock">25:00</p><p>专注时段</p><button id="start">开始</button></main>`,
+      css: `:root{color-scheme:light dark}body{margin:0;background:light-dark(${light.surface},${dark.surface});color:light-dark(${light.text},${dark.text});font:16px system-ui}main{padding:16px}#clock{font-size:48px;line-height:1.2;margin:0;font-variant-numeric:tabular-nums}button{padding:8px;font:inherit}`,
+      js: "",
+    },
+    config: [],
+    draftFields: [],
+    capabilities: [],
+    resources: [],
+  });
+/** Padding 12 + one 32-point action row + padding 12 + the 1-point bottom border. */
+const OVERLAY_ROW = 57;
+/** Below this overlay content width (overlay width minus 2 × 12 padding) the actions show as icons
+    (the container query in widget-studio.css). */
+const OVERLAY_ICONS_BELOW = 440;
+
+async function overlaySetup() {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const root = mkdtempSync(resolve(".test-data/disposable/card-overlay-"));
+  const ids = [
+    seedWidgetCandidate(
+      root,
+      false,
+      overlayTimer("一个名字很长很长的番茄钟控件，用来核对单行省略"),
+    ),
+    seedWidgetCandidate(root, false, overlayTimer("番茄钟")),
+  ];
+  const store = new Store(root);
+  for (const id of ids) {
+    const c = store
+      .snapshot()
+      .widgetGeneration!.candidates.find((c) => c.id === id.candidateId)!;
+    expect(
+      store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: c.id,
+          digest: c.digest,
+          requirementRevision: c.requirementRevision,
+        },
+        "main",
+      ).ok,
+    ).toBe(true);
+  }
+  expect(
+    store.execute({ type: "selectWidgetDraft", id: null }, "main").ok,
+  ).toBe(true);
+  const widgets = store.snapshot().widgetGeneration!.widgets;
+  store.close();
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+  });
+  const shell = await app.firstWindow();
+  await goTo(shell, "控件");
+  return {
+    app,
+    shell,
+    widgets,
+    async close() {
+      await closeLocal(app);
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+/** The first card's overlay, frame and reading in host coordinates, and the native view's clip top. */
+async function overlayGeometry(
+  app: ElectronApplication,
+  shell: Page,
+  view: Page,
+) {
+  const host = await shell.evaluate(() => {
+    const card = document.querySelector<HTMLElement>("[data-formal-widget]")!;
+    const controls = card.querySelector<HTMLElement>(
+      ".widget-formal-controls",
+    )!;
+    const frame = card.querySelector<HTMLElement>(".widget-frame")!;
+    const box = controls.getBoundingClientRect();
+    const children = [...controls.children].map((e) => {
+      const r = e.getBoundingClientRect();
+      return {
+        tag: e.tagName,
+        middle: (r.top + r.bottom) / 2,
+        right: r.right,
+        width: r.width,
+        scroll: (e as HTMLElement).scrollWidth > (e as HTMLElement).clientWidth,
+      };
+    });
+    const texts = [...controls.querySelectorAll(".widget-control-text")].map(
+      (e) => getComputedStyle(e).display !== "none",
+    );
+    const icons = [
+      ...controls.querySelectorAll(".widget-control-action svg"),
+    ].map((e) => getComputedStyle(e).display !== "none");
+    const f = frame.getBoundingClientRect();
+    return {
+      opacity: getComputedStyle(controls).opacity,
+      top: box.top,
+      bottom: box.bottom,
+      width: box.width,
+      height: box.height,
+      left: f.left + frame.clientLeft,
+      controlsLeft: box.left,
+      frameTop: f.top + frame.clientTop,
+      children,
+      texts,
+      icons,
+    };
+  });
+  const clip = await app.evaluate(({ BrowserWindow }, left) => {
+    const boxes = BrowserWindow.getAllWindows()[0]
+      .contentView.children.filter((root) => root.getVisible())
+      .map((root) => {
+        let view: Electron.View = root,
+          x = 0,
+          y = 0,
+          b = { x: -1e9, y: -1e9 };
+        for (let depth = 0; depth < 4; depth++, view = view.children[0]) {
+          const r = view.getBounds();
+          x += r.x;
+          y += r.y;
+          b = { x: Math.max(b.x, x), y: Math.max(b.y, y) };
+        }
+        return b;
+      });
+    return boxes.sort((a, b) => Math.abs(a.x - left) - Math.abs(b.x - left))[0];
+  }, host.left);
+  const reading = await view
+    .locator("#clock")
+    .evaluate((e) => e.getBoundingClientRect().top);
+  return {
+    ...host,
+    clipTop: clip.y,
+    readingTop: host.frameTop + reading,
+  };
+}
+
+test("widget sizing: the card action overlay stays one row at every card width and the native clip starts below it", async () => {
+  const f = await overlaySetup();
+  try {
+    const seen: string[] = [];
+    for (const [width, height, columns] of [
+      [1180, 800, 2],
+      [1440, 900, 2],
+      [900, 680, 1],
+      [1050, 700, 2],
+    ] as const) {
+      await requestSize(f.app, f.shell, width, height);
+      const first = await isolated(f.app, f.shell, `formal:${f.widgets[0].id}`);
+      await expect(first.locator("#clock")).toHaveText("25:00");
+      const tops = await f.shell
+        .locator("[data-formal-widget]")
+        .evaluateAll((ns) => ns.map((n) => n.getBoundingClientRect().top));
+      expect(tops[0] === tops[1] ? 2 : 1, `${width}: columns`).toBe(columns);
+      const card = f.shell.locator("[data-formal-widget]").first();
+      const controls = card.locator(".widget-formal-controls");
+      // At rest only the widget content shows and the native view starts at the frame.
+      await f.shell.mouse.move(5, 5);
+      await expect(controls).toHaveCSS("opacity", "0");
+      await expect
+        .poll(async () => {
+          const g = await overlayGeometry(f.app, f.shell, first);
+          return Math.abs(g.clipTop - Math.ceil(g.frameTop)) <= 1;
+        }, `${width}: rest clip`)
+        .toBe(true);
+      for (const state of ["hover", "focus"] as const) {
+        if (state === "hover") {
+          const box = (await card.boundingBox())!;
+          await f.shell.mouse.move(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          );
+        } else {
+          await f.shell.mouse.move(5, 5);
+          await card.getByRole("button", { name: "打开控件" }).focus();
+        }
+        await expect(controls).toHaveCSS("opacity", "1");
+        let g = await overlayGeometry(f.app, f.shell, first);
+        await expect
+          .poll(async () => {
+            g = await overlayGeometry(f.app, f.shell, first);
+            return Math.abs(g.clipTop - Math.ceil(g.bottom)) <= 1;
+          }, `${width} ${state}: the native clip starts at the overlay bottom`)
+          .toBe(true);
+        const label = `${width} ${state} overlay ${g.width}`;
+        expect(g.height, label).toBe(OVERLAY_ROW);
+        for (const child of g.children)
+          expect(
+            Math.abs(child.middle - g.children[0].middle),
+            label,
+          ).toBeLessThan(1);
+        expect(
+          Math.max(...g.children.map((c) => c.right)),
+          label,
+        ).toBeLessThanOrEqual(g.controlsLeft + g.width);
+        // The overlay covers at most its own row of the widget top.
+        expect(g.bottom - g.readingTop, label).toBeLessThanOrEqual(OVERLAY_ROW);
+        const icons = g.width - 24 < OVERLAY_ICONS_BELOW;
+        expect(g.texts, label).toEqual(g.texts.map(() => !icons));
+        expect(g.icons, label).toEqual(g.icons.map(() => icons));
+        seen.push(icons ? "icons" : "text");
+        // The long name and the status are truncated on one line; their full text stays in title.
+        expect(g.children[0].scroll, label).toBe(true);
+        // The short status stays whole beside the truncated name.
+        expect(g.children[1].scroll, label).toBe(false);
+        expect(g.children[1].width, label).toBeGreaterThan(40);
+        await expect(controls.locator("h2")).toHaveAttribute(
+          "title",
+          "一个名字很长很长的番茄钟控件，用来核对单行省略",
+        );
+        await expect(controls.locator("p")).toHaveAttribute(
+          "title",
+          "已保留 · 版本 1",
+        );
+        for (const name of ["打开控件", "新建修改草稿"])
+          await expect(
+            controls.getByRole("button", { name, exact: true }),
+          ).toHaveAttribute("title", name);
+        await expect(controls.locator("label")).toHaveAttribute(
+          "title",
+          "选择修改",
+        );
+        if (state === "focus")
+          await card.getByRole("button", { name: "打开控件" }).blur();
+      }
+    }
+    expect(seen).toContain("icons");
+    expect(seen).toContain("text");
+  } finally {
+    await f.close();
+  }
+});
+
+test("widget sizing: a widget retained through the editor shows only its content when the pointer is away", async () => {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const root = mkdtempSync(resolve(".test-data/disposable/card-overlay-new-"));
+  seedWidgetCandidate(root, false, overlayTimer("番茄钟"));
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+  });
+  const shell = await app.firstWindow();
+  try {
+    await requestSize(app, shell, 1180, 800);
+    await goTo(shell, "控件");
+    await shell.getByRole("button", { name: "保留控件", exact: true }).click();
+    await shell.getByRole("button", { name: "确认保留", exact: true }).click();
+    await expect(
+      shell.getByText("已保留到控件。编辑历史继续保存。"),
+    ).toBeVisible();
+    await shell.getByRole("button", { name: "返回控件草稿" }).click();
+    await goTo(shell, "控件");
+    await expect(shell.locator("[data-formal-widget]")).toHaveCount(1);
+    await shell.mouse.move(5, 5);
+    await expect(shell.locator(".widget-formal-controls")).toHaveCSS(
+      "opacity",
+      "0",
+    );
+  } finally {
+    await closeLocal(app);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
