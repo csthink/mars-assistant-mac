@@ -636,6 +636,7 @@ const authorization = (over: Partial<LiveAuthorization> = {}) => ({
   repeats: 1,
   waitMinutes: 5,
   maxCalls: 1,
+  stopAfterProviderFailures: 3,
   selections: [
     {
       provider: "offline",
@@ -786,7 +787,7 @@ test("控件评测：真实调用经录制转发只发一次请求，录制可�
       );
       const calls: number[] = [];
       const fixtures: Fixture[] = [];
-      const executed = await runLive(
+      const { executed, skipped } = await runLive(
         auth,
         set,
         { WIDGET_EVAL_OFFLINE_KEY: keyValue },
@@ -795,7 +796,7 @@ test("控件评测：真实调用经录制转发只发一次请求，录制可�
           onAttempt: (f) => fixtures.push(f),
         },
       );
-      return { calls, fixtures, executed };
+      return { calls, fixtures, executed, skipped };
     };
     const good = await run(key);
     assert.deepEqual(good.calls, [1]);
@@ -819,6 +820,61 @@ test("控件评测：真实调用经录制转发只发一次请求，录制可�
     assert.deepEqual(
       (await replayFixture(set, refused.fixtures[0])).product,
       refused.executed[0].product,
+    );
+  } finally {
+    upstream.closeAllConnections();
+    await new Promise<void>((done) => upstream.close(() => done()));
+  }
+});
+
+test("控件评测：同一选择连续在提供方阶段失败达到上限后，其余尝试不再发送并记为跳过", async () => {
+  assert.throws(
+    () =>
+      liveAuthorization(
+        authorization({ stopAfterProviderFailures: 0 }),
+        "1",
+        env,
+        set,
+      ),
+    /NOT RUN/,
+  );
+  let requests = 0;
+  const upstream = createServer((req, res) => {
+    requests++;
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end('{"error":{"message":"service unavailable"}}');
+    });
+  });
+  await new Promise<void>((done) => upstream.listen(0, "127.0.0.1", done));
+  try {
+    const baseUrl = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}/v1`;
+    const auth = liveAuthorization(
+      authorization({
+        repeats: 5,
+        maxCalls: 5,
+        stopAfterProviderFailures: 2,
+        selections: [{ ...authorization().selections[0], baseUrl }],
+      }),
+      "1",
+      env,
+      set,
+    );
+    const sent: number[] = [];
+    const { executed, skipped } = await runLive(auth, set, env, {
+      beforeCall: (n) => sent.push(n),
+      onAttempt: () => {},
+    });
+    assert.deepEqual(sent, [1, 2]);
+    assert.equal(requests, 2);
+    assert.deepEqual(
+      executed.map((e) => e.product.failure?.stage),
+      ["provider", "provider"],
+    );
+    assert.deepEqual(
+      skipped.map((s) => s.repeat),
+      [3, 4, 5],
     );
   } finally {
     upstream.closeAllConnections();

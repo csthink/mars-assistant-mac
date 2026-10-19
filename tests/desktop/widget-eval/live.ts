@@ -36,6 +36,11 @@ export interface LiveAuthorization {
   waitMinutes: number;
   /** Exactly selections × requirements × repeats: one provider request per attempt, no retries. */
   maxCalls: number;
+  /**
+   * After this many consecutive provider-stage failures (timeouts, refusals, broken streams) a
+   * selection's remaining attempts are not sent, so an outage does not spend the whole budget.
+   */
+  stopAfterProviderFailures: number;
   selections: LiveSelection[];
 }
 
@@ -90,6 +95,11 @@ export function liveAuthorization(
     seen.add(`${s.provider}/${s.model}`);
     if (!env[s.keyEnv]) notRun(`${s.keyEnv} is not set`);
   }
+  if (
+    !Number.isInteger(a.stopAfterProviderFailures) ||
+    a.stopAfterProviderFailures! < 1
+  )
+    notRun("stopAfterProviderFailures must be a positive integer");
   if (a.maxCalls !== a.selections!.length * a.requirements!.length * a.repeats!)
     notRun("maxCalls must equal selections x requirements x repeats");
   return a as LiveAuthorization;
@@ -223,9 +233,18 @@ export async function recordingProxy(upstreamBase: string, key: string) {
 }
 
 const timeoutMessage = "控件生成已达到本次等待时限";
+export interface SkippedAttempt {
+  provider: string;
+  model: string;
+  requirement: string;
+  repeat: number;
+  reason: string;
+}
 /**
  * Runs every authorized attempt once, in order. The call count is checked and reported before
- * each send; a provider failure is recorded as that attempt's outcome and never retried.
+ * each send; a provider failure is recorded as that attempt's outcome and never retried. A
+ * selection that fails at the provider stage stopAfterProviderFailures times in a row stops;
+ * its remaining attempts are reported as skipped, never sent.
  */
 export async function runLive(
   auth: LiveAuthorization,
@@ -238,12 +257,24 @@ export async function runLive(
 ) {
   let calls = 0;
   const results: Executed[] = [];
-  for (const selection of auth.selections)
+  const skipped: SkippedAttempt[] = [];
+  for (const selection of auth.selections) {
+    let consecutive = 0;
     for (const requirementId of auth.requirements)
       for (let repeat = 1; repeat <= auth.repeats; repeat++) {
         const requirement = set.requirements.find(
           (r) => r.id === requirementId,
         )!;
+        if (consecutive >= auth.stopAfterProviderFailures) {
+          skipped.push({
+            provider: selection.provider,
+            model: selection.model,
+            requirement: requirement.id,
+            repeat,
+            reason: `${consecutive} consecutive provider-stage failures`,
+          });
+          continue;
+        }
         if (++calls > auth.maxCalls)
           throw new Error("authorized call budget exhausted");
         hooks.beforeCall(calls);
@@ -311,7 +342,10 @@ export async function runLive(
           await proxy.close();
         }
         results.push(executed);
+        consecutive =
+          executed.product.failure?.stage === "provider" ? consecutive + 1 : 0;
         hooks.onAttempt(fixture, executed);
       }
-  return results;
+  }
+  return { executed: results, skipped };
 }

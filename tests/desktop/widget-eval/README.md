@@ -51,4 +51,4 @@ npx playwright test --project=desktop tests/desktop/widget-eval.spec.ts   # 含�
 
 ## 真实调用
 
-`tests/desktop/real-widget-eval.spec.ts` 只在 `CSTHINK_REAL_CALLS_AUTHORIZED=1` 且 `CSTHINK_WIDGET_EVAL_AUTHORIZATION` 指向完整授权文件时运行，否则在发出任何请求前以 NOT RUN 停止。授权文件写明提供方、地址、模型、密钥所在的环境变量名、需求、重复次数、等待时限（5 至 30 分钟）与精确的调用总数；每次尝试只发一次请求，失败不自动重试。执行器与提供方之间的本地转发只记录响应，不记录请求头，密钥从记录中去除；每次尝试都写成可回放的录制夹具，运行结束时逐个回放核对与真实判定一致。
+`tests/desktop/real-widget-eval.spec.ts` 只在 `CSTHINK_REAL_CALLS_AUTHORIZED=1` 且 `CSTHINK_WIDGET_EVAL_AUTHORIZATION` 指向完整授权文件时运行，否则在发出任何请求前以 NOT RUN 停止。授权文件写明提供方、地址、模型、密钥所在的环境变量名、需求、重复次数、等待时限（5 至 30 分钟）、连续失败停止次数与精确的调用总数；每次尝试只发一次请求，失败不自动重试；同一提供方与模型连续在提供方阶段失败达到授权写明的次数后，其余尝试不再发送，记为跳过。执行器与提供方之间的本地转发只记录响应，不记录请求头，密钥从记录中去除；每次尝试都写成可回放的录制夹具，运行结束时逐个回放核对与真实判定一致。

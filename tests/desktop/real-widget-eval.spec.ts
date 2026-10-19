@@ -54,7 +54,7 @@ test("real widget evaluation: authorized providers over the standard requirement
     );
   ledger(0);
   const fixtures: Fixture[] = [];
-  const executed = await runLive(auth, set, process.env, {
+  const { executed, skipped } = await runLive(auth, set, process.env, {
     beforeCall: ledger,
     onAttempt: (fixture) => {
       fixtures.push(fixture);
@@ -82,6 +82,7 @@ test("real widget evaluation: authorized providers over the standard requirement
     executed,
     renders,
   });
+  writeFileSync(join(auth.evidence, "skipped.json"), canonicalJson(skipped));
   writeFileSync(join(auth.evidence, "result.json"), canonicalJson(result));
   writeFileSync(join(auth.evidence, "summary.md"), summary(result));
   // Replay fidelity: every recorded response replays to the live product judgement.
@@ -100,7 +101,7 @@ test("real widget evaluation: authorized providers over the standard requirement
     join(auth.evidence, "replay-check.json"),
     canonicalJson(checks),
   );
-  expect(fixtures).toHaveLength(auth.maxCalls);
+  expect(fixtures.length + skipped.length).toBe(auth.maxCalls);
   expect(checks.filter((c) => !c.same).map((c) => c.id)).toEqual([]);
 });
 test.use({ trace: "off", screenshot: "off" });
