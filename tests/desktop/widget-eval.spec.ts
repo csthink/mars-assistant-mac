@@ -8,9 +8,9 @@ import { renderCandidates } from "./widget-eval/render";
 import { canonicalJson, summary } from "./widget-eval/score";
 
 /**
- * Full replay of the synthetic fixtures, rendering included: every reference widget must load
- * without errors and satisfy every rule of its requirement, and every negative fixture must fail
- * at its declared stage. CSTHINK_WIDGET_EVAL_OUT (an absolute, new or empty directory) keeps the
+ * Full replay of the synthetic fixtures, rendering included: every reference and variant widget
+ * must load without errors and satisfy every rule of its requirement, and every negative fixture
+ * must fail at its declared stage. CSTHINK_WIDGET_EVAL_OUT (an absolute, new or empty directory) keeps the
  * result and summary of the run.
  */
 test("widget evaluation: replayed reference widgets render and satisfy every rule while each negative fixture fails at its declared stage", async () => {

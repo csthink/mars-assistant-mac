@@ -11,6 +11,7 @@ import type { Command, HostCommand } from "../../src/shared/protocol";
 import {
   WidgetGenerationRunner,
   runApiWidgetGeneration,
+  widgetGenerationInstructions,
   type GenerationExecution,
 } from "../../src/main/widget-generation";
 import { compileWidget } from "../../src/main/widget-build";
@@ -163,6 +164,36 @@ test("widget runner: fixed tool submits original bytes through build worker once
     assert.equal(snapshot.candidates[0].name, "Seven marks");
     assert.equal(snapshot.widgets.length, 0);
     assert.equal(api.requests.length, 1);
+  } finally {
+    await s.close();
+    await api.close();
+  }
+});
+test("widget runner: the generation instructions every connection receives state the view's network, navigation and form submission limits", async () => {
+  // API, Codex and Claude Code all receive the runner's messages; the API request shows them.
+  const api = await mock([tool(), end]);
+  let messages: GenerationExecution["messages"] = [];
+  const s = setup((o) => {
+    messages = o.messages;
+    return runApiWidgetGeneration(api.endpoint, o);
+  });
+  try {
+    await s.start();
+    assert.equal(s.task().state, "completed");
+    assert.deepEqual(messages[0], {
+      role: "system",
+      content: widgetGenerationInstructions,
+    });
+    const sent = (api.requests[0] as { messages: { content: string }[] })
+      .messages[0].content;
+    assert.equal(sent, widgetGenerationInstructions);
+    assert.match(sent, /no network and cannot navigate or open windows/);
+    assert.match(sent, /form's submit handler call event\.preventDefault\(\)/);
+    assert.match(sent, /update the view in place/);
+    assert.match(
+      sent,
+      /set novalidate on a form whose handler validates the input itself/,
+    );
   } finally {
     await s.close();
     await api.close();

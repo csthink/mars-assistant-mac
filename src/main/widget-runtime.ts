@@ -31,8 +31,12 @@ import {
   assertWidgetDrawingClipVersion,
 } from "./widget-drawing-clip";
 
+// The sandbox allows forms so that a widget's submit handler runs: without allow-forms Chromium
+// cancels the submission before the submit event is dispatched. A submission that is not prevented
+// still goes nowhere: form-action 'none' refuses it, the host cancels any view navigation and the
+// session refuses every request outside the package resources.
 const csp =
-  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-scripts allow-same-origin; webrtc 'block'";
+  "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-scripts allow-same-origin allow-forms; webrtc 'block'";
 const headers = {
   "Content-Security-Policy": csp,
   "X-Content-Type-Options": "nosniff",

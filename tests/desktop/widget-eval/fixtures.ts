@@ -1,6 +1,7 @@
 /**
  * Synthetic model outputs for replay. Reference fixtures submit the hand-written widget of
- * each requirement; negative fixtures cover every failure class the pipeline distinguishes.
+ * each requirement; variant fixtures submit other correct implementations that must also satisfy
+ * every rule; negative fixtures cover every failure class the pipeline distinguishes.
  * Each states the outcome it must produce, so replay doubles as a test of the scoring itself.
  * Durations are fixed synthetic values, not measurements.
  */
@@ -87,7 +88,7 @@ const submit = (pkg: WidgetPackage | string) => ({
 function fixture(
   id: string,
   requirement: string,
-  model: "reference" | "negative",
+  model: "reference" | "variant" | "negative",
   durationMs: number,
   response: ModelResponse | null,
   outcome: RecordedOutcome = { kind: "response" },
@@ -309,36 +310,6 @@ function negativeFixtures(): SyntheticFixture[] {
       ]),
     ],
     [
-      // A submit handler on a form: the widget view's sandbox does not allow form submission,
-      // so the handler never runs although the widget renders.
-      "form-submit-handler",
-      "form-contact-zh",
-      33_600,
-      stream({
-        calls: [
-          submit(
-            withView(references["form-contact-zh"], {
-              html: references["form-contact-zh"].view.html
-                .replace("<div>", '<form id="form">')
-                .replace(
-                  '<button id="submit" type="button">',
-                  '<button type="submit">',
-                )
-                .replace("</button></div>", "</button></form>"),
-              js: references["form-contact-zh"].view.js.replace(
-                'document.querySelector("#submit").addEventListener("click", () => {',
-                'document.querySelector("#form").addEventListener("submit", (event) => {\n  event.preventDefault();',
-              ),
-            }),
-          ),
-        ],
-      }),
-      fails("satisfied", "requirement_unmet", [
-        "rejects-bad-email",
-        "lists-contact",
-      ]),
-    ],
-    [
       "no-countdown",
       "timer-pomodoro-zh",
       35_100,
@@ -416,6 +387,47 @@ function negativeFixtures(): SyntheticFixture[] {
   }));
 }
 
+/**
+ * The contact form written as a form whose submit handler prevents the default action and updates
+ * the view in place, the way generated widgets commonly write forms. The widget view runs submit
+ * handlers while the submission itself goes nowhere, so this variant satisfies every rule. The form
+ * sets novalidate because the handler validates the email itself; without it the browser's own
+ * constraint validation stops the submission before the handler runs.
+ */
+function variantFixtures(): SyntheticFixture[] {
+  const contact = references["form-contact-zh"];
+  return [
+    {
+      fixture: fixture(
+        "synthetic.variant.form-submit-handler",
+        "form-contact-zh",
+        "variant",
+        33_600,
+        stream({
+          calls: [
+            submit(
+              withView(contact, {
+                html: contact.view.html
+                  .replace("<div>", '<form id="form" novalidate>')
+                  .replace(
+                    '<button id="submit" type="button">',
+                    '<button type="submit">',
+                  )
+                  .replace("</button></div>", "</button></form>"),
+                js: contact.view.js.replace(
+                  'document.querySelector("#submit").addEventListener("click", () => {',
+                  'document.querySelector("#form").addEventListener("submit", (event) => {\n  event.preventDefault();',
+                ),
+              }),
+            ),
+          ],
+        }),
+      ),
+      expect: pass,
+    },
+  ];
+}
+
 export function syntheticFixtures(): SyntheticFixture[] {
-  return [...referenceFixtures(), ...negativeFixtures()];
+  return [...referenceFixtures(), ...variantFixtures(), ...negativeFixtures()];
 }
