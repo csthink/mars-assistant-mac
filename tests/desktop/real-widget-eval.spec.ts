@@ -110,14 +110,7 @@ test("real widget evaluation: authorized providers over the standard requirement
         model: sel.model,
         pricing: sel.pricing,
         cost: costs
-          .filter((c) =>
-            executed.some(
-              (e) =>
-                e.fixture.id === c.id &&
-                e.fixture.provider === sel.provider &&
-                e.fixture.model === sel.model,
-            ),
-          )
+          .filter((c) => c.selection === `${sel.provider}/${sel.model}`)
           .reduce((sum, c) => sum + c.cost, 0),
       })),
     }),

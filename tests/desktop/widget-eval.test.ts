@@ -944,6 +944,54 @@ test("控件评测：同一选择连续在提供方阶段失败达到上限后�
   }
 });
 
+test("控件评测：费用上限按该模型已发生的最贵一次调用估计下一次，不只按假定用量", async () => {
+  // One reported call of 1,000 input and 100,000 output tokens costs 0.201 at 1 and 2 per million.
+  const body = streamBody({ text: "no widget" }).replace(
+    "data: [DONE]",
+    'data: {"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":100000}}\n\ndata: [DONE]',
+  );
+  let requests = 0;
+  const upstream = createServer((req, res) => {
+    requests++;
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end(body);
+    });
+  });
+  await new Promise<void>((done) => upstream.listen(0, "127.0.0.1", done));
+  try {
+    const baseUrl = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}/v1`;
+    const auth = liveAuthorization(
+      authorization({
+        repeats: 2,
+        maxCalls: 2,
+        costLimit: 0.3,
+        selections: [{ ...authorization().selections[0], baseUrl }],
+      }),
+      "1",
+      env,
+      set,
+    );
+    // The assumed bound alone (about 0.0175) would let the second call through.
+    assert.ok(0.201 + callUpperBound(auth.selections[0]) < 0.3);
+    const run = await runLive(auth, set, env, {
+      beforeCall: () => {},
+      onAttempt: () => {},
+    });
+    assert.equal(requests, 1);
+    assert.equal(run.costs[0].basis, "reported");
+    assert.equal(run.costs[0].cost, 0.201);
+    assert.deepEqual(
+      run.skipped.map((s) => s.repeat),
+      [2],
+    );
+  } finally {
+    upstream.closeAllConnections();
+    await new Promise<void>((done) => upstream.close(() => done()));
+  }
+});
+
 test("控件评测：回放服务按录制状态原样重现提供方响应；录制夹具目录逐个校验", async () => {
   const root = scratch();
   try {

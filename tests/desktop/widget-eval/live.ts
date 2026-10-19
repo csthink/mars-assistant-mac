@@ -263,11 +263,16 @@ const price = (
   (usage.promptTokens * selection.pricing.inputPerMillion +
     usage.completionTokens * selection.pricing.outputPerMillion) /
   1_000_000;
-/** The most one more call is expected to cost when nothing about it is known yet. */
+/**
+ * The most one more call is expected to cost when nothing about it is known yet; once a
+ * selection has run, its most expensive call so far counts when that is larger.
+ */
 export const callUpperBound = (selection: LiveSelection) =>
   price(selection, assumedUsage);
 export interface AttemptCost {
   id: string;
+  /** provider/model of the attempt. */
+  selection: string;
   basis: "reported" | "assumed";
   promptTokens: number;
   completionTokens: number;
@@ -288,6 +293,7 @@ export function attemptCost(selection: LiveSelection, fixture: Fixture) {
   };
   return {
     id: fixture.id,
+    selection: `${selection.provider}/${selection.model}`,
     basis: reported ? "reported" : "assumed",
     ...usage,
     cost: price(selection, usage),
@@ -333,7 +339,17 @@ export async function runLive(
           (r) => r.id === requirementId,
         )!;
         const skip =
-          spent + callUpperBound(selection) > auth.costLimit
+          spent +
+            Math.max(
+              callUpperBound(selection),
+              ...costs
+                .filter(
+                  (c) =>
+                    c.selection === `${selection.provider}/${selection.model}`,
+                )
+                .map((c) => c.cost),
+            ) >
+          auth.costLimit
             ? `cost so far ${spent.toFixed(4)} plus one more call would pass the limit ${auth.costLimit}`
             : consecutive >= auth.stopAfterProviderFailures
               ? `${consecutive} consecutive provider-stage failures`
