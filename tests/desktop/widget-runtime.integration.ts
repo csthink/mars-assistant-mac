@@ -717,3 +717,224 @@ test("widget runtime: owner hide revokes immediately, drains accepted writes for
     await client.close();
   }
 });
+
+const formSource = JSON.stringify({
+  schemaVersion: 1,
+  name: "表单测试候选",
+  view: {
+    html: [
+      '<form id="add"><label for="name">名称</label><input id="name" name="name"><button type="submit">添加</button></form>',
+      '<ul id="list"></ul>',
+      '<form id="post" method="post"><label for="post-field">外部提交</label><input id="post-field" name="q" value="x"><button type="submit">提交到外部</button></form>',
+      '<form id="get"><input name="q" value="y"><button type="submit">外部查询</button></form>',
+      '<form id="blank" target="_blank"><button type="submit">新窗口提交</button></form>',
+      '<form id="self" action="index.html"><input name="q" value="self"><button type="submit">提交到本页</button></form>',
+    ].join(""),
+    css: "body { background: #eee; color: #111; } form { margin: 4px 0; }",
+    js: [
+      'const list = document.querySelector("#list");',
+      'document.querySelector("#add").addEventListener("submit", (event) => {',
+      "  event.preventDefault();",
+      '  const input = document.querySelector("#name");',
+      '  const item = document.createElement("li");',
+      "  item.textContent = input.value;",
+      "  list.append(item);",
+      '  input.value = "";',
+      "});",
+      'for (const id of ["post", "get", "blank", "self"])',
+      '  document.querySelector("#" + id).addEventListener("submit", () => {',
+      "    document.body.dataset[id] = String(Number(document.body.dataset[id] ?? 0) + 1);",
+      "  });",
+      'document.body.dataset.ready = "yes";',
+    ].join("\n"),
+  },
+  config: [],
+  draftFields: [],
+  capabilities: [],
+  resources: [],
+});
+
+test("widget runtime: form submit handlers run on click and Enter while an unprevented submission neither navigates, opens a window nor reaches the network", async () => {
+  const requests: string[] = [];
+  let connections = 0;
+  const receiver = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url ?? "unknown"}`);
+    res.end("reached");
+  });
+  receiver.on("connection", () => {
+    connections++;
+  });
+  await new Promise<void>((done) => receiver.listen(0, "127.0.0.1", done));
+  const address = receiver.address();
+  if (!address || typeof address === "string") throw new Error("receiver");
+  const http = `http://127.0.0.1:${address.port}`;
+  const client = await setup(formSource);
+  try {
+    const url = await client.evaluate(({ webContents }) => {
+      const h = Reflect.get(globalThis, "widgetHarness") as Harness;
+      h.runtime.place(
+        h.instance,
+        h.owner,
+        { x: 16, y: 120, width: 480, height: 360 },
+        false,
+      );
+      const events: string[] = [];
+      const consoleMessages: string[] = [];
+      const contents = h.instance.contents;
+      for (const name of [
+        "will-navigate",
+        "will-frame-navigate",
+        "did-start-navigation",
+        "did-navigate",
+        "did-navigate-in-page",
+      ] as const)
+        contents.on(name as "will-navigate", (_event, target?: unknown) =>
+          events.push(
+            `${name} ${typeof target === "string" ? target : ((target as { url?: string })?.url ?? "")}`,
+          ),
+        );
+      contents.on("console-message", (...args: unknown[]) => {
+        const event = args[0] as { message?: unknown };
+        consoleMessages.push(
+          typeof event.message === "string" ? event.message : String(args[2]),
+        );
+      });
+      Reflect.set(globalThis, "widgetFormProbe", {
+        events,
+        consoleMessages,
+        contentsBefore: webContents.getAllWebContents().length,
+      });
+      return h.instance.url;
+    });
+    let view = client
+      .context()
+      .pages()
+      .find((p) => p.url() === url);
+    await expect
+      .poll(() => {
+        view = client
+          .context()
+          .pages()
+          .find((p) => p.url() === url);
+        return !!view;
+      })
+      .toBe(true);
+    const page = view!;
+    await expect(page.locator("body")).toHaveAttribute("data-ready", "yes");
+    // A submit button click and implicit submission by Enter both run the handler, which prevents
+    // the default action and updates the view in place.
+    await page.getByLabel("名称", { exact: true }).fill("甲");
+    await page.getByRole("button", { name: "添加", exact: true }).click();
+    await expect(page.locator("#list li")).toHaveText(["甲"]);
+    await page.getByLabel("名称", { exact: true }).fill("乙");
+    await page.getByLabel("名称", { exact: true }).press("Enter");
+    await expect(page.locator("#list li")).toHaveText(["甲", "乙"]);
+    await page.evaluate(() => {
+      (document.querySelector("#name") as HTMLInputElement).value = "丙";
+      (document.querySelector("#add") as HTMLFormElement).requestSubmit();
+    });
+    await expect(page.locator("#list li")).toHaveText(["甲", "乙", "丙"]);
+    // Handlers that do not prevent the default action: the submission must still go nowhere.
+    // Playwright's page waits for the refused navigation, which never finishes, so this part sends
+    // trusted input from the main process and reads the view there.
+    const after = await client.evaluate(async (_electron, http) => {
+      const h = Reflect.get(globalThis, "widgetHarness") as Harness;
+      const contents = h.instance.contents;
+      const pause = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
+      await contents.executeJavaScript(`(() => {
+        document.querySelector("#post").action = ${JSON.stringify(`${http}/form-post`)};
+        document.querySelector("#get").action = ${JSON.stringify(`${http}/form-get`)};
+        document.querySelector("#blank").action = ${JSON.stringify(`${http}/form-blank`)};
+      })()`);
+      const click = async (name: string) => {
+        const { x, y } = await contents.executeJavaScript(`(() => {
+          const box = [...document.querySelectorAll("button")]
+            .find((b) => b.textContent === ${JSON.stringify(name)})
+            .getBoundingClientRect();
+          return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+        })()`);
+        for (const type of ["mouseDown", "mouseUp"] as const)
+          contents.sendInputEvent({
+            type,
+            x,
+            y,
+            button: "left",
+            clickCount: 1,
+          });
+        await pause(150);
+      };
+      await click("提交到外部");
+      await contents.executeJavaScript(
+        'document.querySelector("#post-field").focus()',
+      );
+      contents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+      contents.sendInputEvent({ type: "char", keyCode: "\r" });
+      contents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+      await pause(150);
+      await click("外部查询");
+      await click("新窗口提交");
+      await click("提交到本页");
+      await pause(500);
+      return contents.executeJavaScript(`(async () => {
+        let fetched;
+        try { await fetch(${JSON.stringify(`${http}/after-forms`)}); fetched = "allowed"; }
+        catch (error) { fetched = error.name; }
+        return {
+          handled: { ...document.body.dataset },
+          items: [...document.querySelectorAll("#list li")].map((li) => li.textContent),
+          fetched,
+        };
+      })()`);
+    }, http);
+    const host = await client.evaluate(({ webContents }) => {
+      const h = Reflect.get(globalThis, "widgetHarness") as Harness;
+      const probe = Reflect.get(globalThis, "widgetFormProbe") as {
+        events: string[];
+        consoleMessages: string[];
+        contentsBefore: number;
+      };
+      return {
+        url: h.instance.contents.getURL(),
+        expectedURL: h.instance.url,
+        active: h.instance.active,
+        failures: h.failures,
+        windows: webContents.getAllWebContents().length - probe.contentsBefore,
+        events: probe.events,
+        consoleMessages: probe.consoleMessages,
+      };
+    });
+    console.log(
+      JSON.stringify({ forms: { after, host, requests, connections } }),
+    );
+    expect(after.items).toEqual(["甲", "乙", "丙"]);
+    expect(after.handled).toEqual({
+      ready: "yes",
+      post: "2",
+      get: "1",
+      blank: "1",
+      self: "1",
+    });
+    expect(after.fetched).not.toBe("allowed");
+    expect(host.url).toBe(host.expectedURL);
+    expect(host.active).toBe(true);
+    expect(host.failures).toEqual([]);
+    expect(host.windows).toBe(0);
+    // Chromium reports the start of a form navigation before form-action refuses it; none commits.
+    expect(
+      host.events.filter((e) => e.startsWith("did-navigate")),
+      "no navigation committed",
+    ).toEqual([]);
+    expect(
+      host.consoleMessages.filter((m) => m.includes("allow-forms")),
+    ).toEqual([]);
+    expect(requests).toEqual([]);
+    expect(connections).toBe(0);
+  } finally {
+    await client.evaluate(async () =>
+      (Reflect.get(globalThis, "widgetHarness") as Harness).runtime.close(),
+    );
+    await client.close();
+    await new Promise<void>((done) => receiver.close(() => done()));
+  }
+});
