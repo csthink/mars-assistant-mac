@@ -615,3 +615,38 @@ test("claude: unknown images send intact, native probes stay model-specific and 
     path: info.outputPath("image-capability-and-quota.png"),
   });
 });
+
+test("claude: stopping a hung model test ends it while the main process collects garbage", async () => {
+  const section = page.getByRole("region", { name: "Claude Code 连接" });
+  await section
+    .getByRole("button", { name: "配置 Claude Code", exact: true })
+    .click();
+  await page
+    .getByRole("region", { name: "确认 Claude Code 连接" })
+    .getByRole("button", { name: "确认配置 Claude Code", exact: true })
+    .click();
+  await expect(section.getByText("已配置", { exact: true })).toBeVisible();
+  fixture.update({ mode: "slow" });
+  // Collect in the main process every 2 ms, so an abort that relies only on the weak links of
+  // AbortSignal.timeout and AbortSignal.any in the model test is lost.
+  await app.evaluate(() => {
+    process.getBuiltinModule("node:v8").setFlagsFromString("--expose-gc");
+    const gc = process
+      .getBuiltinModule("node:vm")
+      .runInNewContext("gc") as () => void;
+    setInterval(gc, 2);
+  });
+  await section.getByRole("button", { name: "模型测试", exact: true }).click();
+  const stop = section.getByRole("button", { name: "停止测试", exact: true });
+  await expect(stop).toBeVisible();
+  await expect
+    .poll(() => readFileSync(fixture.calls, "utf8").includes('"type":"user"'))
+    .toBe(true);
+  await stop.click();
+  await expect(
+    section.getByText("模型测试已停止", { exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(async () => (await nativeSnapshot()).activeTurns.length)
+    .toBe(0);
+});

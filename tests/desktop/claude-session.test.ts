@@ -13,6 +13,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { createClaudeFixture } from "./claude-fixture";
 import { ClaudeConnector } from "../../src/main/claude-connector";
 import { validHostCommand } from "../../src/shared/protocol";
@@ -666,6 +668,63 @@ test(
     } finally {
       controller.abort();
       t.mock.restoreAll();
+      f.clean();
+    }
+  },
+);
+
+test(
+  "claude: a model test's composed deadline and user stop still end a hung turn under forced garbage collection",
+  { timeout: 60_000 },
+  async () => {
+    // The model test in src/main/index.ts passes AbortSignal.any([stop, AbortSignal.timeout(60s)])
+    // and checks the deadline after the run. Both links of that composition are weak: the timeout's
+    // timer reaches its signal weakly and the composite reaches its sources weakly. Collect every 2 ms
+    // so an abort that relies only on those links is lost. The deadline is shortened for the test.
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const f = fixture();
+    const setup = await f.connector.prepare();
+    f.update({ mode: "slow" });
+    const modelTest = async (stop: AbortController, ms: number) => {
+      const deadline = AbortSignal.timeout(ms);
+      try {
+        await f.connector.run({
+          model: setup.model,
+          configuration: setup.configuration,
+          effort: null,
+          messages: [{ role: "user", content: "Synthetic model test" }],
+          signal: AbortSignal.any([stop.signal, deadline]),
+          budget: 10000,
+          onDelta: () => {},
+          onSession: async () => {},
+        });
+        return "completed";
+      } catch (error) {
+        if (deadline.aborted && !stop.signal.aborted) return "deadline";
+        return stop.signal.aborted ? "stopped" : `failed: ${String(error)}`;
+      }
+    };
+    const bounded = (run: Promise<string>) =>
+      Promise.race([
+        run,
+        new Promise<string>((done) =>
+          setTimeout(() => done("never ended"), 5_000),
+        ),
+      ]);
+    const collector = setInterval(gc, 2);
+    try {
+      for (let round = 0; round < 2; round++) {
+        assert.equal(
+          await bounded(modelTest(new AbortController(), 300)),
+          "deadline",
+        );
+        const stop = new AbortController();
+        setTimeout(() => stop.abort(), 150);
+        assert.equal(await bounded(modelTest(stop, 60_000)), "stopped");
+      }
+    } finally {
+      clearInterval(collector);
       f.clean();
     }
   },
