@@ -1,0 +1,581 @@
+{
+  "schemaVersion": 1,
+  "set": "widget-generation-standard",
+  "version": 1,
+  "requirements": [
+    {
+      "id": "timer-pomodoro-zh",
+      "language": "zh",
+      "category": "timer",
+      "difficulty": 2,
+      "prompt": "做一个番茄钟控件：默认 25 分钟倒计时，以「分:秒」显示剩余时间（初始显示 25:00），提供「开始」「暂停」「重置」三个按钮。",
+      "expectation": "初始显示 25:00；点「开始」后每秒递减；「暂停」停止递减；「重置」回到 25:00。",
+      "rules": [
+        { "id": "initial-time", "check": "text", "pattern": "25:00" },
+        {
+          "id": "start-button",
+          "check": "role",
+          "roles": ["button"],
+          "name": "开始"
+        },
+        {
+          "id": "pause-button",
+          "check": "role",
+          "roles": ["button"],
+          "name": "暂停"
+        },
+        {
+          "id": "reset-button",
+          "check": "role",
+          "roles": ["button"],
+          "name": "重置"
+        },
+        {
+          "id": "counts-down",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "开始" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "24:5\\d" }
+            }
+          ]
+        },
+        {
+          "id": "reset-restores",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "重置" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "25:00" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "countdown-days-en",
+      "language": "en",
+      "category": "timer",
+      "difficulty": 1,
+      "prompt": "Create a countdown widget with a labeled text input \"Event name\" and a labeled date input \"Target date\". It shows the event name and \"N days left\" until the chosen date.",
+      "expectation": "Entering an event name and a future date shows the name and a whole number of days left.",
+      "rules": [
+        {
+          "id": "date-input",
+          "check": "selector",
+          "selector": "input[type=date]"
+        },
+        {
+          "id": "shows-days-left",
+          "check": "interaction",
+          "steps": [
+            { "action": "fill", "label": "Event name", "value": "Launch" },
+            { "action": "fill", "label": "Target date", "value": "2099-12-31" },
+            {
+              "action": "expect",
+              "rule": {
+                "check": "text",
+                "pattern": "\\d+\\s+days?\\s+left",
+                "flags": "i"
+              }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "Launch" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "todo-basic-zh",
+      "language": "zh",
+      "category": "todo",
+      "difficulty": 2,
+      "prompt": "做一个待办清单控件：输入框标签为「新待办」，点「添加」按钮加入列表；每项有复选框标记完成和「删除」按钮；顶部显示「未完成：N」；待办保存在控件数据中。",
+      "expectation": "添加后列表出现该项且未完成数加一；勾选后未完成数减一；删除后该项消失；声明并使用数据写入。",
+      "rules": [
+        {
+          "id": "declares-data-write",
+          "check": "capability",
+          "capability": "data.write"
+        },
+        {
+          "id": "writes-data",
+          "check": "source",
+          "files": ["js"],
+          "pattern": "writeData\\s*\\("
+        },
+        {
+          "id": "adds-item",
+          "check": "interaction",
+          "steps": [
+            { "action": "fill", "label": "新待办", "value": "买牛奶" },
+            { "action": "click", "roles": ["button"], "name": "添加" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "买牛奶" }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "role", "roles": ["checkbox"] }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "未完成[：:]\\s*1" }
+            }
+          ]
+        },
+        {
+          "id": "completes-item",
+          "check": "interaction",
+          "steps": [
+            { "action": "check", "roles": ["checkbox"] },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "未完成[：:]\\s*0" }
+            }
+          ]
+        },
+        {
+          "id": "deletes-item",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "删除" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "买牛奶", "max": 0 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kanban-board-en",
+      "language": "en",
+      "category": "todo",
+      "difficulty": 3,
+      "prompt": "Build a three-column task board with columns \"To do\", \"Doing\" and \"Done\"; each column title shows its task count, like \"To do (2)\". A labeled input \"New task\" and an \"Add\" button add a task to \"To do\". Each task has a \"Move\" button that moves it to the next column. Save the board in the widget data.",
+      "expectation": "A new task appears under To do with the count updated; Move moves it to Doing and both counts update; declares and uses data writes.",
+      "rules": [
+        {
+          "id": "declares-data-write",
+          "check": "capability",
+          "capability": "data.write"
+        },
+        {
+          "id": "writes-data",
+          "check": "source",
+          "files": ["js"],
+          "pattern": "writeData\\s*\\("
+        },
+        {
+          "id": "columns",
+          "check": "text",
+          "pattern": "To do|Doing|Done",
+          "min": 3
+        },
+        {
+          "id": "adds-task",
+          "check": "interaction",
+          "steps": [
+            { "action": "fill", "label": "New task", "value": "Write report" },
+            { "action": "click", "roles": ["button"], "name": "^Add$" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "Write report" }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "To do \\(1\\)" }
+            }
+          ]
+        },
+        {
+          "id": "moves-task",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "Move" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "Doing \\(1\\)" }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "To do \\(0\\)" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chart-bar-zh",
+      "language": "zh",
+      "category": "chart",
+      "difficulty": 2,
+      "prompt": "做一个「本周支出」柱状图控件：用 SVG 画七根柱子表示周一到周日的示例金额，每根柱子下方标注星期（周一至周日），上方显示金额数值；不使用外部库或网络资源。",
+      "expectation": "标题「本周支出」；SVG 中至少七个柱形；周一与周日标注可见；没有外部地址。",
+      "rules": [
+        {
+          "id": "no-external-url",
+          "check": "source",
+          "files": ["html", "css", "js"],
+          "pattern": "https?://(?!www\\.w3\\.org/)",
+          "absent": true
+        },
+        { "id": "title", "check": "text", "pattern": "本周支出" },
+        {
+          "id": "bars",
+          "check": "selector",
+          "selector": "svg rect, svg path",
+          "min": 7
+        },
+        {
+          "id": "day-labels",
+          "check": "text",
+          "pattern": "^周[一日]$",
+          "min": 2
+        }
+      ]
+    },
+    {
+      "id": "chart-line-en",
+      "language": "en",
+      "category": "chart",
+      "difficulty": 3,
+      "prompt": "Create a line chart widget titled \"Weekly steps\" that plots sample daily step counts for 7 days as an SVG polyline or path. Add a button \"Show average\" that adds a horizontal average line and shows the text \"Average: N\" where N is the rounded mean.",
+      "expectation": "Title visible; an SVG line series; clicking Show average shows Average with a number.",
+      "rules": [
+        { "id": "title", "check": "text", "pattern": "Weekly steps" },
+        {
+          "id": "line-series",
+          "check": "selector",
+          "selector": "svg polyline, svg path"
+        },
+        {
+          "id": "average-button",
+          "check": "role",
+          "roles": ["button"],
+          "name": "Show average"
+        },
+        {
+          "id": "shows-average",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "Show average" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "Average:\\s*[\\d,]+" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "form-contact-zh",
+      "language": "zh",
+      "category": "form",
+      "difficulty": 2,
+      "prompt": "做一个联系人登记表单控件：带标签的输入框「姓名」「邮箱」「电话」和「提交」按钮；邮箱格式不正确时显示「邮箱格式不正确」且不提交；提交成功后在下方列表显示该联系人的姓名。",
+      "expectation": "三个带标签输入框；错误邮箱显示提示；正确提交后列表出现姓名。",
+      "rules": [
+        {
+          "id": "name-field",
+          "check": "role",
+          "roles": ["textbox"],
+          "name": "姓名"
+        },
+        {
+          "id": "email-field",
+          "check": "role",
+          "roles": ["textbox"],
+          "name": "邮箱"
+        },
+        {
+          "id": "phone-field",
+          "check": "role",
+          "roles": ["textbox"],
+          "name": "电话"
+        },
+        {
+          "id": "rejects-bad-email",
+          "check": "interaction",
+          "steps": [
+            { "action": "fill", "label": "姓名", "value": "张三" },
+            { "action": "fill", "label": "邮箱", "value": "not-an-email" },
+            { "action": "click", "roles": ["button"], "name": "提交" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "邮箱格式不正确" }
+            }
+          ]
+        },
+        {
+          "id": "lists-contact",
+          "check": "interaction",
+          "steps": [
+            {
+              "action": "fill",
+              "label": "邮箱",
+              "value": "zhangsan@example.com"
+            },
+            { "action": "fill", "label": "电话", "value": "13800000000" },
+            { "action": "click", "roles": ["button"], "name": "提交" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "张三" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "form-bmi-en",
+      "language": "en",
+      "category": "form",
+      "difficulty": 1,
+      "prompt": "Make a BMI calculator with labeled number inputs \"Height (cm)\" and \"Weight (kg)\" and a \"Calculate\" button. Show the BMI with one decimal place and its category: Underweight, Normal, Overweight or Obese.",
+      "expectation": "175 cm and 70 kg give BMI 22.9 and the category Normal.",
+      "rules": [
+        {
+          "id": "calculate-button",
+          "check": "role",
+          "roles": ["button"],
+          "name": "Calculate"
+        },
+        {
+          "id": "computes-bmi",
+          "check": "interaction",
+          "steps": [
+            { "action": "fill", "label": "Height", "value": "175" },
+            { "action": "fill", "label": "Weight", "value": "70" },
+            { "action": "click", "roles": ["button"], "name": "Calculate" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "22\\.9" }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "Normal" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ledger-zh",
+      "language": "zh",
+      "category": "data",
+      "difficulty": 3,
+      "prompt": "做一个记账控件：带标签的输入框「金额」和「用途」，点「记一笔」添加记录；列表显示每笔记录，底部显示「合计：N」（保留两位小数）；记录保存在控件数据中，重新打开后读取显示。",
+      "expectation": "两笔记录 12.5 与 30 后合计 42.50；声明并使用数据读取与写入。",
+      "rules": [
+        {
+          "id": "declares-data-read",
+          "check": "capability",
+          "capability": "data.read"
+        },
+        {
+          "id": "declares-data-write",
+          "check": "capability",
+          "capability": "data.write"
+        },
+        {
+          "id": "reads-data",
+          "check": "source",
+          "files": ["js"],
+          "pattern": "readData\\s*\\("
+        },
+        {
+          "id": "writes-data",
+          "check": "source",
+          "files": ["js"],
+          "pattern": "writeData\\s*\\("
+        },
+        {
+          "id": "records-entries",
+          "check": "interaction",
+          "steps": [
+            { "action": "fill", "label": "金额", "value": "12.5" },
+            { "action": "fill", "label": "用途", "value": "午饭" },
+            { "action": "click", "roles": ["button"], "name": "记一笔" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "午饭" }
+            },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "合计[：:]\\s*12\\.50" }
+            },
+            { "action": "fill", "label": "金额", "value": "30" },
+            { "action": "fill", "label": "用途", "value": "车费" },
+            { "action": "click", "roles": ["button"], "name": "记一笔" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "合计[：:]\\s*42\\.50" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "habit-grid-en",
+      "language": "en",
+      "category": "data",
+      "difficulty": 2,
+      "prompt": "Create a habit tracker for three habits (\"Read\", \"Exercise\", \"Sleep early\") across 7 days as a grid of checkboxes. Show \"Streak: N\" for each habit and save the checked cells in the widget data.",
+      "expectation": "21 checkboxes; each habit shows its streak; checking a cell keeps it checked; declares and uses data writes.",
+      "rules": [
+        {
+          "id": "declares-data-write",
+          "check": "capability",
+          "capability": "data.write"
+        },
+        {
+          "id": "writes-data",
+          "check": "source",
+          "files": ["js"],
+          "pattern": "writeData\\s*\\("
+        },
+        { "id": "grid", "check": "role", "roles": ["checkbox"], "min": 21 },
+        {
+          "id": "habits",
+          "check": "text",
+          "pattern": "^(Read|Exercise|Sleep early)$",
+          "min": 3
+        },
+        {
+          "id": "streaks",
+          "check": "text",
+          "pattern": "Streak:\\s*\\d+",
+          "min": 3
+        },
+        {
+          "id": "checks-cell",
+          "check": "interaction",
+          "steps": [
+            { "action": "check", "roles": ["checkbox"] },
+            {
+              "action": "expect",
+              "rule": {
+                "check": "role",
+                "roles": ["checkbox"],
+                "checked": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "world-clock-zh",
+      "language": "zh",
+      "category": "display",
+      "difficulty": 1,
+      "prompt": "做一个世界时钟控件，同时显示「北京」「伦敦」「纽约」三地的当前时间（时:分），每秒更新，不需要联网。",
+      "expectation": "三个城市名与三处「时:分」时间可见；不请求网络。",
+      "rules": [
+        {
+          "id": "no-network",
+          "check": "source",
+          "files": ["js"],
+          "pattern": "\\bfetch\\s*\\(|XMLHttpRequest|WebSocket",
+          "absent": true
+        },
+        {
+          "id": "cities",
+          "check": "text",
+          "pattern": "北京|伦敦|纽约",
+          "min": 3
+        },
+        {
+          "id": "times",
+          "check": "text",
+          "pattern": "\\b\\d{1,2}:\\d{2}\\b",
+          "min": 3
+        }
+      ]
+    },
+    {
+      "id": "dice-roller-en",
+      "language": "en",
+      "category": "interactive",
+      "difficulty": 1,
+      "prompt": "Make a dice roller: a \"Roll\" button rolls two six-sided dice, shows each die value, and shows \"Total: N\".",
+      "expectation": "After Roll the total is between 2 and 12.",
+      "rules": [
+        {
+          "id": "roll-button",
+          "check": "role",
+          "roles": ["button"],
+          "name": "Roll"
+        },
+        {
+          "id": "rolls",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "Roll" },
+            {
+              "action": "expect",
+              "rule": {
+                "check": "text",
+                "pattern": "Total:\\s*([2-9]|1[0-2])\\b"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "counter-config-zh",
+      "language": "zh",
+      "category": "config",
+      "difficulty": 2,
+      "prompt": "做一个计数器控件：显示「计数：N」（初始 0），有「增加」「减少」「清零」按钮；每次增减的步长可在控件设置中配置（数字，默认 1）；计数保存在控件数据中。",
+      "expectation": "声明数字配置与配置读取；增加两次后计数 2，清零后计数 0；声明数据写入。",
+      "rules": [
+        {
+          "id": "declares-config-read",
+          "check": "capability",
+          "capability": "config.read"
+        },
+        { "id": "step-config", "check": "config", "type": "number" },
+        {
+          "id": "declares-data-write",
+          "check": "capability",
+          "capability": "data.write"
+        },
+        { "id": "initial-count", "check": "text", "pattern": "计数[：:]\\s*0" },
+        {
+          "id": "increments",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "增加" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "计数[：:]\\s*1\\b" }
+            },
+            { "action": "click", "roles": ["button"], "name": "增加" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "计数[：:]\\s*2\\b" }
+            }
+          ]
+        },
+        {
+          "id": "resets",
+          "check": "interaction",
+          "steps": [
+            { "action": "click", "roles": ["button"], "name": "清零" },
+            {
+              "action": "expect",
+              "rule": { "check": "text", "pattern": "计数[：:]\\s*0\\b" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
