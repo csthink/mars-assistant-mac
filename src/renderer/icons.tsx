@@ -38,6 +38,7 @@ const icons: Record<string, string> = {
   file: "M7 4h7.5L19 8.5V20H7ZM14.5 4v4.5H19",
   diff: "M5 3h14v18H5ZM8 8h8M8 15h8M12 12v6",
   activity: "M3.5 12h3.8l2.4-6 4.6 12 2.4-6h3.8",
+  open: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
 };
 export function Icon({ name }: { name: string }) {
   return (

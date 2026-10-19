@@ -708,9 +708,14 @@ export function WidgetStudio({
                 key={w.id}
                 data-formal-widget={w.id}
               >
+                {/* One row at every card width: text truncates with its full value in title,
+                    and narrow cards show the actions as icons with the same names. */}
                 <div className="widget-formal-controls">
-                  <h2>{w.name}</h2>
-                  <label className="widget-target-choice">
+                  <h2 title={w.name}>{w.name}</h2>
+                  <p title={`已保留 · 版本 ${w.revision}`}>
+                    已保留 · 版本 {w.revision}
+                  </p>
+                  <label className="widget-target-choice" title="选择修改">
                     <input
                       type="checkbox"
                       aria-label={`选择控件 ${w.name} ${w.id.slice(0, 8)}`}
@@ -723,11 +728,12 @@ export function WidgetStudio({
                         )
                       }
                     />
-                    选择修改
+                    <span className="widget-control-text">选择修改</span>
                   </label>
-                  <p>已保留 · 版本 {w.revision}</p>
                   <button
-                    className="button"
+                    className="button widget-control-action"
+                    aria-label="打开控件"
+                    title="打开控件"
                     onClick={() => {
                       const d = snapshot!.widgetGeneration!.drafts.find(
                         (d) => d.widgetId === w.id,
@@ -735,16 +741,20 @@ export function WidgetStudio({
                       if (d) onSelect(d.id);
                     }}
                   >
-                    打开控件
+                    <Icon name="open" />
+                    <span className="widget-control-text">打开控件</span>
                   </button>
                   <button
-                    className="button"
+                    className="button widget-control-action"
+                    aria-label="新建修改草稿"
+                    title="新建修改草稿"
                     onClick={async () => {
                       const id = await model.createEdit([w.id]);
                       if (id) onSelect(id);
                     }}
                   >
-                    新建修改草稿
+                    <Icon name="compose" />
+                    <span className="widget-control-text">新建修改草稿</span>
                   </button>
                 </div>
                 <WidgetWorkspace

@@ -503,18 +503,9 @@
 
 .widget-formal-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-}
-.widget-formal-controls h2 {
-  width: 100%;
-  margin-bottom: 4px;
-}
-.widget-formal-controls p {
-  margin: 0;
-  font-size: 12px;
-  color: var(--c-muted);
 }
 .widget-formal-controls > .button + .button {
   margin-left: 0;
@@ -598,18 +589,57 @@
   border-radius: 12px 12px 0 0;
   opacity: 0;
   pointer-events: none;
+  /* The overlay is always one row, so it covers at most one row of the widget top. */
+  container: widget-controls / inline-size;
 }
-/* A CJK title's min-content is one character; the floor makes the actions wrap
-   to the next row instead of collapsing the title to one character per line. */
+/* Name and status stay on one line with their full text in title. The short status keeps its
+   width and the name truncates, down to a floor of a few characters. */
 .widget-formal-controls h2 {
-  flex: 1 1 8em;
-  min-width: 8em;
+  flex: 1 1 auto;
+  min-width: 4em;
+  margin: 0;
   font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .widget-formal-controls p {
+  flex: none;
   font-size: 11px;
   color: var(--c-muted);
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget-formal-controls .widget-target-choice,
+.widget-formal-controls .widget-control-action {
+  flex: none;
+  white-space: nowrap;
+}
+.widget-formal-controls .widget-control-action {
+  height: 32px;
+  padding: 0 12px;
+}
+.widget-formal-controls .widget-control-action svg {
+  display: none;
+  width: 16px;
+  height: 16px;
+}
+/* Narrow cards show the actions as icons; names stay in aria-label and title. The query
+   measures the content box: text actions take about 275 points, leaving the name and
+   status at least 165 points. */
+@container widget-controls (width < 440px) {
+  .widget-formal-controls .widget-control-text {
+    display: none;
+  }
+  .widget-formal-controls .widget-control-action {
+    width: 32px;
+    padding: 0;
+  }
+  .widget-formal-controls .widget-control-action svg {
+    display: block;
+  }
 }
 .widget-saved-card:hover > .widget-formal-controls,
 .widget-saved-card:focus-within > .widget-formal-controls,
