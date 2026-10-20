@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { build } from "esbuild";
-import { dirname, resolve } from "node:path";
-import { mkdir, copyFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { mkdir, copyFile, writeFile } from "node:fs/promises";
+import {
+  copiedPackageFiles,
+  noticesFile,
+  packageDirOf,
+  packagesFromMetafiles,
+  thirdPartyNotices,
+} from "./third-party-licenses.mjs";
 await mkdir("dist", { recursive: true });
 if (process.platform === "darwin")
   execFileSync(
@@ -65,7 +72,7 @@ if (process.platform === "darwin")
     ],
     { stdio: "inherit" },
   );
-await Promise.all([
+const [nodeBundles, rendererBundle] = await Promise.all([
   build({
     entryPoints: {
       main: "src/main/index.ts",
@@ -85,6 +92,7 @@ await Promise.all([
     target: "node24",
     external: ["electron"],
     sourcemap: true,
+    metafile: true,
   }),
   build({
     entryPoints: ["src/renderer/index.tsx"],
@@ -94,14 +102,24 @@ await Promise.all([
     target: "chrome144",
     sourcemap: true,
     define: { "process.env.NODE_ENV": '"production"' },
+    metafile: true,
   }),
   copyFile("src/renderer/index.html", "dist/index.html"),
-  // PDF.js loads its parser as a sibling module of the extraction worker bundle.
-  copyFile(
-    "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
-    "dist/pdf.worker.mjs",
+  ...Object.entries(copiedPackageFiles).map(([name, source]) =>
+    copyFile(source, join("dist", name)),
   ),
 ]);
+
+// The license notices of every package the bundles contain and of the package files copied above
+// (scripts/third-party-licenses.mjs). The packaging script places them in the app bundle.
+const notices = await thirdPartyNotices({
+  root: ".",
+  packageDirs: [
+    ...packagesFromMetafiles([nodeBundles.metafile, rendererBundle.metafile]),
+    ...Object.values(copiedPackageFiles).map(packageDirOf),
+  ],
+});
+await writeFile(join("dist", noticesFile), notices.text);
 
 // The menu bar icon is a template image (black plus transparency, the file name ends in
 // Template) at 20 × 20 points in both pixel densities. assets/icon/README.md describes the files.
