@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -13,8 +14,12 @@ import { displayName } from "../../src/shared/app-name";
 import {
   acceptedLicenses,
   copiedPackageFiles,
+  electronCoveredFrameworks,
+  electronFrameworkProblems,
+  electronFrameworks,
   embeddedComponents,
   embeddedInSourceMap,
+  installedElectronVersion,
   noticesFile,
   packageDirOf,
   packagesFromMetafiles,
@@ -44,6 +49,8 @@ function packageTree(files: Record<string, string>) {
   }
   return root;
 }
+/** Synthetic trees ship no Electron frameworks. */
+const noFrameworks = { electronVersion: "1.0.0", frameworks: [] };
 const manifest = (name: string, version: string, license?: string) =>
   JSON.stringify(license ? { name, version, license } : { name, version });
 
@@ -86,6 +93,7 @@ test("third-party licenses: every bundled package is listed with its version, li
       root,
       packageDirs: dirs,
       embedded: [],
+      ...noFrameworks,
     });
     assert.deepEqual(notices.packages, [
       { name: "@scope/beta", version: "2.0.0", license: "Apache-2.0" },
@@ -107,6 +115,7 @@ test("third-party licenses: every bundled package is listed with its version, li
       root,
       packageDirs: dirs,
       embedded: [],
+      ...noFrameworks,
     });
     assert.equal(again.text, notices.text);
   } finally {
@@ -152,6 +161,7 @@ test("third-party licenses: a package that declares no license, declares one out
           root,
           packageDirs: ["node_modules/fine", dir],
           embedded: [],
+          ...noFrameworks,
         }),
         reason,
       );
@@ -193,6 +203,7 @@ test("third-party licenses: an embedded component is listed only while its host 
       root,
       packageDirs: ["node_modules/host"],
       embedded: [entry],
+      ...noFrameworks,
     });
     assert.deepEqual(notices.components, [
       {
@@ -212,6 +223,7 @@ test("third-party licenses: an embedded component is listed only while its host 
         root,
         packageDirs: ["node_modules/host"],
         embedded: [{ ...entry, hostVersion: "2.9.0" }],
+        ...noFrameworks,
       }),
       /host is 3\.0\.0; its embedded component part was reviewed for 2\.9\.0/,
     );
@@ -220,6 +232,7 @@ test("third-party licenses: an embedded component is listed only while its host 
         root,
         packageDirs: ["node_modules/host"],
         embedded: [{ ...entry, marker: "/*! gone */" }],
+        ...noFrameworks,
       }),
       /host 3\.0\.0 no longer shows part in lib\/part\.js/,
     );
@@ -228,6 +241,7 @@ test("third-party licenses: an embedded component is listed only while its host 
         root,
         packageDirs: ["node_modules/other"],
         embedded: [entry],
+        ...noFrameworks,
       }),
       /registered for host, which the build no longer bundles/,
     );
@@ -249,6 +263,7 @@ test("third-party licenses: the built notices are exactly those of the packages 
   const expected = await thirdPartyNotices({
     root: ".",
     packageDirs: [...dirs].sort(),
+    electronVersion: await installedElectronVersion("."),
   });
   assert.equal(readFileSync(join("dist", noticesFile), "utf8"), expected.text);
   // A development dependency the app source imports is bundled and therefore listed.
@@ -285,5 +300,118 @@ test("third-party licenses: a source map's URL sources name the packages another
     });
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("third-party licenses: a framework Electron ships outside its own license files is listed for the reviewed Electron version only", async () => {
+  const root = packageTree({ "licenses/Kit.LICENSE.md": "kit license text\n" });
+  const kit = {
+    electronVersion: "9.1.0",
+    name: "Kit",
+    framework: "Kit.framework",
+    license: "MIT",
+    use: "a dependency of the updater",
+    text: "licenses/Kit.LICENSE.md",
+  };
+  try {
+    const notices = await thirdPartyNotices({
+      root,
+      packageDirs: [],
+      electronVersion: "9.1.0",
+      embedded: [],
+      frameworks: [kit],
+    });
+    assert.deepEqual(notices.frameworks, [
+      {
+        name: "Kit",
+        framework: "Kit.framework",
+        license: "MIT",
+        electronVersion: "9.1.0",
+      },
+    ]);
+    assert.match(
+      notices.text,
+      /Packages: 0\. Embedded components: 0\. Electron frameworks: 1\./,
+    );
+    assert.match(
+      notices.text,
+      /Kit \(shipped with Electron 9\.1\.0 as Kit\.framework: a dependency of the updater\)\nLicense: MIT\n-+\nKit\.LICENSE\.md:\n\nkit license text\n$/,
+    );
+    await assert.rejects(
+      thirdPartyNotices({
+        root,
+        packageDirs: [],
+        electronVersion: "9.2.0",
+        embedded: [],
+        frameworks: [kit],
+      }),
+      /Electron is 9\.2\.0; its framework Kit\.framework was reviewed for 9\.1\.0/,
+    );
+    await assert.rejects(
+      thirdPartyNotices({
+        root,
+        packageDirs: [],
+        electronVersion: "",
+        embedded: [],
+        frameworks: [kit],
+      }),
+      /needs the Electron version/,
+    );
+    // The packaging check: helper apps are ignored; an unknown framework, a missing registered
+    // one and a registration for another Electron version are each reported.
+    const covered = ["Core.framework"];
+    assert.deepEqual(
+      electronFrameworkProblems({
+        bundled: ["Core.framework", "Kit.framework", "Helper.app"],
+        electronVersion: "9.1.0",
+        frameworks: [kit],
+        covered,
+      }),
+      [],
+    );
+    assert.deepEqual(
+      electronFrameworkProblems({
+        bundled: ["Core.framework", "Extra.framework"],
+        electronVersion: "9.2.0",
+        frameworks: [kit],
+        covered,
+      }),
+      [
+        "The bundle has Extra.framework, which neither Electron's license files nor scripts/third-party-licenses.mjs cover; review its license first.",
+        "Electron is 9.2.0; its framework Kit.framework was reviewed for 9.1.0.",
+        "The bundle has no Kit.framework, which scripts/third-party-licenses.mjs lists for Electron 9.1.0.",
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("third-party licenses: the installed Electron's frameworks are covered by its license files or registered, and the registered ones are those LICENSES.chromium.html misses", async () => {
+  const dist = "node_modules/electron/dist";
+  const version = await installedElectronVersion(".");
+  assert.equal(readFileSync(join(dist, "version"), "utf8").trim(), version);
+  assert.deepEqual(
+    electronFrameworkProblems({
+      bundled: readdirSync(join(dist, "Electron.app/Contents/Frameworks")),
+      electronVersion: version,
+    }),
+    [],
+  );
+  const titles = [
+    ...readFileSync(join(dist, "LICENSES.chromium.html"), "utf8").matchAll(
+      /<span class="title">([^<]*)<\/span>/g,
+    ),
+  ].map((m) => m[1]);
+  assert.ok(titles.includes("Squirrel"));
+  assert.ok(electronCoveredFrameworks.includes("Squirrel.framework"));
+  for (const f of electronFrameworks) {
+    assert.ok(
+      !titles.includes(f.name),
+      `${f.name} is in LICENSES.chromium.html`,
+    );
+    assert.ok(
+      readFileSync(f.text, "utf8").includes("Permission is hereby granted"),
+    );
   }
 });

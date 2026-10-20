@@ -20,8 +20,10 @@ import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
   copiedPackageFiles,
+  electronFrameworkProblems,
   embeddedComponents,
   embeddedInSourceMap,
+  installedElectronVersion,
   noticesFile,
   packageDirOf,
   packagesFromSourceMaps,
@@ -172,10 +174,13 @@ async function localize(app) {
  * Checks the third-party notices the build wrote against the staged app code, then places the
  * license files in Contents/Resources (README, 许可): this repository's LICENSE and NOTICE, the
  * third-party notices, and the two files Electron ships (its LICENSE, renamed so it does not take
- * the place of this repository's, and LICENSES.chromium.html, which also covers Node.js).
+ * the place of this repository's, and LICENSES.chromium.html, which also covers Node.js; the
+ * notices add the frameworks Electron ships that it misses).
  *
- * Every script in the staged dist/ must either have a source map, whose sources name the packages
- * it bundles, or be a package file the build copies unchanged. The notices are generated again
+ * The bundle's Electron must be the installed one, and its frameworks must match the reviewed
+ * list (electronFrameworkProblems). Every script in the staged dist/ must either have a source
+ * map, whose sources name the packages it bundles, or be a package file the build copies
+ * unchanged. The notices are generated again
  * from that package set and must equal the build's byte for byte, so a stale or incomplete file
  * stops the packaging.
  */
@@ -208,9 +213,25 @@ async function placeLicenses(packaged, resources, stagedDist) {
     throw new Error(
       `The bundles embed ${unregistered.join(", ")}, which scripts/third-party-licenses.mjs does not list; review their licenses first.`,
     );
+  // The Electron the packager used, and the frameworks it put in the bundle: every one is either
+  // covered by Electron's license files or registered with its license text, and every registered
+  // one is present.
+  const electronVersion = (
+    await readFile(join(packaged, "version"), "utf8")
+  ).trim();
+  if (electronVersion !== (await installedElectronVersion(".")))
+    throw new Error(
+      `The bundle has Electron ${electronVersion}, not the installed ${await installedElectronVersion(".")}.`,
+    );
+  const problems = electronFrameworkProblems({
+    bundled: await readdir(join(resources, "..", "Frameworks")),
+    electronVersion,
+  });
+  if (problems.length > 0) throw new Error(problems.join("\n"));
   const expected = await thirdPartyNotices({
     root: ".",
     packageDirs: [...dirs].sort(),
+    electronVersion,
   });
   const built = await readFile(join("dist", noticesFile), "utf8");
   if (built !== expected.text)
@@ -235,6 +256,7 @@ async function placeLicenses(packaged, resources, stagedDist) {
     files: Object.keys(files),
     packages: expected.packages.length,
     embeddedComponents: expected.components.length,
+    electronFrameworks: expected.frameworks.map((f) => f.framework),
   };
 }
 

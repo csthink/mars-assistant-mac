@@ -16,6 +16,24 @@ export interface EmbeddedComponent {
 }
 export const embeddedComponents: EmbeddedComponent[];
 
+export interface ElectronFramework {
+  electronVersion: string;
+  name: string;
+  framework: string;
+  license: string;
+  use: string;
+  text: string;
+}
+export const electronFrameworks: ElectronFramework[];
+export const electronCoveredFrameworks: string[];
+export function installedElectronVersion(root: string): Promise<string>;
+export function electronFrameworkProblems(options: {
+  bundled: string[];
+  electronVersion: string;
+  frameworks?: ElectronFramework[];
+  covered?: string[];
+}): string[];
+
 export function packageDirOf(path: string): string | null;
 export function packagesFromMetafiles(
   metafiles: { inputs: Record<string, unknown> }[],
@@ -28,7 +46,9 @@ export function packagesFromSourceMaps(
 export function thirdPartyNotices(options: {
   root: string;
   packageDirs: string[];
+  electronVersion: string;
   embedded?: EmbeddedComponent[];
+  frameworks?: ElectronFramework[];
   product?: string;
 }): Promise<{
   text: string;
@@ -39,5 +59,11 @@ export function thirdPartyNotices(options: {
     license: string;
     host: string;
     hostVersion: string;
+  }[];
+  frameworks: {
+    name: string;
+    framework: string;
+    license: string;
+    electronVersion: string;
   }[];
 }>;

@@ -81,7 +81,7 @@ npm run test:desktop
 | 模型连接与本地 Agent | 启动参数与读回核对仍然生效；读回不符时以明确错误失败；停止只作用于本应用登记的进程 |
 | Runtime Host 与执行端口 | 与 `contract/0.1.0/` 一致；`test:integration` 的 Runtime Host 场景与 Contract 覆盖报告通过 |
 | 构建与打包 | `npm run build` 在 macOS 上通过；`package:mac` 仍拒绝覆盖已有输出目录 |
-| 依赖版本 | 精确版本、lockfile 同步、`npm ci` 可重现；进入应用包的依赖的许可证在 `scripts/third-party-licenses.mjs` 的允许列表内并带许可证全文，宿主包升级后复核该文件的内嵌组件表，`npm run build` 生成第三方许可证清单不报错 |
+| 依赖版本 | 精确版本、lockfile 同步、`npm ci` 可重现；进入应用包的依赖的许可证在 `scripts/third-party-licenses.mjs` 的允许列表内并带许可证全文，宿主包升级后复核该文件的内嵌组件表，Electron 升级后复核该文件的框架表，`npm run build` 生成第三方许可证清单不报错 |
 | 测试 | 新用例离线可跑、不依赖个人数据与本机绝对路径；需要真实调用的只进 `real-*.spec.ts` |
 | 用户可见的行为或命令 | 同步更新 [README](README.md) 与 [docs/architecture.md](docs/architecture.md) |
 

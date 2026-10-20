@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { mkdir, copyFile, writeFile } from "node:fs/promises";
 import {
   copiedPackageFiles,
+  installedElectronVersion,
   noticesFile,
   packageDirOf,
   packagesFromMetafiles,
@@ -118,6 +119,7 @@ const notices = await thirdPartyNotices({
     ...packagesFromMetafiles([nodeBundles.metafile, rendererBundle.metafile]),
     ...Object.values(copiedPackageFiles).map(packageDirOf),
   ],
+  electronVersion: await installedElectronVersion("."),
 });
 await writeFile(join("dist", noticesFile), notices.text);
 

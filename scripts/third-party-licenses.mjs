@@ -8,7 +8,8 @@ import { join, posix } from "node:path";
  * esbuild's metafiles and writes dist/THIRD_PARTY_LICENSES.txt; scripts/package-macos.mjs derives
  * it again from the source maps of the staged bundles, regenerates the text and refuses to package
  * when the two differ. Electron and Chromium are covered by the license files Electron ships, which
- * the packaging script places next to this one.
+ * the packaging script places next to this one, except the frameworks in electronFrameworks, whose
+ * license texts this file adds.
  *
  * The set comes from what the build bundles, not from the dependencies field of package.json: a
  * development dependency the app source imports is bundled and listed, a dependency nothing imports
@@ -91,6 +92,89 @@ export const embeddedComponents = [
     text: "scripts/licenses/core-js-3.50.0.LICENSE",
   },
 ];
+
+/**
+ * Frameworks the Electron app bundle ships whose licenses LICENSES.chromium.html does not contain:
+ * Squirrel.Mac (listed there as Squirrel) depends on them. Each entry was reviewed for one exact
+ * Electron version; the build stops when the installed Electron differs, and the packaging script
+ * refuses to package when a registered framework is missing from the bundle or the bundle has a
+ * framework that is neither registered nor covered by Electron's own license files. The license
+ * texts in scripts/licenses/ are the upstream files, byte for byte, at the commits Electron 44.2.0
+ * pins in its DEPS file:
+ *
+ *   Mantle.LICENSE.md        https://github.com/Mantle/Mantle/blob/2a8e2123a3931038179ee06105c9e6ec336b12ea/LICENSE.md
+ *                            (19 commits after tag 2.2.0, whose LICENSE.md is the same;
+ *                            SHA-256 285eede6f638adc9c352be7d66134611e5ea95044095a84de9867fb864e66eab)
+ *   ReactiveObjC.LICENSE.md  https://github.com/ReactiveCocoa/ReactiveObjC/blob/74ab5baccc6f7202c8ac69a8d1e152c29dc1ea76/LICENSE.md
+ *                            (between tags 3.1.0 and 3.1.1, whose LICENSE.md is the same;
+ *                            SHA-256 095fec1a3d6ad029fe0661fa6092a272d50af016b1771992e0bba9b2a73e7763)
+ */
+export const electronFrameworks = [
+  {
+    electronVersion: "44.2.0",
+    name: "Mantle",
+    framework: "Mantle.framework",
+    license: "MIT, with a BSD-style license for portions from Proton",
+    use: "a dependency of Squirrel.Mac",
+    text: "scripts/licenses/Mantle.LICENSE.md",
+  },
+  {
+    electronVersion: "44.2.0",
+    name: "ReactiveObjC",
+    framework: "ReactiveObjC.framework",
+    license: "MIT",
+    use: "a dependency of Squirrel.Mac",
+    text: "scripts/licenses/ReactiveObjC.LICENSE.md",
+  },
+];
+
+/** Frameworks of the Electron app bundle that LICENSES.chromium.html covers. */
+export const electronCoveredFrameworks = [
+  "Electron Framework.framework",
+  "Squirrel.framework",
+];
+
+/**
+ * Why the frameworks in an Electron app bundle's Contents/Frameworks (the names in bundled) do not
+ * match the review for electronVersion: a framework that neither Electron's license files cover
+ * nor frameworks registers, a registered framework that is missing, or a registration for another
+ * Electron version. Empty when they match. Helper apps (.app) are part of Electron and ignored.
+ */
+export function electronFrameworkProblems({
+  bundled,
+  electronVersion,
+  frameworks = electronFrameworks,
+  covered = electronCoveredFrameworks,
+}) {
+  const present = bundled.filter((name) => name.endsWith(".framework"));
+  const problems = [];
+  for (const name of present)
+    if (
+      !covered.includes(name) &&
+      !frameworks.some((f) => f.framework === name)
+    )
+      problems.push(
+        `The bundle has ${name}, which neither Electron's license files nor scripts/third-party-licenses.mjs cover; review its license first.`,
+      );
+  for (const f of frameworks) {
+    if (f.electronVersion !== electronVersion)
+      problems.push(
+        `Electron is ${electronVersion}; its framework ${f.framework} was reviewed for ${f.electronVersion}.`,
+      );
+    if (!present.includes(f.framework))
+      problems.push(
+        `The bundle has no ${f.framework}, which scripts/third-party-licenses.mjs lists for Electron ${f.electronVersion}.`,
+      );
+  }
+  return problems;
+}
+
+/** The version of the installed Electron, which the packaging script also packages. */
+export async function installedElectronVersion(root) {
+  return JSON.parse(
+    await readFile(join(root, "node_modules/electron/package.json"), "utf8"),
+  ).version;
+}
 
 const licenseFile = /^(licen[cs]e|copying)([-.][^/]*)?$/i;
 const noticeFile = /^notice([-.][^/]*)?$/i;
@@ -195,17 +279,22 @@ function block(title, license, sections) {
 /**
  * The notices text for the given package directories (relative to root): one block per package
  * with its name, version, license identifier, license files and notice files, then one block per
- * embedded component. Throws when a package declares no license, declares one outside
- * acceptedLicenses or has no license file, and when an embedded component's review no longer
- * matches the bundled host. The text depends only on the files, so the same build gives the same
+ * embedded component, then one block per framework in electronFrameworks. Throws when a package
+ * declares no license, declares one outside acceptedLicenses or has no license file, when an
+ * embedded component's review no longer matches the bundled host, and when a framework was
+ * reviewed for another Electron version than electronVersion. The text depends only on the files, so the same build gives the same
  * bytes.
  */
 export async function thirdPartyNotices({
   root,
   packageDirs: dirs,
+  electronVersion,
   embedded = embeddedComponents,
+  frameworks = electronFrameworks,
   product = "青鸾 (Qingluan)",
 }) {
+  if (typeof electronVersion !== "string" || !electronVersion)
+    throw new Error("thirdPartyNotices needs the Electron version.");
   const packages = new Map();
   const problems = [];
   for (const dir of dirs) {
@@ -277,6 +366,19 @@ export async function thirdPartyNotices({
       });
     }
   }
+  const shipped = [];
+  for (const entry of frameworks) {
+    if (entry.electronVersion !== electronVersion) {
+      problems.push(
+        `Electron is ${electronVersion}; its framework ${entry.framework} was reviewed for ${entry.electronVersion}.`,
+      );
+      continue;
+    }
+    shipped.push({
+      ...entry,
+      licenseText: await readFile(join(root, entry.text), "utf8"),
+    });
+  }
   if (problems.length > 0)
     throw new Error(
       `Third-party licenses need review:\n${problems.join("\n")}`,
@@ -287,15 +389,17 @@ export async function thirdPartyNotices({
     (a, b) => order(a.name, b.name) || order(a.version, b.version),
   );
   components.sort((a, b) => order(a.name, b.name));
+  shipped.sort((a, b) => order(a.name, b.name));
   const head = [
     `Third-party software in ${product}`,
     "",
     "Generated by scripts/third-party-licenses.mjs when the app is built. It lists every npm package",
     "whose code the build bundles into the app, with the package's license and notice files, and the",
     "components those packages embed. Electron and Chromium are covered by LICENSE.electron.txt and",
-    "LICENSES.chromium.html next to this file.",
+    "LICENSES.chromium.html next to this file; the frameworks Electron ships that those files do not",
+    "cover are listed at the end.",
     "",
-    `Packages: ${list.length}. Embedded components: ${components.length}.`,
+    `Packages: ${list.length}. Embedded components: ${components.length}. Electron frameworks: ${shipped.length}.`,
     "",
   ].join("\n");
   const blocks = [
@@ -305,6 +409,13 @@ export async function thirdPartyNotices({
         `${c.name}${c.version ? ` ${c.version}` : ""} (embedded in ${c.host} ${c.hostVersion}: ${c.use})`,
         c.license,
         [{ name: posix.basename(c.text), text: c.licenseText }],
+      ),
+    ),
+    ...shipped.map((f) =>
+      block(
+        `${f.name} (shipped with Electron ${f.electronVersion} as ${f.framework}: ${f.use})`,
+        f.license,
+        [{ name: posix.basename(f.text), text: f.licenseText }],
       ),
     ),
   ];
@@ -322,6 +433,14 @@ export async function thirdPartyNotices({
         license,
         host,
         hostVersion,
+      }),
+    ),
+    frameworks: shipped.map(
+      ({ name, framework, license, electronVersion }) => ({
+        name,
+        framework,
+        license,
+        electronVersion,
       }),
     ),
   };
