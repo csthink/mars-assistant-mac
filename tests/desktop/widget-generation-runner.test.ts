@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import { Store } from "../../src/service/store";
-import type { Command, HostCommand } from "../../src/shared/protocol";
+import type { Command, HostCommand, Reply } from "../../src/shared/protocol";
 import {
   WidgetGenerationRunner,
   runApiWidgetGeneration,
@@ -17,6 +17,9 @@ import {
 import { compileWidget } from "../../src/main/widget-build";
 import { CodexProcessError } from "../../src/main/codex-process";
 import { streamChat } from "../../src/main/transport";
+import { codexInput } from "../../src/main/codex-session";
+import { claudeInput } from "../../src/main/claude-session";
+import { answerSourcePrompt } from "../../src/shared/answer-source";
 import { widgetSubmitToolName } from "../../src/shared/widget-generation-tool";
 const source = JSON.stringify({
   schemaVersion: 1,
@@ -74,7 +77,15 @@ async function mock(chunks: unknown[]) {
     },
   };
 }
-function setup(run: (o: GenerationExecution) => Promise<void>) {
+function setup(
+  run: (o: GenerationExecution) => Promise<void>,
+  /** Prepares the source conversation before the task; returns the connection the task uses. */
+  prepare?: (
+    command: (c: Command) => Reply,
+    host: (c: HostCommand) => Reply,
+    ids: { connectionId: string; conversationId: string },
+  ) => string,
+) {
   mkdirSync(".test-data/disposable", { recursive: true });
   const root = mkdtempSync(resolve(".test-data/disposable/generation-runner-"));
   const store = new Store(root),
@@ -100,6 +111,12 @@ function setup(run: (o: GenerationExecution) => Promise<void>) {
     contextChars: null,
     revision: 0,
   });
+  const taskConnection = prepare
+    ? prepare(command, (c) => store.execute(c, "main", "host"), {
+        connectionId,
+        conversationId,
+      })
+    : connectionId;
   command({
     type: "createWidgetDraft",
     id: draftId,
@@ -116,7 +133,7 @@ function setup(run: (o: GenerationExecution) => Promise<void>) {
   command({
     type: "submitWidgetGeneration",
     draftId,
-    connectionId,
+    connectionId: taskConnection,
     model: "test-model",
     revision: 1,
     requestId: randomUUID(),
@@ -198,6 +215,158 @@ test("widget runner: the generation instructions every connection receives state
     await s.close();
     await api.close();
   }
+});
+test("widget runner: the generation instructions API, Codex and Claude Code receive ask for messages to the user in the language of the requirement", async () => {
+  const api = await mock([tool(), end]);
+  let messages: GenerationExecution["messages"] = [];
+  const s = setup((o) => {
+    messages = o.messages;
+    return runApiWidgetGeneration(api.endpoint, o);
+  });
+  try {
+    await s.start();
+    assert.equal(s.task().state, "completed");
+    const language =
+      /Write every message to the user, such as notes on what you built, explanations of unsupported capabilities and questions, in the language of the user's requirement \(the final user message\), not the language of these instructions or of the history\./;
+    assert.match(widgetGenerationInstructions, language);
+    // API: the request body carries the instructions verbatim.
+    const sent = (api.requests[0] as { messages: { content: string }[] })
+      .messages[0].content;
+    assert.equal(sent, widgetGenerationInstructions);
+    // Codex and Claude Code build their input from the same runner messages.
+    const codexText = codexInput(messages)
+      .map((part) => ("text" in part ? part.text : ""))
+      .join("\n");
+    assert.match(codexText, language);
+    const claudeText = claudeInput(messages, 1_000_000)
+      .map((part) => ("text" in part ? String(part.text) : ""))
+      .join("\n");
+    assert.match(claudeText, language);
+    // The requirement itself stays the final user message the language refers to.
+    assert.deepEqual(messages.at(-1)?.role, "user");
+  } finally {
+    await s.close();
+    await api.close();
+  }
+});
+test("widget runner: reference history names each saved answer's source once another connection wrote one, and is unchanged otherwise", async () => {
+  /** One answered turn on the first connection; optionally a second connection the task then uses. */
+  const answered =
+    (switchProvider: boolean) =>
+    (
+      command: (c: Command) => Reply,
+      host: (c: HostCommand) => Reply,
+      ids: { connectionId: string; conversationId: string },
+    ) => {
+      const requestId = randomUUID();
+      const submitted = command({
+        type: "submitTurn",
+        requestId,
+        conversationId: ids.conversationId,
+        connectionId: ids.connectionId,
+        text: "要一个计数器",
+      }) as Extract<Reply, { ok: true }>;
+      const turn = submitted.snapshot.turns.find(
+        (t) => t.requestId === requestId,
+      )!;
+      host({ type: "beginExecution", executionId: turn.executionId });
+      host({
+        type: "reportDelta",
+        executionId: turn.executionId,
+        seq: 1,
+        text: "好的，计数器如下。",
+      });
+      host({
+        type: "reportFinished",
+        executionId: turn.executionId,
+        seq: 2,
+      });
+      if (!switchProvider) return ids.connectionId;
+      const other = randomUUID();
+      command({
+        type: "upsertConnection",
+        id: other,
+        name: "深度求索",
+        provider: "deepseek",
+        baseUrl: "https://api.deepseek.com",
+        model: "test-model",
+        secretRef: randomUUID(),
+        imageInput: "unknown",
+        contextChars: null,
+        revision: 0,
+      });
+      command({
+        type: "grantConnectionScope",
+        conversationId: ids.conversationId,
+        connectionId: other,
+        baseUrl: "https://api.deepseek.com",
+      });
+      return other;
+    };
+  const sent = async (switchProvider: boolean) => {
+    const api = await mock([tool(), end]);
+    let messages: GenerationExecution["messages"] = [];
+    const s = setup((o) => {
+      messages = o.messages;
+      return runApiWidgetGeneration(api.endpoint, o);
+    }, answered(switchProvider));
+    try {
+      await s.start();
+      assert.equal(s.task().state, "completed");
+      return messages;
+    } finally {
+      await s.close();
+      await api.close();
+    }
+  };
+  const history = (messages: GenerationExecution["messages"]) =>
+    (
+      JSON.parse(String(messages[1].content)) as {
+        referenceHistory: Record<string, unknown>[];
+      }
+    ).referenceHistory.map(({ role, content, source }) => ({
+      role,
+      content,
+      source,
+    }));
+
+  const switched = await sent(true);
+  assert.deepEqual(history(switched), [
+    { role: "user", content: "要一个计数器", source: undefined },
+    {
+      role: "assistant",
+      content: "好的，计数器如下。",
+      source: "【历史回答来源：Offline（自定义 · test-model）】",
+    },
+  ]);
+  assert.deepEqual(
+    switched.map((m) => m.role),
+    ["system", "system", "system", "user"],
+  );
+  assert.equal(
+    switched[2].content,
+    answerSourcePrompt({
+      name: "深度求索",
+      provider: "deepseek",
+      model: "test-model",
+    }),
+  );
+  // The note and prompt carry name snapshots only; the comparison flag stays in the service.
+  assert.doesNotMatch(JSON.stringify(switched), /sameAsTurn/);
+  assert.doesNotMatch(
+    String(switched[2].content) + history(switched)[1].source,
+    /127\.0\.0\.1|api\.deepseek\.com/,
+  );
+
+  const same = await sent(false);
+  assert.deepEqual(history(same), [
+    { role: "user", content: "要一个计数器", source: undefined },
+    { role: "assistant", content: "好的，计数器如下。", source: undefined },
+  ]);
+  assert.deepEqual(
+    same.map((m) => m.role),
+    ["system", "system", "user"],
+  );
 });
 test("widget runner: text, malformed package and undeclared tools fail without automatic provider retry", async () => {
   for (const chunks of [
