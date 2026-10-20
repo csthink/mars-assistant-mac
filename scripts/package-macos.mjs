@@ -18,6 +18,17 @@ import {
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
+import {
+  copiedPackageFiles,
+  electronFrameworkProblems,
+  embeddedComponents,
+  embeddedInSourceMap,
+  installedElectronVersion,
+  noticesFile,
+  packageDirOf,
+  packagesFromSourceMaps,
+  thirdPartyNotices,
+} from "./third-party-licenses.mjs";
 
 /**
  * Packages the macOS app bundle "Qingluan.app" (shown as 青鸾 whatever the system language)
@@ -157,6 +168,96 @@ async function localize(app) {
     run("/usr/bin/plutil", ["-convert", "binary1", file]);
   }
   return localizations.length;
+}
+
+/**
+ * Checks the third-party notices the build wrote against the staged app code, then places the
+ * license files in Contents/Resources (README, 许可): this repository's LICENSE and NOTICE, the
+ * third-party notices, and the two files Electron ships (its LICENSE, renamed so it does not take
+ * the place of this repository's, and LICENSES.chromium.html, which also covers Node.js; the
+ * notices add the frameworks Electron ships that it misses).
+ *
+ * The bundle's Electron must be the installed one, and its frameworks must match the reviewed
+ * list (electronFrameworkProblems). Every script in the staged dist/ must either have a source
+ * map, whose sources name the packages it bundles, or be a package file the build copies
+ * unchanged. The notices are generated again
+ * from that package set and must equal the build's byte for byte, so a stale or incomplete file
+ * stops the packaging.
+ */
+async function placeLicenses(packaged, resources, stagedDist) {
+  const names = (await readdir(stagedDist)).sort();
+  const maps = await packagesFromSourceMaps(stagedDist, "dist");
+  const dirs = new Set(maps.packages);
+  const embedded = new Set(maps.embedded);
+  for (const name of names) {
+    if (!/\.(cjs|mjs|js)$/.test(name)) continue;
+    if (names.includes(`${name}.map`)) continue;
+    const source = copiedPackageFiles[name];
+    if (
+      !source ||
+      (await sha256(join(stagedDist, name))) !== (await sha256(source))
+    )
+      throw new Error(
+        `dist/${name} has neither a source map nor an unchanged package source, so its licenses are unknown.`,
+      );
+    dirs.add(packageDirOf(source));
+    // The package's own map of the copied file names what its build embedded.
+    if (existsSync(`${source}.map`))
+      for (const component of await embeddedInSourceMap(`${source}.map`))
+        embedded.add(component);
+  }
+  const unregistered = [...embedded].filter(
+    (component) => !embeddedComponents.some((c) => c.name === component),
+  );
+  if (unregistered.length > 0)
+    throw new Error(
+      `The bundles embed ${unregistered.join(", ")}, which scripts/third-party-licenses.mjs does not list; review their licenses first.`,
+    );
+  // The Electron the packager used, and the frameworks it put in the bundle: every one is either
+  // covered by Electron's license files or registered with its license text, and every registered
+  // one is present.
+  const electronVersion = (
+    await readFile(join(packaged, "version"), "utf8")
+  ).trim();
+  if (electronVersion !== (await installedElectronVersion(".")))
+    throw new Error(
+      `The bundle has Electron ${electronVersion}, not the installed ${await installedElectronVersion(".")}.`,
+    );
+  const problems = electronFrameworkProblems({
+    bundled: await readdir(join(resources, "..", "Frameworks")),
+    electronVersion,
+  });
+  if (problems.length > 0) throw new Error(problems.join("\n"));
+  const expected = await thirdPartyNotices({
+    root: ".",
+    packageDirs: [...dirs].sort(),
+    electronVersion,
+  });
+  const built = await readFile(join("dist", noticesFile), "utf8");
+  if (built !== expected.text)
+    throw new Error(
+      `dist/${noticesFile} does not match the packages in the staged bundles; run npm run build again.`,
+    );
+  const files = {
+    LICENSE: "LICENSE",
+    NOTICE: "NOTICE",
+    [noticesFile]: join("dist", noticesFile),
+    "LICENSE.electron.txt": join(packaged, "LICENSE"),
+    "LICENSES.chromium.html": join(packaged, "LICENSES.chromium.html"),
+  };
+  for (const [name, source] of Object.entries(files)) {
+    if (!existsSync(source))
+      throw new Error(`The license file ${source} is missing.`);
+    if (existsSync(join(resources, name)))
+      throw new Error(`The bundle already has Contents/Resources/${name}.`);
+    await cp(source, join(resources, name));
+  }
+  return {
+    files: Object.keys(files),
+    packages: expected.packages.length,
+    embeddedComponents: expected.components.length,
+    electronFrameworks: expected.frameworks.map((f) => f.framework),
+  };
 }
 
 async function sha256(path) {
@@ -310,6 +411,11 @@ try {
     throw new Error("The app icon was not copied into the bundle.");
   await rm(join(resources, "electron.icns"), { force: true });
   await cp(assetCatalog, join(resources, "Assets.car"));
+  const licenses = await placeLicenses(
+    packaged,
+    resources,
+    join(stage, "dist"),
+  );
   const localizations = await localize(app);
   const signed = await adHocSign(app);
   const result = {
@@ -322,6 +428,7 @@ try {
     widgetAcceptance: values["widget-acceptance"],
     displayName,
     localizations,
+    licenses,
     signing: `Ad-hoc signature on ${signed} code items; no Developer ID signature and no notarization.`,
   };
   if (values.dmg) {

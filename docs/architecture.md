@@ -148,11 +148,12 @@ Host 服务（`src/main/runtime-host.ts`）只保留每个连接的同步状态�
 
 `scripts/build.mjs` 依次完成：
 
-1. 在 macOS 上用 `/usr/bin/clang` 编译进程身份辅助程序，用 `/usr/bin/clang++` 以当前 Node.js 的头文件编译面板事件模块（AppKit）。
+1. 在 macOS 上用 `/usr/bin/clang` 编译进程身份辅助程序，用 `/usr/bin/clang++` 以当前 Node.js 的头文件编译两个原生模块：面板事件模块（AppKit）与控件视图的命中测试边界模块（AppKit、QuartzCore）。
 2. esbuild 打包主进程、业务服务、各 worker、preload 与产品 MCP 进程（目标 `node24`，输出 `.cjs`），以及界面（目标 `chrome144`）。
 3. 复制 `index.html`、PDF.js 的 worker 模块与 `assets/icon/` 下 1x 与 2x 的菜单栏模板图 PNG。
+4. 由 esbuild 的 metafile 与复制的包文件得出实际打进应用的 npm 包，生成第三方许可证清单 `dist/THIRD_PARTY_LICENSES.txt`（`scripts/third-party-licenses.mjs`）：每个包的名称、版本、许可证标识、许可证全文与 NOTICE，包内嵌、未单独成包的组件，以及 Electron 自带而 `LICENSES.chromium.html` 未包含的框架（Mantle、ReactiveObjC）；`scripts/licenses/` 是后两类的上游许可证全文。许可证标识不在允许列表、缺许可证声明或许可证全文、内嵌组件表与宿主包版本不符、框架表与已安装的 Electron 版本不符时构建失败。
 
-`scripts/package-macos.mjs` 用 `@electron/packager` 生成应用包 `Qingluan.app`，注册对话链接协议 `csthink-assistant`；输出目录已存在时拒绝覆盖。显示名「青鸾」写进应用包每个 `.lproj` 的 `InfoPlist.strings`（`LSHasLocalizedDisplayName`，`CFBundleDevelopmentRegion` 为 `zh_CN`），任何系统语言下访达、程序坞与菜单栏都显示同一名称，主进程的 `app.setName("csthink-assistant")` 决定默认数据目录与 safeStorage 钥匙串项的名称，二者都不随显示名改变；窗口、侧栏标题与菜单上的名称取自 `src/shared/app-name.ts` 这一处。打包后由内向外做 ad-hoc 签名；`--dmg` 另用固定版本的 dmgbuild（构建依赖，直接写 `.DS_Store`，不驱动访达）生成 arm64 磁盘映像：应用、「应用程序」链接、打开「隐私与安全性」的 `.webloc` 快捷方式与首次打开引导背景，并写元数据。`scripts/package-smoke.mjs` 经 Node inspector 在打包产物里安装与后台测试相同的隔离后启动它，核对读回与升级。
+`scripts/package-macos.mjs` 用 `@electron/packager` 生成应用包 `Qingluan.app`，注册对话链接协议 `csthink-assistant`；输出目录已存在时拒绝覆盖。显示名「青鸾」写进应用包每个 `.lproj` 的 `InfoPlist.strings`（`LSHasLocalizedDisplayName`，`CFBundleDevelopmentRegion` 为 `zh_CN`），任何系统语言下访达、程序坞与菜单栏都显示同一名称，主进程的 `app.setName("csthink-assistant")` 决定默认数据目录与 safeStorage 钥匙串项的名称，二者都不随显示名改变；窗口、侧栏标题与菜单上的名称取自 `src/shared/app-name.ts` 这一处。签名前把本仓的 `LICENSE`、`NOTICE`、第三方许可证清单与 Electron 自带的 `LICENSE`（改名为 `LICENSE.electron.txt`）、`LICENSES.chromium.html` 放进 `Contents/Resources/`；放入前由暂存的各 bundle 的 source map 再推出一次包集合并重新生成清单，与构建结果逐字节比较，source map 显示的内嵌组件也必须已登记；应用包的 Electron 须是已安装的版本，`Contents/Frameworks` 下的框架须由 Electron 的许可证文件覆盖或已登记，登记的框架须都在，否则拒绝打包。打包后由内向外做 ad-hoc 签名；`--dmg` 另用固定版本的 dmgbuild（构建依赖，直接写 `.DS_Store`，不驱动访达）生成 arm64 磁盘映像：应用、「应用程序」链接、打开「隐私与安全性」的 `.webloc` 快捷方式与首次打开引导背景，并写元数据。`scripts/package-smoke.mjs` 经 Node inspector 在打包产物里安装与后台测试相同的隔离后启动它，核对读回与升级。
 
 ## 测试结构
 

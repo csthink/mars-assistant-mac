@@ -83,3 +83,8 @@
 ^src/main/claude-broker\.ts:                \(generation \? "id,package,token" [:] "attachmentId,id,token"\) \|\|$
 
 ^tests/desktop/transport\.test\.ts:        apiKey[:] "synthetic",$
+
+# ── 第三方许可证全文：scripts/licenses/ 是依赖内嵌组件的上游许可证文件的逐字节副本，不能改写；
+#    版权行里的邮箱是上游作者公开的署名，不是本仓的个人信息（只有完整版扫描器有邮箱类别）
+# scripts/licenses/ws.LICENSE：websockets/ws 8.22.0 的 LICENSE 第一行
+^scripts/licenses/ws\.LICENSE:Copyright \(c\) 2011 Einar Otto Stangvik <einaros[@]gmail[.]com>$

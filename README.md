@@ -79,7 +79,7 @@ npm start -- --data-root="<数据目录>"
 
 | 命令 | 作用 |
 | --- | --- |
-| `npm run build` | 编译到 `dist/`：两个原生组件、主进程与业务服务及各 worker 的打包、界面打包、Tray 图像 |
+| `npm run build` | 编译到 `dist/`：两个原生组件、主进程与业务服务及各 worker 的打包、界面打包、Tray 图像，以及第三方许可证清单 `THIRD_PARTY_LICENSES.txt` |
 | `npm start` | 先构建再启动客户端 |
 | `npm run check` | TypeScript 类型检查（`typecheck`）、ESLint（`lint`）与 Prettier 格式检查（`format:check`） |
 | `npm run test:service` | 服务层与主进程模块的单元测试，Node.js test runner 运行，不启动 Electron；本身不构建，部分用例调用 `dist/` 下的构建产物，先运行 `npm run build` |
@@ -126,10 +126,12 @@ mars-assistant-mac/
 ├── tests/desktop/       各层测试与夹具；runtime-fakes/ 是两个领域的 fake Runtime 与运行包构建工具
 ├── contract/0.1.0/      Runtime Contract 0.1.0 的冻结副本：contract-manifest.json 与它列出的 13 个文件（schema.json、methods.json、示例、说明、修订记录、release-record/）
 ├── assets/icon/         应用图标与菜单栏模板图，见 assets/icon/README.md
-├── scripts/             build.mjs、package-macos.mjs、package-smoke.mjs、execution-audit.mjs、runtime-host-coverage.mjs
+├── scripts/             build.mjs、package-macos.mjs、package-smoke.mjs、execution-audit.mjs、runtime-host-coverage.mjs、
+│                        third-party-licenses.mjs；licenses/ 是依赖内嵌组件与 Electron 两个框架的上游许可证全文
 ├── tools/               check-public-safety-generic.sh、install-hooks.sh、public-safety-allowlist.txt
 ├── docs/                architecture.md
 ├── .github/workflows/   ci.yml
+├── LICENSE · NOTICE     Apache License 2.0 全文与本仓的版权声明
 └── package.json · package-lock.json · tsconfig.json · eslint.config.js · playwright.config.ts · .nvmrc · .gitignore
 ```
 
@@ -150,6 +152,7 @@ mars-assistant-mac/
 | 名称 | 界面只有中文，名称无论系统语言都显示「青鸾」：应用包里每个 `.lproj` 的 `InfoPlist.strings` 都写「青鸾」，`CFBundleDevelopmentRegion` 为 `zh_CN`；窗口标题、侧栏标题、应用菜单、菜单栏图标提示与关于面板取自 `src/shared/app-name.ts`。英文名 `Qingluan` 只用于应用包与安装包文件名（`Info.plist` 的基础值与文件名一致，访达据此显示本地化名称） |
 | 不变的身份 | bundle id `com.csthink.assistant`；内部应用名 `csthink-assistant`（`app.setName`），因此「数据目录」一节的默认目录与 safeStorage 的钥匙串项（服务名 `csthink-assistant Safe Storage`）都不随显示名改变 |
 | 签名 | 由内向外的 ad-hoc 签名，`codesign --verify --deep --strict` 通过；没有 Developer ID 签名与 Apple 公证，Gatekeeper 评估（`spctl`）会拒绝 |
+| 许可证 | 应用包的 `Contents/Resources/` 下有本仓的 `LICENSE` 与 `NOTICE`、第三方许可证清单 `THIRD_PARTY_LICENSES.txt`，以及 Electron 自带的 `LICENSE`（改名为 `LICENSE.electron.txt`）与 `LICENSES.chromium.html`（Chromium 与 Node.js 等）。清单由 `scripts/third-party-licenses.mjs` 在构建时生成：按 esbuild 实际打进应用的 npm 包（不按 `package.json` 的依赖字段）列出包名、版本、许可证标识与包内许可证全文，另列这些包内嵌、未单独成包的组件，以及 Electron 自带而 `LICENSES.chromium.html` 未包含的 Mantle 与 ReactiveObjC 两个框架；许可证标识不在允许列表、缺许可证声明或许可证全文时构建失败。打包时由各 bundle 的 source map 再推出一次包集合并重新生成清单，与构建结果不一致即拒绝打包；应用包的 Electron 版本与已审核的不同、登记的框架缺失或出现未审核的框架时也拒绝打包 |
 | 图标 | `assets/icon/`：`AppIcon.icns`（打包时由 PNG 组生成）与 macOS 26 起使用的分层图标 `Assets.car`；主窗口窄列的产品标识是同一图标的 32 像素简化版 |
 
 从网上下载的副本第一次打开会被系统拦下：首次打开如被系统拦截，打开「系统设置 → 隐私与安全性」，在「安全性」一栏点「仍要打开」，放行一次即可，不需要也不应该关闭 Gatekeeper。每个新版本的 ad-hoc 签名都不同，升级后第一次使用已保存的 API key 时，macOS 可能请求允许访问钥匙串项；拒绝时密钥无法解密，需要在设置中重新填写。
@@ -165,4 +168,4 @@ mars-assistant-mac/
 
 ## 许可
 
-本仓暂未授予开源许可（仓内没有 `LICENSE` 文件）。试用安装包经本仓的 GitHub Release 发布。
+本仓以 [Apache License 2.0](LICENSE) 授权，版权声明见 [`NOTICE`](NOTICE)。按该许可第 4 条，再分发本仓或其衍生作品时须附带 `LICENSE` 全文，并保留 `NOTICE` 中的声明。试用安装包经本仓的 GitHub Release 发布；应用包内附带的许可证文件见「试用安装包」。
