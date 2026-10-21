@@ -169,14 +169,18 @@ export function classifyStatus(
       status,
     );
   // A provider that names tool or function calling as unsupported for this model (OpenRouter: no endpoint
-  // supports tool use) has measured the capability; other 400s are ordinary failures.
+  // supports tool use) has measured the capability; other 400s, a refused tool_choice among them, are ordinary
+  // failures.
   if (
     context === "chat" &&
     (status === 400 || status === 404) &&
-    /\btools?\b|tool[_ ]?(?:use|call|choice)|function[_ ]?call|工具/i.test(
+    /\btools?\b|tool[_ ]?(?:use|call)|function[_ ]?call|工具/i.test(detail) &&
+    /not support|unsupported|does not support|no endpoints|不支持/i.test(
       detail,
     ) &&
-    /not support|unsupported|does not support|no endpoints|不支持/i.test(detail)
+    // A refused tool_choice value (DeepSeek thinking mode: "does not support this tool_choice") is about how
+    // the request chose the tool, not about whether the model can call tools.
+    !/tool_choice/i.test(detail)
   ) {
     const error = new TransportError(
       "unsupported",
@@ -616,16 +620,11 @@ export interface StreamResult {
   calls: ToolCall[];
   message: ChatMessage;
 }
-/**
- * Non-streaming request with a solid red image and a colour question. The
- * request being accepted is not enough: the answer must name the colour, since
- * some interfaces accept image parts they never show the model.
- */
 /** The one product tool of the tool call check; its argument is a random token the model must echo. */
 export const toolProbeName = "report_tool_probe";
 /**
- * WB-02 tool call check (mac-feature-t11:OD-02 A): one request that offers a single probe tool and requires
- * the model to call it with a fresh token. The model counts as able to call tools only when the reply is that
+ * WB-02 tool call check (mac-feature-t11:OD-02 A): one request that offers a single probe tool, with the same
+ * default tool choice as a conversation turn, and asks the model to call it with a fresh token. The model counts as able to call tools only when the reply is that
  * call with that token; a provider that refuses the tools parameter is classified by the failure.
  */
 export async function probeTools(
@@ -663,8 +662,9 @@ export async function probeTools(
             },
           },
         ],
-        tool_choice: { type: "function", function: { name: toolProbeName } },
-        max_tokens: 200,
+        // No tool_choice: conversation turns leave it to the provider default, and thinking modes refuse a
+        // forced function. Reasoning tokens count against max_tokens on thinking models.
+        max_tokens: 1024,
         stream: false,
       }),
     },
@@ -698,6 +698,11 @@ export async function probeTools(
       (argument as { token?: unknown } | null)?.token === token,
   };
 }
+/**
+ * Non-streaming request with a solid red image and a colour question. The
+ * request being accepted is not enough: the answer must name the colour, since
+ * some interfaces accept image parts they never show the model.
+ */
 export async function probeImage(
   endpoint: Endpoint,
   signal?: AbortSignal,

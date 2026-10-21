@@ -425,10 +425,8 @@ test("tool call check request: only the forced call with the issued token confir
   try {
     reply = (body) => call(token(body));
     assert.deepEqual(await probeTools(endpoint), { called: true });
-    assert.deepEqual(seen[0].tool_choice, {
-      type: "function",
-      function: { name: "report_tool_probe" },
-    });
+    // The probe leaves tool choice to the provider default, as conversation turns do.
+    assert.equal(seen[0].tool_choice, undefined);
     reply = () => call("wrong-token");
     assert.deepEqual(await probeTools(endpoint), { called: false });
     reply = (body) => call(token(body), "other_tool");
@@ -444,6 +442,20 @@ test("tool call check request: only the forced call with the issued token confir
     });
     await assert.rejects(probeTools(endpoint), (error: TransportError) => {
       assert.equal(error.toolsUnsupported, true);
+      return true;
+    });
+    // DeepSeek thinking mode refuses a forced tool_choice; that is not a measured lack of tool calls.
+    reply = () => ({
+      status: 400,
+      json: {
+        error: {
+          message: "Thinking mode does not support this tool_choice",
+          type: "invalid_request_error",
+        },
+      },
+    });
+    await assert.rejects(probeTools(endpoint), (error: TransportError) => {
+      assert.equal(error.toolsUnsupported, false);
       return true;
     });
     reply = () => ({
