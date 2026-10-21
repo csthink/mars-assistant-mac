@@ -294,3 +294,105 @@ test("widget order: a failed save returns to the saved order with a retry, and a
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("widget order: a reorder drag over a native widget view is relayed to the host, never reaches the widget, and cannot be forged by it", async () => {
+  const dir = root();
+  const ids = seedRetainedWidgets(dir, names).map((w) => w.id);
+  const app = await launchLocal({ args: [resolve("."), `--data-root=${dir}`] });
+  try {
+    const shell = await app.firstWindow();
+    await requestSize(app, shell, 1440, 900);
+    await goTo(shell, "控件");
+    await expect(shell.locator("[data-formal-widget]")).toHaveCount(5);
+    const views = () =>
+      app
+        .context()
+        .pages()
+        .filter((p) => p.url().startsWith("csthink-widget:"));
+    await expect.poll(() => views().length).toBe(5);
+    await shell.getByRole("button", { name: "编辑布局", exact: true }).click();
+    // The widget's own drag and drop listeners count what reaches widget code.
+    for (const view of views())
+      await view.evaluate(() => {
+        const seen: string[] = [];
+        (window as unknown as { seen: string[] }).seen = seen;
+        for (const type of ["dragenter", "dragover", "drop"])
+          window.addEventListener(type, () => seen.push(type));
+      });
+    const order = "application/x-qingluan-widget-order";
+    const trusted = async (
+      view: Page,
+      type: "dragEnter" | "dragOver" | "drop",
+      x: number,
+    ) => {
+      // The main process takes at most one relayed dragover every 16 ms, as a real drag repeats them.
+      await shell.waitForTimeout(40);
+      const cdp = await app.context().newCDPSession(view);
+      await cdp.send("Input.dispatchDragEvent", {
+        type,
+        x,
+        y: 40,
+        data: {
+          items: [{ mimeType: order, data: ids[4] }],
+          dragOperationsMask: 16,
+        },
+      });
+      await cdp.detach();
+    };
+    const target = views()[0];
+    const width = await target.evaluate(() => innerWidth);
+    // Without a drag started from a card, a trusted drag of the order type moves nothing.
+    await trusted(target, "dragEnter", 10);
+    await trusted(target, "drop", 10);
+    await shell.waitForTimeout(300);
+    expect(stored(dir)).toEqual(ids);
+    // A widget forging the events itself is ignored (they are not trusted input).
+    await target.evaluate((type) => {
+      const data = new DataTransfer();
+      data.setData(type, "forged");
+      for (const name of ["dragenter", "dragover", "drop"])
+        window.dispatchEvent(
+          new DragEvent(name, {
+            dataTransfer: data,
+            bubbles: true,
+            clientX: 5,
+          }),
+        );
+    }, order);
+    await shell.waitForTimeout(300);
+    expect(stored(dir)).toEqual(ids);
+    // The person starts dragging 汇率 by its grip; the drag crosses a native view and drops on its left half.
+    const source = card(shell, ids[4]).locator(".widget-order-grip");
+    const data = await shell.evaluateHandle(() => new DataTransfer());
+    await source.dispatchEvent("dragstart", { dataTransfer: data });
+    await trusted(target, "dragEnter", 10);
+    await trusted(target, "dragOver", 12);
+    const marked = shell.locator("[data-formal-widget].drop-before");
+    await expect(marked).toHaveCount(1);
+    const owner = await marked.getAttribute("data-formal-widget");
+    expect(owner).not.toBe(ids[4]);
+    // The right half marks the other side of the same card.
+    await trusted(target, "dragOver", width - 10);
+    await expect(card(shell, owner!)).toHaveClass(/drop-after/);
+    await trusted(target, "dragOver", 12);
+    await trusted(target, "drop", 12);
+    // The source's dragend can come before the relayed drop.
+    await source.dispatchEvent("dragend", { dataTransfer: data });
+    const rest = ids.filter((id) => id !== ids[4]);
+    rest.splice(rest.indexOf(owner!), 0, ids[4]);
+    await expect.poll(() => stored(dir)).toEqual(rest);
+    await expect(shell.locator(".widget-order-announce")).toHaveText(
+      /「汇率」已移到第 \d 位/,
+    );
+    // Nothing of the order drags, trusted or forged, reached widget code beyond the forged events themselves.
+    for (const view of views())
+      expect(
+        await view.evaluate(
+          () => (window as unknown as { seen: string[] }).seen,
+        ),
+      ).toEqual(view === target ? ["dragenter", "dragover", "drop"] : []);
+  } finally {
+    await closeLocal(app);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

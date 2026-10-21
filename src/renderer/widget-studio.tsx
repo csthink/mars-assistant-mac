@@ -10,6 +10,7 @@ import { WidgetWorkspace } from "./widgets";
 import { Icon } from "./icons";
 import { openModal } from "./modal-focus";
 import { useWidgetOrder } from "./widget-order";
+import { widgetOrderDragType } from "../shared/widget-ui";
 import "./widget-studio.css";
 export const generationLabels = {
   queued: "等待生成",
@@ -291,6 +292,10 @@ export function WidgetStudio({
     over?: string;
     after?: boolean;
   }>();
+  // The card being dragged. A drop over a native widget view reaches the host through the main process and can
+  // arrive after the source's dragend, so the source stays known for a moment after the drag ends (KB-04).
+  const dragSource = useRef<{ id: string; ended?: number }>(undefined);
+  const dragEnded = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     // The overlay rows of every card show or hide, or a card's menu opens below its row; native views
     // re-measure their clip so trusted controls are never covered.
@@ -334,12 +339,40 @@ export function WidgetStudio({
   }
   function drop() {
     if (!drag?.over) return setDrag(undefined);
-    const rest = order.widgets.filter((w) => w.id !== drag.id);
-    const index =
-      rest.findIndex((w) => w.id === drag.over) + (drag.after ? 1 : 0);
-    setDrag(undefined);
-    order.move(drag.id, index);
+    commitDrop(drag.id, drag.over, !!drag.after);
   }
+  function commitDrop(id: string, over: string, after: boolean) {
+    dragSource.current = undefined;
+    setDrag(undefined);
+    if (id === over) return;
+    const rest = order.widgets.filter((w) => w.id !== id);
+    order.move(id, rest.findIndex((w) => w.id === over) + (after ? 1 : 0));
+  }
+  // Drag events relayed from the native widget views: the same indicator and drop as over the host page.
+  const nativeDrag = useRef<(event: Event) => void>(undefined);
+  nativeDrag.current = (event: Event) => {
+    const source = dragSource.current;
+    const over = (event.target as HTMLElement).dataset?.formalWidget;
+    const detail = (event as CustomEvent<{ phase: string; after: boolean }>)
+      .detail;
+    if (!source || !over) return;
+    if (detail.phase === "drop") commitDrop(source.id, over, detail.after);
+    else if (!source.ended && source.id !== over)
+      setDrag((current) =>
+        current?.over === over && current.after === detail.after
+          ? current
+          : { id: source.id, over, after: detail.after },
+      );
+  };
+  useEffect(() => {
+    const node = studio.current;
+    const listener = (event: Event) => nativeDrag.current?.(event);
+    node?.addEventListener("widget-native-drag", listener);
+    return () => {
+      node?.removeEventListener("widget-native-drag", listener);
+      clearTimeout(dragEnded.current);
+    };
+  }, []);
   const [deletingDraft, setDeletingDraft] = useState<WidgetDraft>();
   const [undo, setUndo] = useState<{ id: string; token: string }>();
   const [query, setQuery] = useState("");
@@ -861,12 +894,24 @@ export function WidgetStudio({
                       aria-hidden="true"
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/plain", w.id);
+                        // Only the private order type: no text a widget or another app could take in.
+                        event.dataTransfer.setData(widgetOrderDragType, w.id);
                         const card = event.currentTarget.closest("article");
                         if (card) event.dataTransfer.setDragImage(card, 24, 24);
+                        clearTimeout(dragEnded.current);
+                        dragSource.current = { id: w.id };
                         setDrag({ id: w.id });
                       }}
-                      onDragEnd={() => setDrag(undefined)}
+                      onDragEnd={() => {
+                        setDrag(undefined);
+                        const source = dragSource.current;
+                        if (!source) return;
+                        source.ended = Date.now();
+                        dragEnded.current = setTimeout(() => {
+                          if (dragSource.current === source)
+                            dragSource.current = undefined;
+                        }, 1000);
+                      }}
                     >
                       <Icon name="grip" />
                     </span>

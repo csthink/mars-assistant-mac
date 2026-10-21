@@ -1,4 +1,15 @@
 import type { WidgetPreview } from "./widget-store";
+/**
+ * The drag data type of a retained widget being reordered (WB-02). Only the host page sets it, and a widget view
+ * relays drag events of this type to the host instead of handling them (mac-feature-t11:KB-04), so dropping a
+ * card onto another card's native content reorders and never inserts anything into that widget.
+ */
+export const widgetOrderDragType = "application/x-qingluan-widget-order";
+/** A display input a widget view relays to the host page that shows it. */
+export type WidgetDisplayInput =
+  | { kind: "hover" | "focus"; value: boolean }
+  | { kind: "scroll"; x: number; y: number }
+  | { kind: "drag"; phase: "over" | "drop"; x: number; width: number };
 export type WidgetControl = { slot?: string } & (
   | { action: "draftConfig"; field: string; revision: number; value: string }
   | { action: "status" | "open" | "hide" | "recover" | "suspend" }

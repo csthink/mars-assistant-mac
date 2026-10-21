@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { widgetKey } from "../shared/widget";
+import { widgetOrderDragType } from "../shared/widget-ui";
 import {
   parseWidgetRequest,
   validWidgetReply,
@@ -266,6 +267,31 @@ if (process.isMainFrame) {
     document.addEventListener("pointerleave", () =>
       ipcRenderer.send("widget:display-input", { kind: "hover", value: false }),
     );
+    // A card the person drags in the host's 编辑布局 crosses this native view (KB-04). Such a drag is relayed to
+    // the host and never reaches the widget's own code: only real drags carrying the host's order type count,
+    // so a widget cannot start, see or forge one, and nothing is dropped into the widget.
+    const relayDrag = (phase: "over" | "drop") => (event: DragEvent) => {
+      if (
+        !event.isTrusted ||
+        !event.dataTransfer?.types.includes(widgetOrderDragType)
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      event.dataTransfer.dropEffect = "move";
+      ipcRenderer.send("widget:display-input", {
+        kind: "drag",
+        phase,
+        x: event.clientX,
+        width: innerWidth,
+      });
+    };
+    for (const [type, phase] of [
+      ["dragenter", "over"],
+      ["dragover", "over"],
+      ["drop", "drop"],
+    ] as const)
+      window.addEventListener(type, relayDrag(phase), true);
     function canScroll(target: EventTarget | null, dy: number) {
       for (
         let element = target instanceof Element ? target : null;

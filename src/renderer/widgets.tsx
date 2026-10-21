@@ -209,6 +209,17 @@ export function WidgetWorkspace({
         element
           ?.closest(".viewport, .right-body")
           ?.scrollBy(signal.x, signal.y);
+      else if (signal.kind === "drag")
+        // Reorder drags over the native view arrive here; the card decides whether one of its own is active.
+        element?.closest<HTMLElement>(".widget-saved-card")?.dispatchEvent(
+          new CustomEvent("widget-native-drag", {
+            bubbles: true,
+            detail: {
+              phase: signal.phase,
+              after: signal.x >= signal.width / 2,
+            },
+          }),
+        );
       else {
         const article = element?.closest<HTMLElement>(".widget-saved-card");
         if (article) {

@@ -1,3 +1,4 @@
+import type { WidgetDisplayInput } from "../shared/widget-ui";
 import {
   BrowserWindow,
   WebContentsView,
@@ -89,9 +90,7 @@ export class WidgetRuntime {
     ) => void = () => {},
     private onInput: (
       identity: WidgetIdentity,
-      input:
-        | { kind: "hover" | "focus"; value: boolean }
-        | { kind: "scroll"; x: number; y: number },
+      input: WidgetDisplayInput,
     ) => void = () => {},
   ) {}
 
@@ -397,6 +396,7 @@ export class WidgetRuntime {
         this.onLayout(subject, { ...instance.layout });
     });
     let lastInput = 0;
+    let lastDrag = 0;
     contents.ipc.on("widget:display-input", (event, raw: unknown) => {
       if (!this.authorized(instance, event) || !raw || typeof raw !== "object")
         return;
@@ -419,6 +419,26 @@ export class WidgetRuntime {
           kind: "scroll",
           x: Math.max(-2000, Math.min(2000, r.x)),
           y: Math.max(-2000, Math.min(2000, r.y)),
+        });
+      }
+      // A reorder drag over this view (KB-04): the host decides whether a drag of its own is in progress.
+      if (
+        r.kind === "drag" &&
+        (r.phase === "over" || r.phase === "drop") &&
+        typeof r.x === "number" &&
+        typeof r.width === "number" &&
+        Number.isFinite(r.x) &&
+        Number.isFinite(r.width) &&
+        r.width > 0 &&
+        r.width <= 8192 &&
+        (r.phase === "drop" || performance.now() - lastDrag >= 16)
+      ) {
+        lastDrag = performance.now();
+        this.onInput(subject, {
+          kind: "drag",
+          phase: r.phase,
+          x: Math.max(0, Math.min(r.width, r.x)),
+          width: r.width,
         });
       }
     });

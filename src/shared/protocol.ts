@@ -1082,10 +1082,7 @@ export interface DesktopBridge {
   ) => () => void;
   onWidgetDisplayInput: (
     callback: (
-      signal: { generation: string } & (
-        | { kind: "hover" | "focus"; value: boolean }
-        | { kind: "scroll"; x: number; y: number }
-      ),
+      signal: { generation: string } & import("./widget-ui").WidgetDisplayInput,
     ) => void,
   ) => () => void;
   onWidgetStatus: (callback: (signal: WidgetSignal) => void) => () => void;
