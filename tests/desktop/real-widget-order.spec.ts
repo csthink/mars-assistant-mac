@@ -34,6 +34,8 @@ interface OrderRealAuthorization {
   evidence: string;
 }
 const upstream = { host: "api.deepseek.com", prefix: "" };
+// No trace, screenshot or video: a trace records typed values, and the key must never reach a file.
+test.use({ trace: "off", screenshot: "off", video: "off" });
 const names = ["天气", "便笺", "计时", "便笺", "汇率"];
 
 function authorization(): OrderRealAuthorization {
@@ -253,9 +255,30 @@ test("real widget order: an authorized API model is confirmed by its own check, 
       url: `http://127.0.0.1:${port}/deepseek`,
       provider: "custom",
       model: auth.model,
-      secret: process.env.DEEPSEEK_API_KEY!,
-      makeDefault: true,
     });
+    // The key goes in as an evaluate argument, which test steps and reports do not record, unlike fill.
+    const item = page.getByRole("article", {
+      name: "提供方 DeepSeek 实测",
+      exact: true,
+    });
+    const keyInput = item.getByLabel("API key", { exact: true });
+    await keyInput.evaluate((input: HTMLInputElement, value: string) => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, process.env.DEEPSEEK_API_KEY!);
+    await item.getByRole("button", { name: "保存密钥", exact: true }).click();
+    // Compared as a boolean so a failure message never carries the field's value.
+    await expect
+      .poll(async () => (await keyInput.inputValue()) === "")
+      .toBe(true);
+    await item
+      .getByRole("group", { name: `模型 ${auth.model}`, exact: true })
+      .getByRole("button", { name: "设为默认", exact: true })
+      .click();
+    await expect(item.getByText("默认", { exact: true })).toBeVisible();
     // 1. The tool call check, started only by the click.
     const provider = await openProvider(page, "DeepSeek 实测");
     const row = provider.getByRole("group", {
