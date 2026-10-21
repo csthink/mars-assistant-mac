@@ -5,7 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 import { closeLocal, launchLocal } from "./local-client";
 import { goTo } from "./shell";
 import { addProvider, openProvider } from "./provider-ui";
-import { workbenchProvider } from "./workbench-provider-fixture";
+import {
+  workbenchProvider,
+  workbenchProviderSecret,
+} from "./workbench-provider-fixture";
 import type { AddressInfo } from "node:net";
 import { createClaudeFixture } from "./claude-fixture";
 import { createCodexFixture } from "./codex-fixture";
@@ -205,7 +208,7 @@ test("workbench agent: an API model gets the workbench tools only after its tool
         url: `http://127.0.0.1:${port}/${route}/v1`,
         provider: "custom",
         model: "mock-model",
-        secret: "test-secret-workbench-not-a-real-key",
+        secret: workbenchProviderSecret,
         makeDefault: route === "agent",
       });
     // Unchecked: an ordinary conversation sends no tools, and the Agent cannot move anything.

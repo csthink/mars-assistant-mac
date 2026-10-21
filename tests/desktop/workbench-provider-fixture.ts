@@ -1,5 +1,8 @@
 import { createServer } from "node:http";
 
+/** The placeholder key of the local stand-in; it is not a credential and no provider sees it. */
+export const workbenchProviderSecret = "test-secret-workbench-not-a-real-key";
+
 /**
  * A local Chat Completions stand-in: "agent" answers the tool call check by echoing its token, and in a turn
  * offering the workbench tools moves 汇率 to the front with the revision the conversation listed; "notools"
