@@ -7,6 +7,7 @@ import {
   baseUrlProblem,
   defaultContextChars,
   imageInputLabels,
+  toolCallLabels,
   presets,
   providers,
   stateLabels,
@@ -1095,6 +1096,8 @@ function ModelRow({
   }
   const probe = m.lastProbe;
   const probing = probe && !terminalStates.includes(probe.state);
+  const toolProbe = m.lastToolProbe;
+  const toolProbing = toolProbe && !terminalStates.includes(toolProbe.state);
   const write = (
     enabled: boolean,
     imageInput: ImageInput,
@@ -1205,9 +1208,25 @@ function ModelRow({
       </p>
       <p className="model-capability">
         图片输入：{imageInputLabels[m.imageInput]}
-        {m.imageInputCheckedAt
-          ? `，检测于 ${new Date(m.imageInputCheckedAt).toLocaleString("zh-CN")}`
-          : ""}
+        {m.imageInputCheckedAt ? (
+          <>
+            ，检测于{" "}
+            <time dateTime={m.imageInputCheckedAt}>
+              {new Date(m.imageInputCheckedAt).toLocaleString("zh-CN")}
+            </time>
+          </>
+        ) : null}
+      </p>
+      <p className="model-capability" data-testid={`tools-${c.id}-${m.model}`}>
+        工具调用：{toolCallLabels[m.toolCalls]}
+        {m.toolCallsCheckedAt ? (
+          <>
+            ，检测于{" "}
+            <time dateTime={m.toolCallsCheckedAt}>
+              {new Date(m.toolCallsCheckedAt).toLocaleString("zh-CN")}
+            </time>
+          </>
+        ) : null}
       </p>
       <EffortSummary connection={c} model={m.model} />
       {probe && (
@@ -1217,10 +1236,21 @@ function ModelRow({
           {probe.errorMessage ? "：" + probe.errorMessage : ""}
         </p>
       )}
+      {toolProbe && (
+        <p
+          className={toolProbe.state === "failed" ? "form-error" : "form-note"}
+        >
+          工具调用检测：
+          {toolProbe.state === "completed"
+            ? "成功"
+            : stateLabels[toolProbe.state]}
+          {toolProbe.errorMessage ? "：" + toolProbe.errorMessage : ""}
+        </p>
+      )}
       {expanded && (
         <div className="model-capability-form">
           <p className="form-note">
-            图片能力由实际检测确认，无需手动声明。未检测时也可直接发送图片；检测会调用当前模型。
+            图片能力由实际检测确认，无需手动声明。未检测时也可直接发送图片；检测会调用当前模型。工具调用确认后，对话中的助手才能按你的明确要求调整控件顺序；检测会调用当前模型一次。
           </p>
           <Field
             label={`上下文预算（字符） ${m.model}`}
@@ -1268,6 +1298,27 @@ function ModelRow({
                 onClick={() => void check("image_probe", m.model)}
               >
                 检测图片能力
+              </button>
+            )}
+            {toolProbing ? (
+              <button
+                className="button"
+                onClick={() =>
+                  void command({
+                    type: "stopExecution",
+                    executionId: toolProbe.executionId,
+                  })
+                }
+              >
+                取消工具调用检测
+              </button>
+            ) : (
+              <button
+                className="button"
+                disabled={locked || !c.secretRef}
+                onClick={() => void check("tool_probe", m.model)}
+              >
+                检测工具调用
               </button>
             )}
           </div>

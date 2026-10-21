@@ -140,6 +140,7 @@ import {
 
 import { migrateWidgetOrder } from "./widget-order";
 import {
+  migrateToolCalls,
   runWorkbenchTool,
   workbenchActionSchema,
   workbenchActions,
@@ -237,6 +238,7 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
       migrateWidgetOrder(db);
       upgradeSearchIndex(db);
       db.exec(workbenchActionSchema);
+      migrateToolCalls(db);
     },
     33: `ALTER TABLE settings ADD COLUMN widget_generation_minutes INTEGER NOT NULL DEFAULT 10 CHECK(widget_generation_minutes BETWEEN 5 AND 30);
       ALTER TABLE widget_generation_tasks ADD COLUMN started_at INTEGER;

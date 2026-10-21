@@ -35,7 +35,11 @@ import {
   type CodexToolKind,
 } from "./codex-session";
 import { CodexDetector } from "./codex";
-import { runToolLoop } from "./tool-loop";
+import {
+  materialTool,
+  runToolLoop,
+  workbenchToolDefinitions,
+} from "./tool-loop";
 import { workbenchToolNames } from "../shared/workbench-tools";
 import { setTimeout as wait } from "node:timers/promises";
 import { authorizationWindowMs } from "../shared/capabilities";
@@ -121,6 +125,7 @@ import {
   listModels,
   probeChat,
   probeImage,
+  probeTools,
   streamChat,
   TransportError,
   type ChatMessage,
@@ -1025,7 +1030,7 @@ async function runTurn(executionId: string, connectionId: string) {
       apiKey,
     };
 
-    if (turn?.materialMode === "tools") {
+    if (materialTools || workbench) {
       const budget =
         liveConnection?.models.find((m) => m.model === connection.model)
           ?.contextChars ?? defaultContextChars;
@@ -1034,8 +1039,12 @@ async function runTurn(executionId: string, connectionId: string) {
         messages,
         controller.signal,
         onDelta,
-        invokeMaterial,
+        (call) => invokeTool(call),
         budget,
+        [
+          ...(materialTools ? [materialTool] : []),
+          ...(workbench ? workbenchToolDefinitions : []),
+        ],
       );
     } else await streamChat(endpoint, messages, controller.signal, onDelta);
     await flush();
@@ -1203,6 +1212,16 @@ async function runConnectionCheck(
       ok: false,
       code: "INVALID_SECRET",
       message: "该连接尚未保存 API key，未发送请求。",
+    };
+  if (
+    kind === "tool_probe" &&
+    ["codex", "claude"].includes(connection.provider)
+  )
+    return {
+      ok: false,
+      code: "CONFLICT",
+      message:
+        "Codex 与 Claude Code 的工具调用由启动前的工具限制核对确认，不需要单独检测。",
     };
   if (
     kind !== "model_list" &&
@@ -1442,7 +1461,21 @@ async function runConnectionCheck(
         const models = await listModels(endpoint, controller.signal);
         await report({ type: "reportModels", executionId, seq: ++seq, models });
       } else {
-        if (kind === "image_probe") {
+        if (kind === "tool_probe") {
+          const probe = await probeTools(endpoint, controller.signal);
+          if (!probe.called) {
+            // The interface accepted the tool but the model did not make the requested call.
+            await report({
+              type: "reportFailed",
+              executionId,
+              seq: ++seq,
+              errorClass: "protocol",
+              message:
+                "工具调用检测未通过：模型没有按要求调用检测工具，尚不能确认工具调用能力；可重新检测。",
+            });
+            return;
+          }
+        } else if (kind === "image_probe") {
           const probe = await probeImage(endpoint, controller.signal);
           if (!probe.described) {
             // The interface took the image but the model never saw it: that is not image support.
@@ -1472,6 +1505,8 @@ async function runConnectionCheck(
       const failure = classifyFailure(error);
       if (failure.imageUnsupported)
         await report({ type: "reportImageUnsupported", executionId });
+      if (failure.toolsUnsupported)
+        await report({ type: "reportToolsUnsupported", executionId });
       await report({
         type: "reportFailed",
         executionId,

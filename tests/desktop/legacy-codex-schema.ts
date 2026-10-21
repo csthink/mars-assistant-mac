@@ -180,8 +180,15 @@ export function restorePreUnifiedSearchFixture(db: DatabaseSync) {
     .all())
     db.exec(`DROP TRIGGER "${String(row.name)}"`);
   db.exec(
-    "DROP TABLE search_fts; DROP TABLE search_documents; DROP TABLE search_meta; DROP TABLE widget_order;",
+    "DROP TABLE search_fts; DROP TABLE search_documents; DROP TABLE search_meta; DROP TABLE widget_order; DROP TABLE workbench_actions; ALTER TABLE connection_models DROP COLUMN tool_calls_checked_at; ALTER TABLE connection_models DROP COLUMN tool_calls; PRAGMA foreign_keys=OFF;",
   );
+  narrowCheck(
+    db,
+    "executions",
+    ",'tool_probe'",
+    "CREATE INDEX executions_turn ON executions(turn_id, attempt);",
+  );
+  db.exec("PRAGMA foreign_keys=ON");
   // A raw test connection has no product functions; the schema-10 triggers need them.
   registerSearchFunctions(db);
   createSearchIndex(db);

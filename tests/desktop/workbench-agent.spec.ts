@@ -4,7 +4,9 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { closeLocal, launchLocal } from "./local-client";
 import { goTo } from "./shell";
-import { openProvider } from "./provider-ui";
+import { addProvider, openProvider } from "./provider-ui";
+import { workbenchProvider } from "./workbench-provider-fixture";
+import type { AddressInfo } from "node:net";
 import { createClaudeFixture } from "./claude-fixture";
 import { createCodexFixture } from "./codex-fixture";
 import { seedRetainedWidgets } from "./widget-generation-fixture";
@@ -175,5 +177,100 @@ test("workbench agent: a Codex turn quoting an old order revision moves nothing,
     expect(stored(data)).toEqual([ids[4], ids[0], ids[1], ids[2], ids[3]]);
   } finally {
     await closeLocal(app);
+  }
+});
+
+test("workbench agent: an API model gets the workbench tools only after its tool call check confirmed them", async () => {
+  const { data, ids } = setup("workbench-api");
+  const { server, requests } = workbenchProvider();
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const port = (server.address() as AddressInfo).port;
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${data}`],
+    cwd: resolve("."),
+  });
+  try {
+    const page = await app.firstWindow();
+    await expect(
+      page
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
+    ).toBeEnabled();
+    for (const [name, route] of [
+      ["拒绝工具模拟", "notools"],
+      ["工具模拟", "agent"],
+    ] as const)
+      await addProvider(page, {
+        name,
+        url: `http://127.0.0.1:${port}/${route}/v1`,
+        provider: "custom",
+        model: "mock-model",
+        secret: "test-secret-workbench-not-a-real-key",
+        makeDefault: route === "agent",
+      });
+    // Unchecked: an ordinary conversation sends no tools, and the Agent cannot move anything.
+    await ask(page, "把汇率移到第一个");
+    await expect(page.getByRole("article", { name: "助手消息" })).toHaveText(
+      "收到。",
+    );
+    expect(requests.at(-1)!.body.tools).toBeUndefined();
+    expect(stored(data)).toEqual(ids);
+    // A provider that refuses tools is recorded as unsupported; no probe is ever sent without a click.
+    const refusing = await openProvider(page, "拒绝工具模拟");
+    const refusingRow = refusing.getByRole("group", {
+      name: "模型 mock-model",
+      exact: true,
+    });
+    await expect(refusingRow.getByText(/工具调用：未检测/)).toBeVisible();
+    const before = requests.length;
+    await refusingRow
+      .getByRole("button", { name: "能力与预算", exact: true })
+      .click();
+    expect(requests.length).toBe(before);
+    await refusingRow
+      .getByRole("button", { name: "检测工具调用", exact: true })
+      .click();
+    await expect(
+      refusingRow.getByText(/工具调用：不支持，检测于/),
+    ).toBeVisible();
+    await expect(
+      refusingRow.getByText(/工具调用检测：失败.*不支持工具调用/),
+    ).toBeVisible();
+    // The capable model is confirmed by its own check.
+    const capable = await openProvider(page, "工具模拟");
+    const capableRow = capable.getByRole("group", {
+      name: "模型 mock-model",
+      exact: true,
+    });
+    await capableRow
+      .getByRole("button", { name: "能力与预算", exact: true })
+      .click();
+    await capableRow
+      .getByRole("button", { name: "检测工具调用", exact: true })
+      .click();
+    await expect(
+      capableRow.getByText(/工具调用：已确认，检测于/),
+    ).toBeVisible();
+    await expect(capableRow.getByText(/工具调用检测：成功/)).toBeVisible();
+    await ask(page, "把汇率移到第一个");
+    await expect(
+      page.getByRole("list", { name: "工作台操作结果" }).getByRole("listitem"),
+    ).toHaveText(["已将「汇率」移到第 1 位"]);
+    await expect(page.getByRole("article", { name: "助手消息" })).toHaveText(
+      "已按要求调整。",
+    );
+    const offered = requests.filter(
+      (r) => r.body.tools && r.body.stream !== false,
+    );
+    expect(
+      (offered[0].body.tools as { function: { name: string } }[]).map(
+        (t) => t.function.name,
+      ),
+    ).toEqual(["list_workbench_widgets", "move_workbench_widget"]);
+    expect(stored(data)).toEqual([ids[4], ids[0], ids[1], ids[2], ids[3]]);
+  } finally {
+    await closeLocal(app);
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
   }
 });

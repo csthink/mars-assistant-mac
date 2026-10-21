@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Dispatcher, getGlobalDispatcher } from "undici";
 import { toolArgumentsLimit, toolsPerRoundLimit } from "../shared/capabilities";
 import { crc32, deflateSync } from "node:zlib";
@@ -29,6 +30,8 @@ export interface Endpoint {
 export class TransportError extends Error {
   /** Set when the provider refused image content specifically; the connection's capability follows. */
   imageUnsupported = false;
+  /** Set when the provider refused the tools parameter for this model specifically (WB-02 tool call check). */
+  toolsUnsupported = false;
   constructor(
     public errorClass: ErrorClass,
     message: string,
@@ -165,6 +168,24 @@ export function classifyStatus(
       `HTTP 400：图片格式、尺寸或大小不符合提供方要求，请调整图片后重试。${suffix}`,
       status,
     );
+  // A provider that names tool or function calling as unsupported for this model (OpenRouter: no endpoint
+  // supports tool use) has measured the capability; other 400s are ordinary failures.
+  if (
+    context === "chat" &&
+    (status === 400 || status === 404) &&
+    /\btools?\b|tool[_ ]?(?:use|call|choice)|function[_ ]?call|工具/i.test(
+      detail,
+    ) &&
+    /not support|unsupported|does not support|no endpoints|不支持/i.test(detail)
+  ) {
+    const error = new TransportError(
+      "unsupported",
+      `HTTP ${status}：该模型或接口不支持工具调用。${suffix}`,
+      status,
+    );
+    error.toolsUnsupported = true;
+    return error;
+  }
   if (
     context === "chat" &&
     ((status === 400 &&
@@ -600,6 +621,83 @@ export interface StreamResult {
  * request being accepted is not enough: the answer must name the colour, since
  * some interfaces accept image parts they never show the model.
  */
+/** The one product tool of the tool call check; its argument is a random token the model must echo. */
+export const toolProbeName = "report_tool_probe";
+/**
+ * WB-02 tool call check (mac-feature-t11:OD-02 A): one request that offers a single probe tool and requires
+ * the model to call it with a fresh token. The model counts as able to call tools only when the reply is that
+ * call with that token; a provider that refuses the tools parameter is classified by the failure.
+ */
+export async function probeTools(
+  endpoint: Endpoint,
+  signal?: AbortSignal,
+  timeouts: RequestTimeouts = {},
+): Promise<{ called: boolean }> {
+  const token = randomUUID().slice(0, 8);
+  const parsed = (await send(
+    endpoint,
+    "chat/completions",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: endpoint.model,
+        messages: [
+          {
+            role: "user",
+            content: `这是一次工具调用能力检测。请调用 ${toolProbeName}，参数 token 为 ${token}，不要回答其他内容。`,
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: toolProbeName,
+              description: "Report the token of this tool call check.",
+              parameters: {
+                type: "object",
+                properties: { token: { type: "string" } },
+                required: ["token"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: toolProbeName } },
+        max_tokens: 200,
+        stream: false,
+      }),
+    },
+    signal,
+    "chat",
+    timeouts,
+  )) as {
+    choices?: {
+      message?: {
+        tool_calls?: { function?: { name?: unknown; arguments?: unknown } }[];
+      };
+    }[];
+  };
+  if (!Array.isArray(parsed.choices) || !parsed.choices.length)
+    throw new TransportError(
+      "protocol",
+      "问答响应缺少有效的 choices 数组，该地址可能不兼容。",
+    );
+  const calls = parsed.choices[0]?.message?.tool_calls;
+  const call = Array.isArray(calls) ? calls[0]?.function : undefined;
+  let argument: unknown;
+  try {
+    argument =
+      typeof call?.arguments === "string" ? JSON.parse(call.arguments) : null;
+  } catch {
+    argument = null;
+  }
+  return {
+    called:
+      call?.name === toolProbeName &&
+      (argument as { token?: unknown } | null)?.token === token,
+  };
+}
 export async function probeImage(
   endpoint: Endpoint,
   signal?: AbortSignal,

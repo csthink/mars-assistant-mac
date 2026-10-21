@@ -23,7 +23,7 @@ export function parseEffort(value: unknown): EffortRecord | null {
 export function modelRows(db: DatabaseSync, id: string): ConnectionModel[] {
   return db
     .prepare(
-      "SELECT claude_json AS claudeJson,codex_json AS codexJson,effort_json AS effortJson,model_id AS model,enabled,image_input AS imageInput,image_input_checked_at AS imageInputCheckedAt,context_chars AS contextChars FROM connection_models WHERE connection_id=? ORDER BY rowid",
+      "SELECT claude_json AS claudeJson,codex_json AS codexJson,effort_json AS effortJson,model_id AS model,enabled,image_input AS imageInput,image_input_checked_at AS imageInputCheckedAt,tool_calls AS toolCalls,tool_calls_checked_at AS toolCallsCheckedAt,context_chars AS contextChars FROM connection_models WHERE connection_id=? ORDER BY rowid",
     )
     .all(id)
     .map(({ codexJson, claudeJson, effortJson, ...r }) => ({
@@ -37,6 +37,7 @@ export function modelRows(db: DatabaseSync, id: string): ConnectionModel[] {
           [
             ["lastTest", "connection_test"],
             ["lastProbe", "image_probe"],
+            ["lastToolProbe", "tool_probe"],
           ] as const
         ).map(([field, kind]) => [
           field,
@@ -415,7 +416,7 @@ export function mutateModels(db: DatabaseSync, c: Command): boolean {
     ).run(c.id);
   if (endpointChanged)
     db.prepare(
-      "UPDATE connection_models SET image_input='unknown',image_input_checked_at=NULL WHERE connection_id=?",
+      "UPDATE connection_models SET image_input='unknown',image_input_checked_at=NULL,tool_calls='unknown',tool_calls_checked_at=NULL WHERE connection_id=?",
     ).run(c.id);
   if (c.model) {
     const changed = old && old.model !== c.model;

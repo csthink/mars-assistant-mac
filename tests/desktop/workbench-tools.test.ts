@@ -10,6 +10,9 @@ import {
   moveWidgetToolName,
 } from "../../src/shared/workbench-tools";
 import { seedRetainedWidgets } from "./widget-generation-fixture";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { probeTools, TransportError } from "../../src/main/transport";
 
 function ok(reply: Reply) {
   assert.equal(reply.ok, true, JSON.stringify(reply));
@@ -281,5 +284,177 @@ test("workbench tools: malformed arguments, unknown tools, ended turns and proje
     assert.equal(f.store.snapshot().workbenchActions.length, 0);
   } finally {
     f.close();
+  }
+});
+
+test("tool call check: a confirmed check records verified, a refused tools parameter records unsupported, other failures keep the measured value, and a new endpoint starts unknown", () => {
+  const f = fixture();
+  try {
+    const model = () =>
+      f.store
+        .snapshot()
+        .connections.find((c) => c.id === f.connectionId)!
+        .models.find((m) => m.model === "test-model")!;
+    assert.equal(model().toolCalls, "unknown");
+    assert.equal(model().toolCallsCheckedAt, null);
+    const probe = (finish: (executionId: string) => void) => {
+      const executionId = randomUUID();
+      ok(
+        f.host({
+          type: "createExecution",
+          executionId,
+          kind: "tool_probe",
+          connectionId: f.connectionId,
+          model: "test-model",
+        }),
+      );
+      ok(f.host({ type: "beginExecution", executionId }));
+      finish(executionId);
+      return executionId;
+    };
+    probe((executionId) =>
+      ok(f.host({ type: "reportFinished", executionId, seq: 1 })),
+    );
+    assert.equal(model().toolCalls, "verified");
+    assert.ok(model().toolCallsCheckedAt);
+    assert.equal(model().lastToolProbe?.state, "completed");
+    // An ordinary failure (no tool call made, network, rate limit) changes nothing measured.
+    probe((executionId) =>
+      ok(
+        f.host({
+          type: "reportFailed",
+          executionId,
+          seq: 1,
+          errorClass: "protocol",
+          message: "工具调用检测未通过",
+        }),
+      ),
+    );
+    assert.equal(model().toolCalls, "verified");
+    assert.equal(model().lastToolProbe?.state, "failed");
+    probe((executionId) => {
+      ok(f.host({ type: "reportToolsUnsupported", executionId }));
+      ok(
+        f.host({
+          type: "reportFailed",
+          executionId,
+          seq: 1,
+          errorClass: "unsupported",
+          message: "不支持工具调用",
+        }),
+      );
+    });
+    assert.equal(model().toolCalls, "unsupported");
+    // The check kind never reaches another model or a test of the text call.
+    assert.equal(
+      f.store.snapshot().connections.find((c) => c.id === f.connectionId)!
+        .lastTest,
+      null,
+    );
+    // The fixture's conversation turn uses the connection; it ends before the endpoint changes.
+    ok(f.host({ type: "reportFinished", executionId: f.executionId, seq: 1 }));
+    const current = f.store
+      .snapshot()
+      .connections.find((c) => c.id === f.connectionId)!;
+    ok(
+      f.command({
+        type: "upsertConnection",
+        id: f.connectionId,
+        name: current.name,
+        provider: current.provider,
+        baseUrl: "http://127.0.0.1:2/v1",
+        model: current.model,
+        secretRef: current.secretRef,
+        imageInput: "unknown",
+        contextChars: null,
+        revision: current.revision,
+      }),
+    );
+    assert.equal(model().toolCalls, "unknown");
+    assert.equal(model().toolCallsCheckedAt, null);
+  } finally {
+    f.close();
+  }
+});
+
+test("tool call check request: only the forced call with the issued token confirms; a provider naming tools as unsupported is classified", async () => {
+  let reply: (body: Record<string, unknown>) => {
+    status: number;
+    json: unknown;
+  } = () => ({ status: 200, json: {} });
+  const seen: Record<string, unknown>[] = [];
+  const server = createServer((request, response) => {
+    let text = "";
+    request.on("data", (part) => (text += part));
+    request.on("end", () => {
+      const body = JSON.parse(text);
+      seen.push(body);
+      const { status, json } = reply(body);
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify(json));
+    });
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const endpoint = {
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+    apiKey: "test-only",
+    model: "probe-model",
+  };
+  const call = (token: string, name = "report_tool_probe") => ({
+    status: 200,
+    json: {
+      choices: [
+        {
+          message: {
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: { name, arguments: JSON.stringify({ token }) },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const token = (body: Record<string, unknown>) =>
+    /token 为 (\w+)/.exec(
+      String((body.messages as { content: string }[])[0].content),
+    )![1];
+  try {
+    reply = (body) => call(token(body));
+    assert.deepEqual(await probeTools(endpoint), { called: true });
+    assert.deepEqual(seen[0].tool_choice, {
+      type: "function",
+      function: { name: "report_tool_probe" },
+    });
+    reply = () => call("wrong-token");
+    assert.deepEqual(await probeTools(endpoint), { called: false });
+    reply = (body) => call(token(body), "other_tool");
+    assert.deepEqual(await probeTools(endpoint), { called: false });
+    reply = () => ({
+      status: 200,
+      json: { choices: [{ message: { content: "好的" } }] },
+    });
+    assert.deepEqual(await probeTools(endpoint), { called: false });
+    reply = () => ({
+      status: 400,
+      json: { error: { message: "This model does not support tools" } },
+    });
+    await assert.rejects(probeTools(endpoint), (error: TransportError) => {
+      assert.equal(error.toolsUnsupported, true);
+      return true;
+    });
+    reply = () => ({
+      status: 400,
+      json: { error: { message: "Invalid request" } },
+    });
+    await assert.rejects(probeTools(endpoint), (error: TransportError) => {
+      assert.equal(error.toolsUnsupported, false);
+      return true;
+    });
+  } finally {
+    server.close();
   }
 });

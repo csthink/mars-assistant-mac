@@ -11,6 +11,44 @@ import {
   type WorkbenchToolCommand,
 } from "../shared/workbench-tools";
 
+/**
+ * Version 35, API tool calls (WB-02, mac-feature-t11:OD-02 A): the tool_probe check kind and the tool call
+ * capability of each connection model, recorded only by that model's own check.
+ */
+export function migrateToolCalls(db: DatabaseSync) {
+  const schema = String(
+    (
+      db
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type='table' AND name='executions'",
+        )
+        .get() as { sql: string }
+    ).sql,
+  );
+  if (!schema.includes("'tool_probe'")) {
+    if (!schema.includes("'agent_execution'"))
+      throw new Error("executions schema lacks 'agent_execution'");
+    db.exec(
+      schema
+        .replace(
+          /CREATE TABLE ["`]?executions["`]?/,
+          "CREATE TABLE executions_v35",
+        )
+        .replace("'agent_execution'", "'agent_execution','tool_probe'"),
+    );
+    db.exec(`INSERT INTO executions_v35 SELECT * FROM executions; DROP TABLE executions;
+ ALTER TABLE executions_v35 RENAME TO executions;
+ CREATE INDEX executions_turn ON executions(turn_id, attempt);`);
+  }
+  const columns = (
+    db.prepare("PRAGMA table_info(connection_models)").all() as {
+      name: string;
+    }[]
+  ).map((c) => c.name);
+  if (!columns.includes("tool_calls"))
+    db.exec(`ALTER TABLE connection_models ADD COLUMN tool_calls TEXT NOT NULL DEFAULT 'unknown' CHECK(tool_calls IN ('unknown','verified','unsupported'));
+ ALTER TABLE connection_models ADD COLUMN tool_calls_checked_at TEXT;`);
+}
 /** Version 35: the moves an Agent asked for, with the result the business service committed or refused. */
 export const workbenchActionSchema = `CREATE TABLE IF NOT EXISTS workbench_actions (
  id TEXT PRIMARY KEY, execution_id TEXT NOT NULL, call_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
