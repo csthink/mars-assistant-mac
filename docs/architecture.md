@@ -26,11 +26,11 @@ Host 与 Runtime 之间的协议是 Runtime Contract 0.1.0，本仓在 [`contrac
 | 主进程（桌面宿主） | `src/main/index.ts` → `dist/main.cjs` | 窗口与菜单栏面板、Tray、单实例与数据目录锁、文件选择、密钥 vault、模型 HTTPS 传输、本地 Agent 连接、Runtime supervisor 与 Host 服务、执行端口、控件视图管理 |
 | 业务服务 | `src/service/entry.ts` → `dist/service.cjs` | 由主进程以 Electron utilityProcess 启动；SQLite 唯一写者，负责回合、运行事件、待处理事项、控件、权限判定、扩展安装与执行记录，以及数据版本迁移 |
 | 资料提取 worker | `src/service/extract.ts` → `dist/extract.cjs` | 业务服务内的 worker 线程；提取文本、Markdown 与 PDF 的正文（PDF 经 PDF.js），内存上限与时限由业务服务从外部施加 |
-| 搜索 worker | `src/service/search-worker.ts` → `dist/search-worker.cjs` | 主进程内的 worker 线程；以只读方式打开数据库查询 FTS5 索引 |
+| 搜索 worker | `src/service/search-worker.ts` → `dist/search-worker.cjs` | 主进程内的 worker 线程，每个入口一个并常驻；以只读方式打开数据库，在同一读事务中查询对话、项目与正式控件三类 FTS5 索引并分页 |
 | 控件包构建 worker | `src/main/widget-build-worker.ts` → `dist/widget-build-worker.cjs` | 主进程内的 worker 线程；校验并构建控件包，不执行包内代码 |
 | 可信界面 | `src/renderer/index.tsx` → `dist/renderer.js`；preload `src/main/preload.ts` | 主窗口与菜单栏面板各一个 renderer，共用同一界面包 |
 | 控件视图 | `src/main/widget-runtime.ts`；preload `src/main/widget-preload.ts` | 每个控件实例一个 WebContentsView |
-| 产品 MCP 进程 | `src/main/claude-mcp.ts` → `dist/claude-mcp.cjs` | 为 Claude Code 受限会话提供经授权的资料读取；启动器清空其环境变量 |
+| 产品 MCP 进程 | `src/main/claude-mcp.ts` → `dist/claude-mcp.cjs` | 为 Claude Code 受限会话提供经授权的资料读取与工作台排序工具；启动器清空其环境变量 |
 | 进程身份辅助程序 | `src/main/codex-process.c` → `dist/codex-process` | 读取并核对子进程身份（PID、UID、内核启动时间、可执行映像、session），按身份发信号 |
 | 面板事件模块 | `src/main/panel-events.mm` → `dist/panel-events.node` | 监听菜单栏面板外的鼠标点击，用于失焦收起 |
 | 领域 Runtime | 导入的扩展运行包 | 每个资源范围一个受监督子进程，经 stdio 与 Host 通信 |
