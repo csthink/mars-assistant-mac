@@ -8,6 +8,9 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { updateAutomaticTitle } from "../../src/service/titles";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
+import { seedRetainedWidgets } from "./widget-generation-fixture";
 function seed() {
   mkdirSync(".test-data/disposable", { recursive: true });
   const root = mkdtempSync(resolve(".test-data/disposable/search-ui-"));
@@ -135,7 +138,7 @@ test("search: offline literal results, keyboard navigation, precise messages and
     });
     await page.context().setOffline(true);
     await page.keyboard.press("Meta+k");
-    const dialog = page.getByRole("dialog", { name: "搜索对话" }),
+    const dialog = page.getByRole("dialog", { name: "全局搜索" }),
       input = dialog.getByRole("combobox");
     await expect(dialog).toBeVisible();
     await input.fill("专属标题");
@@ -292,7 +295,7 @@ test("search: 1000 conversations and 20000 messages render cold and warm first p
         .getByRole("button", { name: "新建聊天", exact: true }),
     ).toBeEnabled();
     await page.keyboard.press("Meta+k");
-    const dialog = page.getByRole("dialog", { name: "搜索对话" }),
+    const dialog = page.getByRole("dialog", { name: "全局搜索" }),
       input = dialog.getByRole("combobox");
     await expect(dialog.getByRole("option")).toHaveCount(40);
     // Retain both the user-visible duration and the main-process search duration.
@@ -479,7 +482,7 @@ test("search: recent conversations keep creation order after renaming the oldest
     await page.reload();
     await check();
     await page.keyboard.press("Meta+k");
-    const search = page.getByRole("dialog", { name: "搜索对话" });
+    const search = page.getByRole("dialog", { name: "全局搜索" });
     await expect(search.getByRole("option")).toHaveCount(2);
     await expect(search.getByRole("option").nth(1)).toContainText(
       "最早创建的改名对话",
@@ -487,6 +490,213 @@ test("search: recent conversations keep creation order after renaming the oldest
     await page.keyboard.press("Escape");
     await check();
   } finally {
+    await app.close();
+  }
+});
+
+test("search: projects and retained widgets open the same identity, same names stay apart, archived stays archived, pages continue and a vanished target says so", async () => {
+  const { root } = seed();
+  const widgets = seedRetainedWidgets(root, ["松果看板", "松果看板"]);
+  const store = new Store(root);
+  const folder = (n: number) =>
+    JSON.stringify({
+      path: `/tmp/fixture-${n}`,
+      canonicalPath: `/tmp/fixture-${n}`,
+      identity: `fixture-${n}`,
+      git: null,
+    });
+  const insertProject = store.db.prepare(
+    "INSERT INTO projects(id,name,goal,folder_json,created_at,updated_at,archived_at) VALUES(?,?,?,?,?,?,?)",
+  );
+  const same = [randomUUID(), randomUUID()];
+  insertProject.run(
+    same[0],
+    "松果计划",
+    "整理松果标本",
+    folder(0),
+    "2026-10-01T00:00:00Z",
+    "2026-10-01T00:00:00Z",
+    null,
+  );
+  insertProject.run(
+    same[1],
+    "松果计划",
+    "",
+    folder(1),
+    "2026-10-02T00:00:00Z",
+    "2026-10-02T00:00:00Z",
+    "2026-10-03T00:00:00Z",
+  );
+  for (let i = 0; i < 45; i++)
+    insertProject.run(
+      randomUUID(),
+      `翻页项目 ${i}`,
+      "",
+      folder(10 + i),
+      "2026-09-01T00:00:00Z",
+      `2026-09-01T00:${String(i).padStart(2, "0")}:00Z`,
+      null,
+    );
+  store.db
+    .prepare("UPDATE widget_previews SET data=? WHERE candidate_id=?")
+    .run(
+      JSON.stringify({ note: "第二个看板的松果笔记" }),
+      widgets[1].candidateId,
+    );
+  store.close();
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+    cwd: resolve("."),
+  });
+  try {
+    const page = await app.firstWindow();
+    await expect(
+      page
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
+    ).toBeEnabled();
+    await page.context().setOffline(true);
+    await page.keyboard.press("Meta+k");
+    const dialog = page.getByRole("dialog", { name: "全局搜索" }),
+      input = dialog.getByRole("combobox"),
+      tabs = dialog.getByRole("tablist", { name: "搜索分类" });
+    await input.fill("松果");
+    await expect(tabs.getByRole("tab")).toHaveText([
+      "全部4",
+      "对话0",
+      "项目2",
+      "控件2",
+    ]);
+    const projects = dialog
+      .getByRole("group", { name: "项目" })
+      .getByRole("option");
+    await expect(projects).toHaveCount(2);
+    // Same names stay two results with their own identities; the archived one is marked.
+    await expect(projects.nth(0)).toContainText(same[1].slice(0, 8));
+    await expect(projects.nth(0)).toContainText("已归档");
+    await expect(projects.nth(1)).toContainText(same[0].slice(0, 8));
+    await expect(projects.nth(1).locator("mark")).toHaveText(["松果", "松果"]);
+    const widgetHits = dialog
+      .getByRole("group", { name: "控件" })
+      .getByRole("option");
+    await expect(widgetHits.nth(1)).toContainText("第二个看板的松果笔记");
+    await expect(widgetHits.nth(1)).toContainText("控件页");
+    await expect(widgetHits.nth(1)).toContainText(widgets[1].id.slice(0, 8));
+
+    // A retained widget opens the 控件 page and focuses that card, not its same-name sibling.
+    await widgetHits.nth(1).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.locator(`[data-formal-widget="${widgets[1].id}"]`),
+    ).toBeFocused();
+    await expect(
+      page.locator(`[data-formal-widget="${widgets[1].id}"]`),
+    ).toBeInViewport();
+
+    // The archived project opens its detail and stays archived.
+    await page.keyboard.press("Meta+k");
+    await input.fill("松果计划");
+    await dialog.locator(`[data-search-object="${same[1]}"]`).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "松果计划", exact: true }),
+    ).toBeVisible();
+    const db = new DatabaseSync(join(root, "state.sqlite"));
+    try {
+      expect(
+        db.prepare("SELECT archived_at FROM projects WHERE id=?").get(same[1])!
+          .archived_at,
+      ).toBe("2026-10-03T00:00:00Z");
+
+      // A category pages after its last hit: 45 matches, 40 then 5, and back.
+      await page.keyboard.press("Meta+k");
+      await input.fill("翻页项目");
+      await tabs.getByRole("tab", { name: /^项目/ }).click();
+      await expect(dialog.getByRole("option")).toHaveCount(40);
+      const firstPage = await dialog
+        .getByRole("option")
+        .evaluateAll((n) => n.map((e) => e.getAttribute("data-search-object")));
+      await dialog.getByRole("button", { name: "下一页", exact: true }).click();
+      await expect(dialog.getByRole("option")).toHaveCount(5);
+      const secondPage = await dialog
+        .getByRole("option")
+        .evaluateAll((n) => n.map((e) => e.getAttribute("data-search-object")));
+      expect(new Set([...firstPage, ...secondPage]).size).toBe(45);
+      await dialog.getByRole("button", { name: "上一页", exact: true }).click();
+      await expect(dialog.getByRole("option")).toHaveCount(40);
+
+      // A target removed after the results were drawn is reported, and nothing else opens.
+      await tabs.getByRole("tab", { name: /^控件/ }).click();
+      await input.fill("松果看板");
+      await expect(dialog.getByRole("option")).toHaveCount(2);
+      db.prepare("DELETE FROM saved_widgets WHERE id=?").run(widgets[0].id);
+      // Any committed command republishes the snapshot the renderer checks against.
+      await page.evaluate(() => window.desktop.command({ type: "snapshot" }));
+      await page.evaluate(() =>
+        window.desktop.command({ type: "setAppearance", appearance: "light" }),
+      );
+      await dialog.locator(`[data-search-object="${widgets[0].id}"]`).click();
+      await expect(dialog.getByRole("alert")).toContainText("该控件已不存在。");
+      await expect(dialog).toBeVisible();
+    } finally {
+      db.close();
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("search: a failed index rebuild says so and the previous index keeps answering for all three kinds", async () => {
+  const { root } = seed();
+  seedRetainedWidgets(root, ["重建看板"]);
+  const db = new DatabaseSync(join(root, "state.sqlite"));
+  db.exec(`CREATE TABLE test_rebuild_fault(id INTEGER PRIMARY KEY);
+    CREATE TRIGGER test_rebuild_fault BEFORE INSERT ON search_documents
+    WHEN EXISTS(SELECT 1 FROM test_rebuild_fault) BEGIN SELECT RAISE(ABORT,'injected rebuild failure'); END;`);
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${root}`],
+    cwd: resolve("."),
+  });
+  try {
+    const page = await app.firstWindow();
+    await expect(
+      page
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
+    ).toBeEnabled();
+    db.exec("INSERT INTO test_rebuild_fault VALUES(1)");
+    await goTo(page, "设置");
+    await page.getByRole("button", { name: "数据与隐私", exact: true }).click();
+    await page
+      .getByRole("button", { name: "重建搜索索引", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        "索引未重建。原对话、项目与控件保持不变，上一份索引仍可搜索。",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Meta+k");
+    const dialog = page.getByRole("dialog", { name: "全局搜索" });
+    await dialog.getByRole("combobox").fill("重建看板");
+    await expect(dialog.getByRole("option")).toHaveCount(1);
+    await dialog.getByRole("combobox").fill("如何查找");
+    await expect(
+      dialog.getByRole("group", { name: "对话" }).getByRole("option"),
+    ).toHaveCount(4);
+    await page.keyboard.press("Escape");
+    db.exec("DELETE FROM test_rebuild_fault");
+    await goTo(page, "设置");
+    await page.getByRole("button", { name: "数据与隐私", exact: true }).click();
+    await page
+      .getByRole("button", { name: "重建搜索索引", exact: true })
+      .click();
+    await expect(
+      page.getByText("搜索索引已重建。", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    db.close();
     await app.close();
   }
 });

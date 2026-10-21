@@ -702,7 +702,33 @@ function App() {
       : current
         ? "草稿已保存"
         : "草稿保存在本机";
-  async function openSearchHit(hit: SearchHit, query: string) {
+  const [widgetTarget, setWidgetTarget] = useState<string>();
+  /** Opens a search result by its stable identity (SEARCH-01); a vanished object says so instead. */
+  async function openSearchHit(
+    hit: SearchHit,
+    query: string,
+  ): Promise<boolean | string> {
+    if (hit.kind === "project") {
+      if (panel) return "项目详情在主窗口中打开，请在主窗口搜索。";
+      if (!snapshot?.projects.some((p) => p.id === hit.objectId))
+        return "该项目已不存在。";
+      sessionStorage.setItem("project-selected", hit.objectId);
+      await go("projects");
+      return true;
+    }
+    if (hit.kind === "widget") {
+      if (
+        !snapshot?.widgetGeneration?.widgets.some((w) => w.id === hit.objectId)
+      )
+        return "该控件已不存在。";
+      setWidgetFull(false);
+      setWidgetSection("widgets");
+      if (widgetSelected) await selectWidget();
+      await go("widgets");
+      setWidgetTarget(hit.objectId);
+      return true;
+    }
+    if (!hit.conversationId) return false;
     const selected = await model.select(hit.conversationId);
     if (!selected) return false;
     setReadOnlyView(undefined);
@@ -1367,6 +1393,8 @@ function App() {
           onSection={() => void window.desktop.openMain()}
           openSettings={() => void window.desktop.openMain()}
           occluded={searchOpen || overlayOpen || overlay}
+          focusWidget={widgetTarget}
+          onFocused={() => setWidgetTarget(undefined)}
         />
       );
     if (window.desktop.widgetEnabled)
@@ -1411,6 +1439,8 @@ function App() {
         occluded={searchOpen || overlayOpen || overlay}
         full={widgetFull}
         onFull={setWidgetFull}
+        focusWidget={widgetTarget}
+        onFocused={() => setWidgetTarget(undefined)}
       />
     );
   }

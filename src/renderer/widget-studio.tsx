@@ -220,6 +220,8 @@ export function WidgetStudio({
   full = false,
   onFull,
   panel = false,
+  focusWidget,
+  onFocused,
 }: {
   snapshot?: Snapshot;
   connected: boolean;
@@ -233,8 +235,27 @@ export function WidgetStudio({
   full?: boolean;
   onFull?: (value: boolean) => void;
   panel?: boolean;
+  /** A retained widget to bring into view and focus, from a search result (SEARCH-01). */
+  focusWidget?: string;
+  onFocused?: () => void;
 }) {
   const studio = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!focusWidget || selected || section !== "widgets") return;
+    const card = studio.current?.querySelector<HTMLElement>(
+      `[data-formal-widget="${focusWidget}"]`,
+    );
+    if (!card) return;
+    onFocused?.();
+    card.scrollIntoView({ block: "center" });
+    card.dataset.searchTarget = "true";
+    // The search panel returns focus to its opener as it closes; focus the card after that frame.
+    // Clearing the target re-runs this effect; the scheduled focus and mark removal still apply to this card.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => card.focus({ preventScroll: true })),
+    );
+    setTimeout(() => delete card.dataset.searchTarget, 2400);
+  }, [focusWidget, selected, section, snapshot, onFocused]);
   const fullButton = useRef<HTMLButtonElement>(null);
   const scroll = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
@@ -816,6 +837,8 @@ export function WidgetStudio({
                 className={`widget-saved-card ${drag?.id === w.id ? "dragging" : ""} ${drag?.over === w.id ? (drag.after ? "drop-after" : "drop-before") : ""}`}
                 key={w.id}
                 data-formal-widget={w.id}
+                tabIndex={-1}
+                aria-label={`控件 ${w.name} ${w.id.slice(0, 8)}`}
                 data-layout-edit={(!panel && layoutEdit) || undefined}
                 onDragOver={drag ? (event) => dropOn(w.id, event) : undefined}
                 onDrop={

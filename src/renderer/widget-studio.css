@@ -746,3 +746,10 @@
   background: var(--c-red-bg);
   color: var(--c-red);
 }
+
+/* A retained widget reached from a search result is marked for a moment (SEARCH-01). */
+.widget-saved-card[data-search-target],
+.widget-saved-card:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}

@@ -934,7 +934,7 @@ p {
   color: var(--c-muted);
 }
 
-/* Global search categories: the conversation index plus two honest entries for project and widget. */
+/* Global search categories: conversations, projects and retained widgets, each with its match count. */
 .search-categories {
   display: flex;
   gap: 6px;
@@ -966,6 +966,35 @@ p {
   color: var(--c-muted);
   font-size: 12px;
   border-bottom: 1px solid var(--c-line);
+}
+.search-count {
+  margin-left: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.search-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 23px 2px;
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.search-more {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--c-accent);
+  font-size: 11px;
+}
+.search-more:hover {
+  text-decoration: underline;
+}
+.search-result-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .shell {

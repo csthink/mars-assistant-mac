@@ -6,6 +6,7 @@ import {
 } from "@playwright/test";
 import { launchLocal } from "./local-client";
 import { Store } from "../../src/service/store";
+import { seedRetainedWidgets } from "./widget-generation-fixture";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -400,7 +401,7 @@ test("shell: the sidebar's recent list filters by title only, keeps the archived
       history.getByRole("button", { name: "已归档 0", exact: true }),
     ).toBeVisible();
     expect(await searches()).toBe(0);
-    await expect(page.getByRole("dialog", { name: "搜索对话" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "全局搜索" })).toHaveCount(0);
     // Composition: the list waits for the IME to commit before filtering.
     await input.fill("");
     await expect(rows).toHaveCount(2);
@@ -458,8 +459,23 @@ test("shell: the sidebar's recent list filters by title only, keeps the archived
   }
 });
 
-test("shell: the global search offers all, conversation, project and widget categories; project and widget say they are not provided and issue no query", async ({}, info) => {
+test("shell: the global search offers all, conversation, project and widget categories with match counts; project and widget results come from their own index and the keyword stays", async ({}, info) => {
   const { root, ids } = seed();
+  seedRetainedWidgets(root, ["第二季度看板"]);
+  const store = new Store(root);
+  const projectId = randomUUID();
+  store.db
+    .prepare(
+      "INSERT INTO projects(id,name,goal,folder_json,created_at,updated_at) VALUES(?,?,?,'{}',?,?)",
+    )
+    .run(
+      projectId,
+      "第二阶段",
+      "整理资料",
+      new Date().toISOString(),
+      new Date().toISOString(),
+    );
+  store.close();
   const { app, page } = await launch(root);
   try {
     await page.evaluate(async (id) => {
@@ -470,7 +486,7 @@ test("shell: the global search offers all, conversation, project and widget cate
       .locator("#main-sidebar")
       .getByRole("button", { name: "搜索", exact: true })
       .click();
-    const dialog = page.getByRole("dialog", { name: "搜索对话" });
+    const dialog = page.getByRole("dialog", { name: "全局搜索" });
     await expect(dialog).toBeVisible();
     const tabs = dialog.getByRole("tablist", { name: "搜索分类" });
     await expect(tabs.getByRole("tab")).toHaveText([
@@ -483,45 +499,64 @@ test("shell: the global search offers all, conversation, project and widget cate
       "aria-selected",
       "true",
     );
-    // 全部: conversation results plus one fixed line saying the other two kinds are not provided yet.
-    await expect(dialog.getByText("项目与控件搜索尚未提供")).toBeVisible();
-    const input = dialog.getByRole("combobox", { name: "搜索标题与正文" });
+    const input = dialog.getByRole("combobox", {
+      name: "搜索对话、项目与控件",
+    });
     await expect(input).toBeFocused();
     await input.fill("第二");
-    await expect(dialog.getByRole("option")).toHaveCount(1);
-    await expect(dialog.getByRole("option").first()).toContainText(
+    // 全部: one group per kind with its count, in the same reply.
+    await expect(tabs.getByRole("tab")).toHaveText([
+      "全部3",
+      "对话1",
+      "项目1",
+      "控件1",
+    ]);
+    await expect(dialog.getByRole("option")).toHaveCount(3);
+    await expect(dialog.getByRole("group", { name: "对话" })).toContainText(
       "第二个对话",
     );
-    const afterConversation = await searches();
-    expect(afterConversation).toBeGreaterThan(0);
-    // 项目: no results are invented, no query is sent, the keyword stays.
+    await expect(dialog.getByRole("group", { name: "项目" })).toContainText(
+      "第二阶段",
+    );
+    await expect(dialog.getByRole("group", { name: "控件" })).toContainText(
+      "第二季度看板",
+    );
+    const afterAll = await searches();
+    expect(afterAll).toBeGreaterThan(0);
+    // 项目: its own query; the keyword stays.
     await tabs.getByRole("tab", { name: "项目" }).click();
     await expect(tabs.getByRole("tab", { name: "项目" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await expect(dialog.getByRole("option")).toHaveCount(0);
-    await expect(dialog.getByRole("status")).toContainText("项目搜索尚未提供");
+    await expect(dialog.getByRole("option")).toHaveCount(1);
+    await expect(dialog.getByRole("option")).toContainText("第二阶段");
+    await expect(dialog.getByRole("option")).toContainText("项目");
     await expect(input).toHaveValue("第二");
-    await input.fill("第二个");
-    await expect(dialog.getByRole("status")).toContainText("项目搜索尚未提供");
-    expect(await searches()).toBe(afterConversation);
+    expect(await searches()).toBeGreaterThan(afterAll);
     await page.screenshot({
       path: info.outputPath("search-project-entry.png"),
     });
-    // 控件: same honesty; Enter must not open anything.
+    // 控件: the retained widget only.
     await tabs.getByRole("tab", { name: "控件" }).click();
-    await expect(dialog.getByRole("status")).toContainText("控件搜索尚未提供");
-    await input.press("Enter");
-    await expect(dialog).toBeVisible();
-    expect(await searches()).toBe(afterConversation);
-    // 对话: the same results as before, without the fixed line; 全部 shows the line again.
+    await expect(dialog.getByRole("option")).toHaveCount(1);
+    await expect(dialog.getByRole("option")).toContainText("控件页");
+    // Without a keyword, projects and widgets list nothing and no query is sent.
+    const beforeIdle = await searches();
+    await input.fill("");
+    await expect(dialog.getByRole("status")).toContainText(
+      "输入关键词搜索控件",
+    );
+    await tabs.getByRole("tab", { name: "项目" }).click();
+    await expect(dialog.getByRole("status")).toContainText(
+      "输入关键词搜索项目",
+    );
+    expect(await searches()).toBe(beforeIdle);
+    await input.fill("第二");
     await tabs.getByRole("tab", { name: "对话" }).click();
     await expect(dialog.getByRole("option")).toHaveCount(1);
-    await expect(dialog.getByText("项目与控件搜索尚未提供")).toHaveCount(0);
     await tabs.getByRole("tab", { name: "全部" }).click();
-    await expect(dialog.getByRole("option")).toHaveCount(1);
-    await expect(dialog.getByText("项目与控件搜索尚未提供")).toBeVisible();
+    await expect(dialog.getByRole("option")).toHaveCount(3);
     // Tabs are keyboard reachable: ArrowRight moves the selection, focus stays on the tablist.
     await tabs.getByRole("tab", { name: "全部" }).focus();
     await page.keyboard.press("ArrowRight");
@@ -659,7 +694,7 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
       bubbles: true,
     });
     await input.dispatchEvent("compositionend", { data: "中" });
-    await expect(page.getByRole("dialog", { name: "搜索对话" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "全局搜索" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "发送消息" })).toBeDisabled();
     await expect(input).toHaveValue("组合前的文字");
     const archived = await page.evaluate(async () => {
@@ -675,9 +710,9 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
       metaKey: true,
       bubbles: true,
     });
-    await expect(page.getByRole("dialog", { name: "搜索对话" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "全局搜索" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog", { name: "搜索对话" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "全局搜索" })).toHaveCount(0);
     // The panel keeps its own compact chrome: tabs named like the main window, composition Enter does not send.
     const opening = app.waitForEvent("window");
     await app.evaluate(({ Menu }) =>
@@ -709,9 +744,9 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
     ).toBeDisabled();
     await expect(panelInput).toHaveValue("面板组合前");
     await panel.getByRole("button", { name: "搜索对话", exact: true }).click();
-    await expect(panel.getByRole("dialog", { name: "搜索对话" })).toBeVisible();
+    await expect(panel.getByRole("dialog", { name: "全局搜索" })).toBeVisible();
     await panel.keyboard.press("Escape");
-    await expect(panel.getByRole("dialog", { name: "搜索对话" })).toHaveCount(
+    await expect(panel.getByRole("dialog", { name: "全局搜索" })).toHaveCount(
       0,
     );
     await panel.screenshot({ path: info.outputPath("panel-chrome.png") });
@@ -741,7 +776,7 @@ test("shell: a click outside the global search panel closes it like Escape and r
     const trigger = page
       .locator("#main-sidebar")
       .getByRole("button", { name: "搜索", exact: true });
-    const dialog = page.getByRole("dialog", { name: "搜索对话" });
+    const dialog = page.getByRole("dialog", { name: "全局搜索" });
     await trigger.click();
     await expect(dialog).toBeVisible();
     const box = (await dialog.boundingBox())!;

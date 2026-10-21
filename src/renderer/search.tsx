@@ -1,6 +1,7 @@
 import { openModal } from "./modal-focus";
 import { useEffect, useRef, useState } from "react";
-import type { SearchHit } from "../shared/search";
+import { Icon } from "./icons";
+import type { SearchCategory, SearchHit, SearchKind } from "../shared/search";
 let sequence = Date.now();
 export function Highlight({
   text,
@@ -19,34 +20,53 @@ export function Highlight({
   parts.push(text.slice(end));
   return <>{parts}</>;
 }
-/** Global search categories; only conversations have an index today, the other two are entries that say so. */
-type SearchCategory = "all" | "conversation" | "project" | "widget";
 const categories: [SearchCategory, string][] = [
   ["all", "全部"],
   ["conversation", "对话"],
   ["project", "项目"],
   ["widget", "控件"],
 ];
-const unprovided: Partial<Record<SearchCategory, string>> = {
-  project: "项目搜索尚未提供",
-  widget: "控件搜索尚未提供",
+const kindNames: Record<SearchKind, string> = {
+  conversation: "对话",
+  project: "项目",
+  widget: "控件",
 };
+const kindIcons: Record<SearchKind, string> = {
+  conversation: "chat",
+  project: "folder",
+  widget: "grid",
+};
+const empty = { conversation: 0, project: 0, widget: 0 };
+/** Where a hit lives (SEARCH-01): same-name objects stay apart by this line and by their short identity. */
+function location(hit: SearchHit) {
+  if (hit.kind === "project") return "项目";
+  if (hit.kind === "widget") return "控件页";
+  return `${hit.projectName ? `项目 ${hit.projectName}` : "未归属项目"} · ${hit.messageId ? "消息" : "对话标题"}`;
+}
 
+/**
+ * The global search panel (SEARCH-01): conversations, projects and retained widgets of this Mac, in four
+ * categories with their match counts. 全部 shows the first hits of every kind with a link to the kind's own
+ * category; a single category pages after the last hit of the previous page. A newer input supersedes every older
+ * request, and a reply for an older input is dropped.
+ */
 export function SearchDialog({
   onClose,
   onOpen,
 }: {
   onClose: () => void;
-  onOpen: (hit: SearchHit, query: string) => Promise<boolean>;
+  onOpen: (hit: SearchHit, query: string) => Promise<boolean | string>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
     input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<SearchCategory>("all");
-  const missing = unprovided[category];
-  const [offset, setOffset] = useState(0);
+  // Cursors of the pages before the current one; the last entry is the current page's cursor.
+  const [pages, setPages] = useState<(string | null)[]>([null]);
+  const cursor = pages.at(-1) ?? null;
   const [hits, setHits] = useState<SearchHit[]>([]),
-    [more, setMore] = useState(false);
+    [counts, setCounts] = useState(empty),
+    [next, setNext] = useState<string | null>(null);
   const [selected, setSelected] = useState(0),
     [busy, setBusy] = useState(true),
     [opening, setOpening] = useState(false),
@@ -54,6 +74,7 @@ export function SearchDialog({
   const [retry, setRetry] = useState(0);
   const version = useRef(0);
   const composing = useRef(false);
+  const keyword = query.trim();
   // SEARCH-01: a press that both starts and ends on the backdrop closes the panel like Escape;
   // a press that starts inside and is released outside must not.
   const backdropPress = useRef(false);
@@ -76,26 +97,29 @@ export function SearchDialog({
       restoreFocus();
     };
   }, []);
+  // Without a keyword, projects and widgets have nothing to list; no query is sent.
+  const idle = !keyword && (category === "project" || category === "widget");
   useEffect(() => {
     const token = ++version.current;
-    if (unprovided[category]) {
-      // No index exists for this category: nothing is queried and nothing is invented.
+    if (idle) {
       setBusy(false);
       setHits([]);
-      setMore(false);
+      setCounts(empty);
+      setNext(null);
       setSelected(0);
       return;
     }
     let alive = true;
     const timer = setTimeout(() => {
       void window.desktop
-        .search({ sequence: ++sequence, query, offset })
+        .search({ sequence: ++sequence, query, category, cursor })
         .then((reply) => {
           if (!alive || version.current !== token) return;
           setBusy(false);
           if (reply.ok) {
             setHits(reply.hits);
-            setMore(reply.hasMore);
+            setCounts(reply.counts);
+            setNext(reply.next);
             setSelected(0);
           } else if (reply.code !== "SUPERSEDED") setError(reply.message);
         })
@@ -110,52 +134,76 @@ export function SearchDialog({
       alive = false;
       clearTimeout(timer);
     };
-  }, [query, offset, retry, category]);
+  }, [query, cursor, retry, category, idle]);
   useEffect(() => {
     dialog.current
       ?.querySelector(`[data-search-index="${selected}"]`)
       ?.scrollIntoView({ block: "nearest" });
   }, [selected]);
-  function change(value: string) {
+  function reset(nextCategory: SearchCategory, nextQuery: string) {
     version.current++;
-    setQuery(value);
-    setOffset(0);
+    setPages([null]);
     setHits([]);
-    setMore(false);
+    setNext(null);
     setSelected(0);
-    setBusy(!unprovided[category]);
+    setBusy(
+      !(
+        !nextQuery.trim() &&
+        (nextCategory === "project" || nextCategory === "widget")
+      ),
+    );
     setError("");
     void window.desktop.cancelSearch();
   }
-  function choose(next: SearchCategory) {
-    if (next === category) return;
+  function change(value: string) {
+    setQuery(value);
+    if (!value.trim()) setCounts(empty);
+    reset(category, value);
+  }
+  function choose(nextCategory: SearchCategory) {
+    if (nextCategory === category) return;
+    setCategory(nextCategory);
+    reset(nextCategory, query);
+  }
+  function page(nextPages: (string | null)[]) {
     version.current++;
-    setCategory(next);
-    setOffset(0);
-    setHits([]);
-    setMore(false);
-    setSelected(0);
-    setBusy(!unprovided[next]);
+    setBusy(true);
     setError("");
-    void window.desktop.cancelSearch();
+    setPages(nextPages);
   }
   async function open(hit: SearchHit) {
     if (opening || busy) return;
     setOpening(true);
     try {
-      if (await onOpen(hit, query)) onClose();
-      else setError("未能打开原对话，请重试。");
+      const result = await onOpen(hit, query);
+      if (result === true) onClose();
+      else
+        setError(
+          typeof result === "string"
+            ? result
+            : hit.kind === "conversation"
+              ? "未能打开原对话，请重试。"
+              : `未能打开${kindNames[hit.kind]}，请重试。`,
+        );
     } catch {
-      setError("未能打开原对话，请重新连接后重试。");
+      setError("未能打开搜索结果，请重新连接后重试。");
     } finally {
       setOpening(false);
     }
   }
+  // 全部 groups the hits by kind in the reply's order; a single category is one group.
+  const groups = (["conversation", "project", "widget"] as const)
+    .map((kind) => ({
+      kind,
+      hits: hits.filter((hit) => hit.kind === kind),
+    }))
+    .filter((group) => group.hits.length);
+  let index = -1;
   return (
     <dialog
       ref={dialog}
       className="search-dialog"
-      aria-label="搜索对话"
+      aria-label="全局搜索"
       onCancel={(e) => {
         e.preventDefault();
         if (!opening) onClose();
@@ -183,7 +231,8 @@ export function SearchDialog({
         }
         if (e.key === "Enter" && document.activeElement === input.current) {
           e.preventDefault();
-          if (hits[selected]) void open(hits[selected]);
+          const flat = groups.flatMap((group) => group.hits);
+          if (flat[selected]) void open(flat[selected]);
         }
       }}
     >
@@ -191,8 +240,8 @@ export function SearchDialog({
         <span aria-hidden="true">⌕</span>
         <input
           ref={input}
-          aria-label="搜索标题与正文"
-          placeholder="搜索对话标题或消息内容…"
+          aria-label="搜索对话、项目与控件"
+          placeholder="搜索对话、项目或控件…"
           value={query}
           onChange={(e) => change(e.target.value)}
           onCompositionStart={() => {
@@ -220,15 +269,15 @@ export function SearchDialog({
         onKeyDown={(e) => {
           if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
           e.preventDefault();
-          const index = categories.findIndex(([id]) => id === category);
-          const next =
+          const at = categories.findIndex(([id]) => id === category);
+          const target =
             categories[
-              (index + (e.key === "ArrowRight" ? 1 : -1) + categories.length) %
+              (at + (e.key === "ArrowRight" ? 1 : -1) + categories.length) %
                 categories.length
             ][0];
-          choose(next);
+          choose(target);
           e.currentTarget
-            .querySelector<HTMLButtonElement>(`[data-category="${next}"]`)
+            .querySelector<HTMLButtonElement>(`[data-category="${target}"]`)
             ?.focus();
         }}
       >
@@ -244,22 +293,31 @@ export function SearchDialog({
             onClick={() => choose(id)}
           >
             {label}
+            {keyword && !busy && (
+              <b className="search-count">
+                {id === "all"
+                  ? counts.conversation + counts.project + counts.widget
+                  : counts[id]}
+              </b>
+            )}
           </button>
         ))}
       </div>
       <div className="search-group-title">
         <span>
-          {missing
-            ? categories.find(([id]) => id === category)![1]
-            : query.trim()
-              ? "匹配的对话与消息"
-              : "最近对话"}
+          {keyword
+            ? category === "all"
+              ? "匹配的对话、项目与控件"
+              : `匹配的${kindNames[category]}`
+            : category === "all" || category === "conversation"
+              ? "最近对话"
+              : categories.find(([id]) => id === category)![1]}
         </span>
         <span>仅搜索本机已保存内容</span>
       </div>
-      {category === "all" && (
-        <p className="search-scope-note">项目与控件搜索尚未提供</p>
-      )}
+      <p className="search-scope-note">
+        包含已归档 · 不含最近删除、未发送输入与控件草稿
+      </p>
       <div
         className="search-results"
         id="search-results"
@@ -268,41 +326,81 @@ export function SearchDialog({
         aria-busy={busy}
       >
         {!busy &&
-          hits.map((hit, index) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={index === selected}
-              id={`search-option-${index}`}
-              data-search-index={index}
-              key={`${hit.conversationId}:${hit.messageId}`}
-              className={`search-result ${index === selected ? "selected" : ""}`}
-              disabled={opening}
-              onMouseMove={() => setSelected(index)}
-              onClick={() => {
-                void open(hit);
-              }}
+          groups.map((group) => (
+            <div
+              key={group.kind}
+              role="group"
+              aria-label={kindNames[group.kind]}
+              className="search-group"
             >
-              <span className="search-result-icon" aria-hidden="true">
-                {hit.messageId ? "☰" : "▤"}
-              </span>
-              <span className="search-result-body">
-                <strong>
-                  <Highlight text={hit.title} ranges={hit.titleRanges} />
-                  {hit.archived && <span className="tag">已归档</span>}
-                </strong>
-                <small>
-                  <Highlight text={hit.text} ranges={hit.ranges} />
-                </small>
-                <span className="search-result-meta">
-                  {hit.messageId ? "消息" : "标题"} ·{" "}
-                  {new Date(hit.updatedAt).toLocaleString("zh-CN", {
-                    hour12: false,
-                  })}{" "}
-                  · {hit.conversationId.slice(0, 8)}
-                </span>
-              </span>
-            </button>
+              {keyword && category === "all" && (
+                <div className="search-group-head" role="presentation">
+                  <span>
+                    {kindNames[group.kind]} {counts[group.kind]}
+                  </span>
+                  {counts[group.kind] > group.hits.length && (
+                    <button
+                      type="button"
+                      className="search-more"
+                      onClick={() => choose(group.kind)}
+                    >
+                      查看全部 {counts[group.kind]} 个{kindNames[group.kind]}
+                      结果
+                    </button>
+                  )}
+                </div>
+              )}
+              {group.hits.map((hit) => {
+                const at = ++index;
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={at === selected}
+                    id={`search-option-${at}`}
+                    data-search-index={at}
+                    data-search-kind={hit.kind}
+                    data-search-object={hit.objectId}
+                    key={`${hit.kind}:${hit.objectId}:${hit.messageId}`}
+                    className={`search-result ${at === selected ? "selected" : ""}`}
+                    disabled={opening}
+                    onMouseMove={() => setSelected(at)}
+                    onClick={() => {
+                      void open(hit);
+                    }}
+                  >
+                    <span className="search-result-icon" aria-hidden="true">
+                      <Icon name={kindIcons[hit.kind]} />
+                    </span>
+                    <span className="search-result-body">
+                      <strong>
+                        <Highlight text={hit.title} ranges={hit.titleRanges} />
+                        {hit.archived && <span className="tag">已归档</span>}
+                      </strong>
+                      {hit.text && (
+                        <small>
+                          <Highlight text={hit.text} ranges={hit.ranges} />
+                        </small>
+                      )}
+                      <span className="search-result-meta">
+                        {location(hit)}
+                        {hit.updatedAt && (
+                          <>
+                            {" · "}
+                            <time dateTime={hit.updatedAt}>
+                              {new Date(hit.updatedAt).toLocaleString("zh-CN", {
+                                hour12: false,
+                              })}
+                            </time>
+                          </>
+                        )}
+                        {` · ${hit.objectId.slice(0, 8)}`}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
       </div>
       {busy && (
@@ -310,19 +408,23 @@ export function SearchDialog({
           正在搜索…
         </p>
       )}
-      {missing && (
+      {!busy && !error && !hits.length && (
         <div className="search-empty" role="status">
-          <strong>{missing}</strong>
-          <p>当前只搜索本机对话；这一类对象开放后再提供搜索。</p>
-        </div>
-      )}
-      {!missing && !busy && !error && !hits.length && (
-        <div className="search-empty" role="status">
-          <strong>{query.trim() ? "没有找到匹配内容" : "还没有对话"}</strong>
+          <strong>
+            {idle
+              ? `输入关键词搜索${kindNames[category as SearchKind]}`
+              : keyword
+                ? "没有找到匹配内容"
+                : "还没有对话"}
+          </strong>
           <p>
-            {query.trim()
-              ? "换一个关键词试试。草稿和附件正文不在搜索范围内。"
-              : "新建对话后，已保存的消息会出现在这里。"}
+            {idle
+              ? category === "project"
+                ? "匹配项目名称与目标，包含已归档项目。"
+                : "匹配已保留控件的名称与已保存内容，不包含控件草稿。"
+              : keyword
+                ? "换一个关键词试试。草稿、附件正文与控件草稿不在搜索范围内。"
+                : "新建对话后，已保存的消息会出现在这里。"}
           </p>
         </div>
       )}
@@ -344,26 +446,20 @@ export function SearchDialog({
       <footer className="search-footer">
         <span>↑ ↓ 选择 · Enter 打开 · Esc 关闭</span>
         <div>
-          {offset > 0 && (
+          {pages.length > 1 && (
             <button
               className="button small"
               disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                setOffset((n) => Math.max(0, n - 40));
-              }}
+              onClick={() => page(pages.slice(0, -1))}
             >
               上一页
             </button>
           )}
-          {more && (
+          {next && (
             <button
               className="button small"
               disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                setOffset((n) => n + 40);
-              }}
+              onClick={() => page([...pages, next])}
             >
               下一页
             </button>
@@ -380,7 +476,7 @@ export function SearchIndexSettings({ connected }: { connected: boolean }) {
     <div className="setting-row">
       <div>
         <strong>本地搜索索引</strong>
-        <p>搜索不完整时可以重建。对话和消息会保留。</p>
+        <p>搜索不完整时可以重建。对话、项目与控件会保留。</p>
         {message && <p role="status">{message}</p>}
       </div>
       <button
@@ -392,10 +488,16 @@ export function SearchIndexSettings({ connected }: { connected: boolean }) {
           void window.desktop
             .command({ type: "rebuildSearchIndex" })
             .then((reply) =>
-              setMessage(reply.ok ? "搜索索引已重建。" : reply.message),
+              setMessage(
+                reply.ok
+                  ? "搜索索引已重建。"
+                  : "索引未重建。原对话、项目与控件保持不变，上一份索引仍可搜索。",
+              ),
             )
             .catch(() =>
-              setMessage("索引未重建，请重试。原对话与消息保持不变。"),
+              setMessage(
+                "索引未重建。原对话、项目与控件保持不变，上一份索引仍可搜索。",
+              ),
             )
             .finally(() => setBusy(false));
         }}

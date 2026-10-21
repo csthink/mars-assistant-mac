@@ -135,6 +135,7 @@ import {
   registerSearchFunctions,
   createSearchIndex,
   rebuildSearchIndex,
+  upgradeSearchIndex,
 } from "./search-index";
 
 import { migrateWidgetOrder } from "./widget-order";
@@ -224,8 +225,12 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     26: migrateConversationOrder,
     27: migrateProjectOrganization,
     28: widgetGenerationSchema,
-    // Version 35: the workbench order revision of retained widgets (WB-02).
-    34: migrateWidgetOrder,
+    // Version 35: the workbench order revision of retained widgets (WB-02) and the index over conversations,
+    // projects and retained widgets with its generation (SEARCH-01).
+    34: (db) => {
+      migrateWidgetOrder(db);
+      upgradeSearchIndex(db);
+    },
     33: `ALTER TABLE settings ADD COLUMN widget_generation_minutes INTEGER NOT NULL DEFAULT 10 CHECK(widget_generation_minutes BETWEEN 5 AND 30);
       ALTER TABLE widget_generation_tasks ADD COLUMN started_at INTEGER;
       ALTER TABLE widget_generation_tasks ADD COLUMN deadline_at INTEGER;
