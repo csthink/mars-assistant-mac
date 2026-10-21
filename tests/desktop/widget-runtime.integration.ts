@@ -313,6 +313,42 @@ test("widget runtime: actual network, WebSocket, WebRTC, frames, file, permissio
   expect(datagrams).toEqual([16]);
   datagrams.length = 0;
   const client = await setup();
+  // Evidence for a probe that never settles (the page evaluation below then reaches the test timeout):
+  // after 40 seconds the test prints which probes finished and the view's lifecycle. It does not
+  // change the outcome.
+  const stalled = setTimeout(() => {
+    void Promise.race([
+      client.evaluate(async () => {
+        const h = Reflect.get(globalThis, "widgetHarness") as Harness;
+        const contents = h.instance.contents;
+        const page = contents.isDestroyed()
+          ? "contents destroyed"
+          : await Promise.race([
+              contents.executeJavaScript(
+                "JSON.stringify(globalThis.boundaryProgress ?? null)",
+              ),
+              new Promise((r) =>
+                setTimeout(() => r("page did not answer within 5 s"), 5000),
+              ),
+            ]);
+        return {
+          page,
+          active: h.instance.active,
+          ownerVisible: h.owner.isVisible(),
+          lifecycle: h.lifecycle,
+          failures: h.failures,
+        };
+      }),
+      new Promise((r) =>
+        setTimeout(() => r("main process did not answer within 10 s"), 10000),
+      ),
+    ]).then((state) =>
+      console.log(
+        "boundary probes still pending after 40 s",
+        JSON.stringify(state),
+      ),
+    );
+  }, 40_000);
   try {
     const result = await client.evaluate(
       async ({ webContents }, { http, udpPort, tcpPort }) => {
@@ -368,6 +404,7 @@ test("widget runtime: actual network, WebSocket, WebRTC, frames, file, permissio
       },
       { http, udpPort: udp.address().port, tcpPort: address.port },
     );
+    clearTimeout(stalled);
     console.log(
       JSON.stringify({
         boundaries: result,
@@ -459,6 +496,7 @@ test("widget runtime: actual network, WebSocket, WebRTC, frames, file, permissio
       );
     }
   } finally {
+    clearTimeout(stalled);
     await client.evaluate(async () =>
       (Reflect.get(globalThis, "widgetHarness") as Harness).runtime.close(),
     );

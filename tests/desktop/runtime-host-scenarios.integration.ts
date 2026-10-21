@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -1422,6 +1424,34 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
 
     // ---------------------------------------------------------------- C-09 completion versus cancellation
     await test.step("C-09", async () => {
+      // A stop that takes a while: the target ignores SIGTERM until the port's SIGKILL one second
+      // later. The domain's host.execution.get polls during that second observe stopping (the
+      // record carries the cancel time) and the operation still ends cancelled.
+      await port((p) => p.plan({ vector: "hang-ignore-term" }));
+      const slowStop = await gact("execution.request", "project:1", "request");
+      await until(
+        () => operation(slowStop.operationId),
+        (o) => o?.status === "running",
+      );
+      const slowCancel = await ev(
+        (host, a) =>
+          host.cancel(a.id as string, a.scope as string, a.op as string),
+        { id: gid, scope: gscope, op: slowStop.operationId },
+      );
+      expect(slowCancel.cancel.status).toBe("succeeded");
+      const slowStopOp = await gwait(slowStop.operationId);
+      expect(slowStopOp.status, slowStopOp.reason).toBe("cancelled");
+      const slowExec = (await records()).runtimeOperations.find(
+        (o) =>
+          o.method === "host.execution.start" &&
+          (o.request as Json).domainOperationId === slowStop.operationId,
+      )!;
+      const slowPhysical = await port((p, a) => p.settled(a.ref as string), {
+        ref: slowExec.executionRef!,
+      });
+      expect(slowPhysical?.view.state).toBe("stopped");
+      expect(slowPhysical?.view.stopReason).toBe("cancelled");
+      expect((slowPhysical?.view.exit as Json | null)?.signal).toBe("SIGKILL");
       await port((p) => p.plan({ vector: "hang" }));
       const hang = await gact("execution.request", "project:1", "request");
       await until(
@@ -1507,6 +1537,11 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
       });
       expect(cancelledRead.ok ? "OK" : cancelledRead.code).toBe("CANCELLED");
       checks["C-09"] = {
+        slowStop: {
+          op: slowStopOp.status,
+          physical: slowPhysical?.view.state,
+          signal: (slowPhysical?.view.exit as Json | null)?.signal ?? null,
+        },
         cancelFirst: {
           op: hangOp.status,
           physical: physical?.view.state,
@@ -2164,6 +2199,30 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
     );
   } finally {
     await app.close();
+    // The transcripts and the domain runtimes' own logs are evidence, kept whether or not a step failed:
+    // one zip each next to the report (raw evidence is archived outside the checkout).
+    execFileSync("zip", [
+      "-q",
+      "-j",
+      info.outputPath("transcripts.zip"),
+      ...readdirSync(f.transcripts).map((name) => join(f.transcripts, name)),
+    ]);
+    const instances = join(f.dir, "data-runtimes", "instances");
+    const logs = join(f.dir, "runtime-logs");
+    mkdirSync(logs, { recursive: true });
+    for (const instance of readdirSync(instances))
+      for (const domain of ["graph-runtime", "list-runtime"]) {
+        const log = join(instances, instance, domain, "runtime.log");
+        if (existsSync(log))
+          copyFileSync(log, join(logs, `${instance}.${domain}.log`));
+      }
+    if (readdirSync(logs).length)
+      execFileSync("zip", [
+        "-q",
+        "-j",
+        info.outputPath("runtime-logs.zip"),
+        ...readdirSync(logs).map((name) => join(logs, name)),
+      ]);
   }
   // The coverage report runs on the transcripts the Host wrote; shutdown frames arrive with app.close().
   const reportPath = info.outputPath("host-coverage.json");
@@ -2186,13 +2245,6 @@ test("runtime host scenarios C-01 to C-15: both domain fakes on the production H
     exitCode = e.status;
     output = (e.stdout ?? "") + (e.stderr ?? "");
   }
-  // The transcripts themselves are evidence: one zip next to the report (raw evidence is archived outside the checkout).
-  execFileSync("zip", [
-    "-q",
-    "-j",
-    info.outputPath("transcripts.zip"),
-    ...readdirSync(f.transcripts).map((name) => join(f.transcripts, name)),
-  ]);
   const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
     passed: boolean;
     methods: { missing: string[] };

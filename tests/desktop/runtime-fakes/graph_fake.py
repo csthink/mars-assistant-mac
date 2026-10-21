@@ -1014,6 +1014,9 @@ def main():
                 except FrameError as exc:
                     err = exc
             if err is not None:
+                # Evidence for an unexplained refusal: the refused bytes (bounded) go to runtime.log, which the
+                # scenario test keeps with its transcripts.
+                rt.note('frame rejected:', str(err), 'bytes', None if raw is None else len(raw), 'hex', None if raw is None else raw[:4096].hex())
                 mid = None
                 if raw is not None:
                     try:
