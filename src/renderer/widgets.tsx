@@ -285,9 +285,16 @@ export function WidgetWorkspace({
         !contentOnly &&
         controls &&
         (article?.matches(":hover, :focus-within") ||
+          article?.dataset.layoutEdit === "true" ||
           article?.dataset.nativeHover === "true" ||
           article?.dataset.nativeFocus === "true")
-          ? controls.getBoundingClientRect().bottom
+          ? Math.max(
+              controls.getBoundingClientRect().bottom,
+              // An open widget menu hangs below the row; the view starts below it while it is open.
+              controls
+                .querySelector(".widget-order-menu")
+                ?.getBoundingClientRect().bottom ?? 0,
+            )
           : bounds.top;
       const x = bounds.left + element.clientLeft,
         y = bounds.top + element.clientTop;

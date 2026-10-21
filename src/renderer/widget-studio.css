@@ -651,3 +651,98 @@
 .widget-retained.widget-shell {
   border: 0;
 }
+
+/* WB-02 ordering: 编辑布局 keeps every card's overlay row visible with a grip and 前移 / 后移; the ⋯ menu
+   offers the same moves outside the mode. Drag targets are the trusted parts of each card. */
+.widget-saved-card[data-layout-edit] > .widget-formal-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+.widget-order-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 32px;
+  color: var(--c-muted);
+  cursor: grab;
+}
+.widget-order-grip svg {
+  width: 12px;
+  height: 16px;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.widget-saved-card.dragging {
+  opacity: 0.45;
+}
+.widget-saved-card.drop-before {
+  box-shadow: -3px 0 0 var(--c-accent);
+}
+.widget-saved-card.drop-after {
+  box-shadow: 3px 0 0 var(--c-accent);
+}
+.widget-order-menu-anchor {
+  position: relative;
+  flex: none;
+}
+.widget-order-more {
+  width: 32px;
+  height: 32px;
+}
+.widget-order-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+.widget-order-menu .button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+}
+.widget-order-menu .button[aria-disabled="true"] {
+  color: var(--c-muted);
+  cursor: default;
+}
+.widget-order-menu small {
+  font-size: 11px;
+  color: var(--c-muted);
+}
+/* Aligned with the 24-point inset of the card grid below. */
+.widget-layout-note {
+  margin: 16px 24px 0;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+/* Read by assistive technology only; clip-path removes the whole painted area, overflowing text included. */
+.widget-order-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.widget-order-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 24px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--c-accent-soft);
+  font-size: 13px;
+}
+.widget-order-notice > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.widget-order-notice.error {
+  background: var(--c-red-bg);
+  color: var(--c-red);
+}

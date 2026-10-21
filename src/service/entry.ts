@@ -80,6 +80,10 @@ port.on("message", (event) => {
     message.surface as Surface,
     message.origin === "host" ? "host" : "renderer",
   );
+  // WB-02: a refused or failed order move rebuilds every entry from the service's current order. The update
+  // goes out before the reply, so the entry already holds the current revision when its move settles.
+  if (!reply.ok && message.command?.type === "moveWidget")
+    port.postMessage({ type: "update", snapshot: store.snapshot() });
   port.postMessage({ type: "reply", id: message.id, reply });
   extraction?.schedule();
 });

@@ -169,9 +169,17 @@ export interface WidgetGenerationSnapshot {
   tasks: GenerationTask[];
   candidates: GeneratedCandidate[];
   widgets: SavedWidget[];
+  /** Revision of the order of `widgets`; every order commit raises it (WB-02). */
+  orderRevision: number;
   selected?: { main: string | null; panel: string | null };
 }
 export type WidgetGenerationCommand =
+  | {
+      type: "moveWidget";
+      widgetId: string;
+      toIndex: number;
+      orderRevision: number;
+    }
   | { type: "setWidgetGenerationWait"; minutes: number }
   | {
       type: "extendWidgetGeneration";
@@ -292,6 +300,14 @@ export function validWidgetGenerationCommand(
         text(v.name, 160) &&
         text(v.input, 64000) &&
         id(v.undoToken)
+      );
+    case "moveWidget":
+      return (
+        exact(v, ["widgetId", "toIndex", "orderRevision"]) &&
+        id(v.widgetId) &&
+        revision(v.toIndex) &&
+        Number(v.toIndex) < 10000 &&
+        revision(v.orderRevision)
       );
     case "undoWidgetDraftDeletion":
       return exact(v, ["id", "undoToken"]) && id(v.id) && id(v.undoToken);
