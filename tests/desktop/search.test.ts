@@ -775,3 +775,61 @@ test("三类索引重建失败保留上一代索引与原数据，成功后代�
     rmSync(f.dir, { recursive: true });
   }
 });
+
+test("读取 worker 常驻：取消与新输入不重建线程，被替代的回复丢弃，超时后排队请求由新线程回答", async () => {
+  const dir = mkdtempSync(resolve(".test-data/disposable/search-worker-"));
+  // A stand-in read worker: answers with its thread identity after the delay the query names.
+  const workerFile = join(dir, "echo-worker.cjs");
+  writeFileSync(
+    workerFile,
+    `const { parentPort, threadId } = require("node:worker_threads");
+     parentPort.on("message", (r) => {
+       const delay = Number(r.query.split(":")[1] ?? 0);
+       const until = Date.now() + delay;
+       while (Date.now() < until) {}
+       parentPort.postMessage({ ok: true, sequence: r.sequence, query: r.query, category: r.category, counts: { conversation: threadId, project: 0, widget: 0 }, hits: [], next: null, hasMore: false, snapshot: { generation: 0, revision: 0 } });
+     });`,
+  );
+  const service = new SearchService(dir, workerFile, 400);
+  const ask = (sequence: number, query: string) =>
+    service.query("main", { sequence, query, category: "all", cursor: null });
+  const thread = (reply: Awaited<ReturnType<typeof ask>>) => {
+    assert.equal(reply.ok, true);
+    return reply.ok ? reply.counts.conversation : -1;
+  };
+  try {
+    const first = thread(await ask(1, "a:0"));
+    service.cancel("main");
+    assert.equal(thread(await ask(2, "b:0")), first);
+    // A newer input while one runs: the running reply is dropped, the waiting one is replaced, the newest answers.
+    const running = ask(3, "c:150"),
+      replaced = ask(4, "d:0"),
+      newest = ask(5, "e:0");
+    assert.deepEqual(await running, {
+      ok: false,
+      code: "SUPERSEDED",
+      message: "搜索词已变化。",
+    });
+    assert.equal((await replaced).ok, false);
+    assert.equal(thread(await newest), first);
+    // Cancel drops the running request's result.
+    const cancelled = ask(6, "f:100");
+    service.cancel("main");
+    assert.equal((await cancelled).ok, false);
+    // Past the deadline the worker stops; the request waiting behind it runs on a new thread.
+    const slow = ask(7, "g:1000"),
+      after = ask(8, "h:0");
+    const timeout = await slow;
+    assert.equal(timeout.ok, false);
+    if (!timeout.ok) assert.equal(timeout.code, "TIMEOUT");
+    const fresh = thread(await after);
+    assert.notEqual(fresh, first);
+    const alone = ask(9, "i:1000");
+    const late = await alone;
+    assert.equal(late.ok, false);
+    if (!late.ok) assert.equal(late.code, "TIMEOUT");
+  } finally {
+    service.close();
+    rmSync(dir, { recursive: true });
+  }
+});
