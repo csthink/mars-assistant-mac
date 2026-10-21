@@ -95,6 +95,35 @@ async function judgeCheck(view: Page, check: DomCheck, timeoutMs = 0) {
   }
   return { pass: within(count, check), observed: `count ${count}` };
 }
+/**
+ * Checks a checkbox the way a user does. A native checkbox drawn by a custom element (the input
+ * visually hidden or not hit-testable, the visible box inside or next to its label) does not
+ * receive the pointer itself: the user clicks its label, which toggles it. Any other checkbox is
+ * checked directly.
+ */
+async function checkBox(view: Page, box: Locator) {
+  await box.scrollIntoViewIfNeeded({ timeout: stepTimeoutMs });
+  const reachable = await box.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const hit = document.elementFromPoint(
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+    return !!hit && (hit === el || el.contains(hit));
+  });
+  if (reachable) return box.check({ timeout: stepTimeoutMs });
+  const id = await box.getAttribute("id");
+  const labels = id
+    ? box
+        .locator("xpath=ancestor::label")
+        .or(view.locator(`label[for=${JSON.stringify(id)}]`))
+    : box.locator("xpath=ancestor::label");
+  if (!(await labels.count())) return box.check({ timeout: stepTimeoutMs });
+  await labels.first().click({ timeout: stepTimeoutMs });
+  if (!(await box.isChecked()))
+    throw new Error("clicking the checkbox label did not check it");
+}
 async function judgeRule(view: Page, rule: RenderRule): Promise<RuleResult> {
   if (rule.check !== "interaction") {
     const r = await judgeCheck(view, rule);
@@ -112,7 +141,7 @@ async function judgeRule(view: Page, rule: RenderRule): Promise<RuleResult> {
         const target = roleLocator(view, step.roles, step.name, step.flags);
         if (step.action === "click")
           await target.first().click({ timeout: stepTimeoutMs });
-        else await target.first().check({ timeout: stepTimeoutMs });
+        else await checkBox(view, target.first());
       } else {
         const r = await judgeCheck(
           view,

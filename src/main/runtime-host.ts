@@ -1911,20 +1911,25 @@ export class RuntimeHost {
           unknown: "unknown",
         };
         const mapped = terminalStatus[String(physical.state)];
-        if (
-          mapped &&
-          !terminal(operation.status) &&
-          operation.status !== mapped
-        )
+        // The operation read above predates the physical observation. A port that commits its
+        // transitions moves the start operation (with the fixed result reference) in the same
+        // transaction as the record, before its get() or the stored record shows the terminal
+        // state; the operation is read again so that such a commit is never overwritten with
+        // the older copy.
+        const current = mapped
+          ? ((await this.operationRead(instanceId, operation.operationId)) ??
+            operation)
+          : operation;
+        if (mapped && !terminal(current.status) && current.status !== mapped)
           await this.persistOperation({
-            ...operation,
+            ...current,
             status: mapped,
             reason:
               typeof physical.reason === "string"
                 ? physical.reason
-                : operation.reason,
-            revision: String(Number(operation.revision ?? "1") + 1),
-            result: { ...(operation.result ?? {}), state: physical.state },
+                : current.reason,
+            revision: String(Number(current.revision ?? "1") + 1),
+            result: { ...(current.result ?? {}), state: physical.state },
             updatedAt: nowIso(),
           });
         // Contract HostExecutionGetResult is the PhysicalExecution itself (plus Context, added by the connection).

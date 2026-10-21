@@ -63,7 +63,7 @@ export function fakeAgentProfile(program: ProgramIdentity): ExecutionProfile {
 }
 
 export interface Plan {
-  vector: "valid" | "hang" | "fail" | "slow";
+  vector: "valid" | "hang" | "hang-ignore-term" | "fail" | "slow";
   /** C-13: the observation channel is lost after init, so the outcome can never be proven. */
   observeLoss?: boolean;
 }
@@ -75,6 +75,8 @@ interface Execution {
   child: ChildProcess | null;
   kill: ((reason: string) => void) | null;
   cancelRequested: boolean;
+  /** When the cancel was requested; a record in state stopping carries it (the Host store requires it). */
+  cancelRequestedAt: string | null;
   transcript: string;
   done: Promise<void>;
 }
@@ -179,6 +181,7 @@ export class FakeAgentPort implements ExecutionPort {
       child: null,
       kill: null,
       cancelRequested: false,
+      cancelRequestedAt: null,
       transcript,
       done: Promise.resolve(),
     };
@@ -339,7 +342,13 @@ export class FakeAgentPort implements ExecutionPort {
     const current = await execution.context.current();
     if (current && current.state !== physical.state)
       await execution.context.transition({
-        record: { ...current, ...physical, updatedAt: nowIso() },
+        record: {
+          ...current,
+          ...physical,
+          cancelRequestedAt:
+            current.cancelRequestedAt ?? execution.cancelRequestedAt,
+          updatedAt: nowIso(),
+        },
         event: null,
         pending: null,
       });
@@ -355,6 +364,7 @@ export class FakeAgentPort implements ExecutionPort {
         status: "succeeded",
         reason: "execution already terminal: " + state,
       };
+    execution.cancelRequestedAt = nowIso();
     execution.cancelRequested = true;
     if (state === "running") execution.view.state = "stopping";
     execution.kill?.("cancel");

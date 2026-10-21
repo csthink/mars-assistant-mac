@@ -85,7 +85,7 @@ const build = (over: Partial<BuiltWidget["manifest"]> = {}): BuiltWidget => ({
 test("控件评测：标准需求集版本化、中英文与类别覆盖完整，每条都有参考实现", () => {
   assert.match(sha256, /^[0-9a-f]{64}$/);
   assert.equal(set.set, "widget-generation-standard");
-  assert.equal(set.version, 1);
+  assert.equal(set.version, 2);
   assert.equal(set.requirements.length, 13);
   const count = (key: "language", value: string) =>
     set.requirements.filter((r) => r[key] === value).length;

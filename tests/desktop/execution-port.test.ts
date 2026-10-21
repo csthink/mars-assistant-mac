@@ -122,7 +122,7 @@ function harness() {
     execution?: HostExecutionRecord | null;
     operation?: RuntimeOperation | null;
     unavailable: boolean;
-    beforeRead: (() => void) | null;
+    beforeRead: (() => void | Promise<void>) | null;
   } = { unavailable: false, beforeRead: null };
   const host = new RuntimeHost({
     runtimeRoot: join(dir, "runtimes"),
@@ -137,7 +137,7 @@ function harness() {
         ["runtimeExecutionRead", "runtimeOperationRead"].includes(command.type)
       ) {
         if (query.unavailable) throw new Error("simulated unavailable index");
-        query.beforeRead?.();
+        await query.beforeRead?.();
       }
       const reply = store.execute(command, "main", "host");
       if (
@@ -1772,6 +1772,56 @@ test("KB-245 result bytes: complete immutable chunks, distinct executions sharin
     } finally {
       await reopened.close();
     }
+  } finally {
+    await h.port.close();
+    h.store.close();
+  }
+});
+
+test("result reference under a concurrent query: host.execution.get that read the start operation before the terminal transition committed keeps the transition's fixed result reference", async () => {
+  const h = harness();
+  try {
+    const grant = await grantOf(h);
+    // The target stays alive long enough for the query to start while it is running.
+    h.fixture.update({ implementerToolDelayMs: 1500 });
+    const accepted = await h.inbound(
+      h.connection,
+      "host.execution.start",
+      startRequest(grant.ref, 92),
+    );
+    const ref = String(accepted.executionRef);
+    assert.equal(recordOf(h, ref).state, "running");
+    // The query reads the start operation (running), then the execution record; the record read
+    // waits until the port has committed the terminal transition with the result reference.
+    let held = false;
+    h.query.beforeRead = async () => {
+      if (held) return;
+      held = true;
+      await h.port.waitIdle(ref);
+    };
+    const physical = await h.inbound(h.connection, "host.execution.get", {
+      scopeRef: "scope:a",
+      executionRef: ref,
+    });
+    h.query.beforeRead = null;
+    assert.ok(held, "the query waited inside its record read");
+    assert.equal(physical.state, "completed");
+    const record = recordOf(h, ref);
+    assert.ok(record.resultRef);
+    const operation = h.store
+      .snapshot()
+      .runtimeOperations.find((o) => o.operationId === "op:exec-92")!;
+    assert.equal(operation.status, "succeeded");
+    assert.deepEqual(operation.resultRef, record.resultRef);
+    const chunk = await h.inbound(h.connection, "host.resource.read", {
+      scopeRef: "scope:a",
+      evidence: record.resultRef,
+      grantRefs: [grant.ref],
+      offset: 0,
+      length: 65536,
+    });
+    assert.equal(chunk.digest, record.resultRef.digest);
+    assert.equal(chunk.eof, true);
   } finally {
     await h.port.close();
     h.store.close();

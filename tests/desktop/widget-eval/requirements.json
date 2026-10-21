@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "set": "widget-generation-standard",
-  "version": 1,
+  "version": 2,
   "requirements": [
     {
       "id": "timer-pomodoro-zh",
@@ -235,7 +235,7 @@
         {
           "id": "day-labels",
           "check": "text",
-          "pattern": "^周[一日]$",
+          "pattern": "周[一日]",
           "min": 2
         }
       ]
@@ -443,7 +443,7 @@
         {
           "id": "habits",
           "check": "text",
-          "pattern": "^(Read|Exercise|Sleep early)$",
+          "pattern": "\\b(Read|Exercise|Sleep early)\\b",
           "min": 3
         },
         {

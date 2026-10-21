@@ -4,9 +4,11 @@ stream-json-like frames on stdout. Never shipped; only the integration test regi
 
 Usage: fake_agent.py <vector>
 Vectors: valid (init, one Write, result, exit 0); hang (init, then never exits; the Host cancels or times out);
+         hang-ignore-term (like hang, but SIGTERM is ignored, so a stop lasts until the port's SIGKILL);
          fail (init, then exit 1 without a result frame); slow (init, sleeps 2 s, result).
 """
 import json
+import signal
 import sys
 import time
 import uuid
@@ -29,10 +31,12 @@ def assistant(content):
 
 
 def main():
+    if VECTOR == 'hang-ignore-term':
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     prompt = sys.stdin.readline()
     assert prompt.startswith('test prompt'), 'prompt not delivered on stdin'
     emit({'type': 'system', 'subtype': 'init', 'cwd': str(CWD), 'session_id': SESSION, 'tools': ['Write'], 'mcp_servers': [], 'model': MODEL, 'permissionMode': 'acceptEdits', 'claude_code_version': 'fake', 'uuid': str(uuid.uuid4())})
-    if VECTOR == 'hang':
+    if VECTOR in ('hang', 'hang-ignore-term'):
         while True:
             time.sleep(3600)
     if VECTOR == 'fail':
