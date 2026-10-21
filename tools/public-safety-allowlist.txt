@@ -24,6 +24,8 @@
 ^tests/desktop/attachments\.spec\.ts:const secret [=] "test-secret-attachments-not-a-real-key";$
 # tests/desktop/capabilities.spec.ts：能力用例添加提供方时填写的密钥
 ^tests/desktop/capabilities\.spec\.ts:    secret[:] "synthetic-only-key",$
+# tests/desktop/workbench-provider-fixture.ts：工作台用例与截图集本机模拟提供方的占位密钥
+^tests/desktop/workbench-provider-fixture\.ts:export const workbenchProviderSecret [=] "test-secret-workbench-not-a-real-key";$
 # tests/desktop/chat.spec.ts：对话用例的模拟提供方密钥
 ^tests/desktop/chat\.spec\.ts:const secret [=] "test-secret-chat-not-a-real-key";$
 # tests/desktop/connections.spec.ts：连接用例的模拟提供方密钥
@@ -64,6 +66,10 @@
 ^tests/desktop/service\.test\.ts:      \{ \.\.\.base, secret[:] "sk-plain-text" \},$
 # tests/desktop/tool-loop.test.ts：发往本机模拟服务的 API key
 ^tests/desktop/tool-loop\.test\.ts:      apiKey[:] "synthetic-tool-key",$
+# tests/desktop/search.test.ts：反例输入，断言控件配置里的字段不进入搜索索引
+^tests/desktop/search\.test\.ts:        JSON\.stringify\(\{ token[:] "配置里的秘密口令" \}\),$
+# tests/desktop/workbench-tools.test.ts：工具调用检测请求发往本机模拟服务的 API key
+^tests/desktop/workbench-tools\.test\.ts:    apiKey[:] "test-only",$
 # tests/desktop/transport.test.ts：发往本机模拟服务的 API key
 ^tests/desktop/transport\.test\.ts:  apiKey[:] "test-secret-transport",$
 # tests/desktop/vault.test.ts：vault 加密存取用例的明文样本
