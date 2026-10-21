@@ -1,5 +1,5 @@
 // Test-side input helper for the scheduled widget order native test (mac-feature-t11 V-15). It posts macOS HID
-// mouse events through Core Graphics and reports, after every event, where the system cursor is, which
+// mouse and key events through Core Graphics and reports, after every event, where the system cursor is, which
 // application is frontmost and which application owns the topmost window under the cursor. It never asks for a
 // permission: it reads whether posting events and accessibility are already allowed and refuses otherwise.
 // Built by the test with /usr/bin/clang into the disposable test data directory; not part of the product.
@@ -75,8 +75,17 @@ int main(int argc, const char *argv[]) {
       }
       usleep(300000);
       Post(kCGEventLeftMouseUp, b, 1); Emit(log, @"up", b); usleep(300000);
+    } else if ([command isEqualToString:@"key"] && argc == 3) {
+      CGKeyCode code = (CGKeyCode)atoi(argv[2]);
+      for (int down = 1; down >= 0; down--) {
+        CGEventRef e = CGEventCreateKeyboardEvent(NULL, code, down);
+        CGEventPost(kCGHIDEventTap, e);
+        CFRelease(e);
+        usleep(50000);
+      }
+      Emit(log, @"key", CGPointZero);
     } else {
-      out[@"refused"] = @"usage: info | click x y | drag x1 y1 x2 y2 steps";
+      out[@"refused"] = @"usage: info | click x y | drag x1 y1 x2 y2 steps | key code";
     }
     out[@"log"] = log;
     NSData *json = [NSJSONSerialization dataWithJSONObject:out options:0 error:nil];

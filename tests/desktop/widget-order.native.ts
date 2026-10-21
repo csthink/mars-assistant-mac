@@ -5,7 +5,7 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -23,47 +23,47 @@ import { goTo, ready, requestSize } from "./shell";
  */
 const names = ["天气", "便笺", "计时", "日程", "汇率"];
 
-/** Runs Core Graphics through JavaScript for Automation; returns its stdout. */
-function jxa(source: string) {
-  return execFileSync(
-    "/usr/bin/osascript",
-    ["-l", "JavaScript", "-e", source],
-    {
-      encoding: "utf8",
-    },
-  ).trim();
-}
-function accessibilityTrusted() {
-  // Reads the permission only; AXIsProcessTrustedWithOptions with a prompt is never called.
-  return (
-    jxa(
-      "ObjC.import('ApplicationServices'); $.AXIsProcessTrusted() ? 'yes' : 'no'",
-    ) === "yes"
-  );
+/**
+ * Builds the test-side input helper (tests/desktop/widget-order-input.m). It posts HID events and reports, after
+ * each one, the cursor, the frontmost application and the owner of the topmost window under the cursor.
+ */
+function inputHelper(log: unknown[]) {
+  mkdirSync(".test-data/disposable", { recursive: true });
+  const out = resolve(".test-data/disposable/widget-order-input");
+  execFileSync("/usr/bin/clang", [
+    "-fobjc-arc",
+    "-O1",
+    "-Wall",
+    "-framework",
+    "AppKit",
+    "-framework",
+    "ApplicationServices",
+    "-o",
+    out,
+    resolve("tests/desktop/widget-order-input.m"),
+  ]);
+  return (...args: (string | number)[]) => {
+    const r = spawnSync(
+      out,
+      args.map((a) => String(Math.round(Number(a)) || a)),
+      {
+        encoding: "utf8",
+      },
+    );
+    const reply = {
+      args,
+      exit: r.status,
+      ...(JSON.parse(r.stdout || "{}") as object),
+    };
+    log.push(reply);
+    if (r.status !== 0) throw new Error(`input helper refused: ${r.stdout}`);
+    return reply as {
+      postEventAccess?: boolean;
+      accessibilityTrusted?: number;
+    };
+  };
 }
 type Point = { x: number; y: number };
-/** A pointer drag in global display points: press, move in steps, release. */
-function drag(from: Point, to: Point, steps = 24) {
-  const path = Array.from({ length: steps + 1 }, (_, i) => ({
-    x: Math.round(from.x + ((to.x - from.x) * i) / steps),
-    y: Math.round(from.y + ((to.y - from.y) * i) / steps),
-  }));
-  jxa(`ObjC.import('CoreGraphics'); ObjC.import('Foundation');
-const post = (type, p) => { const e = $.CGEventCreateMouseEvent(null, type, $.CGPointMake(p.x, p.y), 0); $.CGEventPost(0, e); };
-const pause = (s) => $.NSThread.sleepForTimeInterval(s);
-const path = ${JSON.stringify(path)};
-post(5, path[0]); pause(0.2);
-post(1, path[0]); pause(0.3);
-for (const p of path.slice(1)) { post(6, p); pause(0.04); }
-pause(0.3); post(2, path[path.length - 1]); pause(0.3); 'ok'`);
-}
-/** One key press with the given macOS virtual key code (49 space, 36 return). */
-function press(keyCode: number) {
-  jxa(`ObjC.import('CoreGraphics'); ObjC.import('Foundation');
-$.CGEventPost(0, $.CGEventCreateKeyboardEvent(null, ${keyCode}, true));
-$.NSThread.sleepForTimeInterval(0.05);
-$.CGEventPost(0, $.CGEventCreateKeyboardEvent(null, ${keyCode}, false)); 'ok'`);
-}
 const stored = (data: string) => {
   const db = new DatabaseSync(join(data, "state.sqlite"), { readOnly: true });
   try {
@@ -102,9 +102,12 @@ test("native: a real pointer drags a widget across native widget views, real key
     throw new Error(
       "NOT RUN: scheduled widget order foreground authorization required",
     );
-  if (!accessibilityTrusted())
+  const inputs: unknown[] = [];
+  const input = inputHelper(inputs);
+  const permission = input("info");
+  if (!permission.postEventAccess || !permission.accessibilityTrusted)
     throw new Error(
-      "NOT RUN: posting real input needs the Accessibility permission for the process running this test; the test does not request it",
+      "NOT RUN: posting real input needs the Accessibility and post event permissions for the process running this test; the test does not request them",
     );
   test.setTimeout(300_000);
   mkdirSync(".test-data/disposable", { recursive: true });
@@ -177,7 +180,7 @@ test("native: a real pointer drags a widget across native widget views, real key
       x: 0.2,
       y: 0.6,
     });
-    drag(from, to);
+    input("drag", from.x, from.y, to.x, to.y, 24);
     await expect
       .poll(() => stored(data), { timeout: 10_000 })
       .toEqual(["汇率", "天气", "便笺", "计时", "日程"]);
@@ -188,7 +191,7 @@ test("native: a real pointer drags a widget across native widget views, real key
     // 2. Real keys: Space on the focused 后移 of 天气 moves it one place, and focus stays on that control.
     const later = page.getByRole("button", { name: /^后移 天气 / });
     await later.focus();
-    press(49);
+    input("key", 49);
     await expect
       .poll(() => stored(data))
       .toEqual(["汇率", "便笺", "天气", "计时", "日程"]);
@@ -197,7 +200,7 @@ test("native: a real pointer drags a widget across native widget views, real key
     // Return on 前移 moves it back, and focus stays on 前移; the first card's 前移 is disabled.
     const earlier = page.getByRole("button", { name: /^前移 天气 / });
     await earlier.focus();
-    press(36);
+    input("key", 36);
     await expect
       .poll(() => stored(data))
       .toEqual(["汇率", "天气", "便笺", "计时", "日程"]);
@@ -220,6 +223,10 @@ test("native: a real pointer drags a widget across native widget views, real key
       .click();
     await expect(cards.first()).toHaveAttribute("aria-label", /^控件 汇率 /);
   } finally {
+    await info.attach("input-events", {
+      body: JSON.stringify(inputs, null, 1),
+      contentType: "application/json",
+    });
     await app.close();
   }
 });
