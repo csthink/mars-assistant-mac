@@ -5,7 +5,7 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -13,11 +13,13 @@ import { seedRetainedWidgets } from "./widget-generation-fixture";
 import { goTo, ready, requestSize } from "./shell";
 
 /*
- * mac-feature-t11 V-15 drag diagnostic, scheduled foreground only. It repeats the V-15 pointer drag (drop on
- * a widget's content, which a native widget view covers) and adds a control drag that drops on the card's
- * title row, which the host page draws. It records the drag and pointer events that the host page and every
- * widget view page receive, with coordinates, and the saved order after each drag. It asserts nothing about
- * the outcome: its result is the event record. Real input is posted through Core Graphics, as in V-15.
+ * mac-feature-t11 V-15 input diagnostic, scheduled foreground only. The first V-15 run and the first
+ * diagnostic posted Core Graphics events through osascript and no page received any event. This entry checks
+ * where posted input goes: one move and click through osascript, one through a test-side native helper that
+ * reports the cursor, the frontmost application and the owner of the topmost window under the cursor after
+ * each event, then the two V-15 drags (onto widget content, which a native widget view covers, and onto the
+ * title row, which the host page draws) through the helper. It records the events the host page and every
+ * widget view page receive and the saved order; it asserts nothing about the outcome.
  */
 const names = ["天气", "便笺", "计时", "日程", "汇率"];
 function jxa(source: string) {
@@ -30,20 +32,6 @@ function jxa(source: string) {
   ).trim();
 }
 type Point = { x: number; y: number };
-function drag(from: Point, to: Point, steps = 24) {
-  const path = Array.from({ length: steps + 1 }, (_, i) => ({
-    x: Math.round(from.x + ((to.x - from.x) * i) / steps),
-    y: Math.round(from.y + ((to.y - from.y) * i) / steps),
-  }));
-  jxa(`ObjC.import('CoreGraphics'); ObjC.import('Foundation');
-const post = (type, p) => { const e = $.CGEventCreateMouseEvent(null, type, $.CGPointMake(p.x, p.y), 0); $.CGEventPost(0, e); };
-const pause = (s) => $.NSThread.sleepForTimeInterval(s);
-const path = ${JSON.stringify(path)};
-post(5, path[0]); pause(0.2);
-post(1, path[0]); pause(0.3);
-for (const p of path.slice(1)) { post(6, p); pause(0.04); }
-pause(0.3); post(2, path[path.length - 1]); pause(0.3); 'ok'`);
-}
 const stored = (data: string) => {
   const db = new DatabaseSync(join(data, "state.sqlite"), { readOnly: true });
   try {
@@ -91,7 +79,36 @@ const recorder = `(() => {
   return "installed";
 })()`;
 
-test("native diagnostic: which pages receive the drag events of a real pointer drag onto widget content and onto the title row", async ({}, info) => {
+/** Builds the test-side input helper (tests/desktop/widget-order-input.m) into the disposable directory. */
+function inputHelper() {
+  const out = resolve(".test-data/disposable/widget-order-input");
+  execFileSync("/usr/bin/clang", [
+    "-fobjc-arc",
+    "-O1",
+    "-Wall",
+    "-framework",
+    "AppKit",
+    "-framework",
+    "ApplicationServices",
+    "-o",
+    out,
+    resolve("tests/desktop/widget-order-input.m"),
+  ]);
+  return (...args: (string | number)[]) => {
+    const r = spawnSync(out, args.map(String), { encoding: "utf8" });
+    return { exit: r.status, ...(JSON.parse(r.stdout || "{}") as object) };
+  };
+}
+/** The osascript path of the first V-15 run, reduced to one move and one click. */
+function osascriptClick(p: Point) {
+  return jxa(`ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+const post = (type, q) => { const e = $.CGEventCreateMouseEvent(null, type, $.CGPointMake(q.x, q.y), 0); $.CGEventPost(0, e); };
+const p = ${JSON.stringify(p)};
+post(5, p); $.NSThread.sleepForTimeInterval(0.2); post(1, p); $.NSThread.sleepForTimeInterval(0.08); post(2, p); $.NSThread.sleepForTimeInterval(0.2);
+const c = $.CGEventGetLocation($.CGEventCreate(null)); JSON.stringify({ x: c.x, y: c.y })`);
+}
+
+test("native diagnostic: where real input posted by osascript and by a native helper goes, and which pages receive the drag events", async ({}, info) => {
   if (
     process.env.CSTHINK_NATIVE_TESTS !== "1" ||
     process.env.CSTHINK_WIDGET_ORDER_DIAGNOSTIC_AUTHORIZED !== "1"
@@ -99,14 +116,13 @@ test("native diagnostic: which pages receive the drag events of a real pointer d
     throw new Error(
       "NOT RUN: scheduled drag diagnostic authorization required",
     );
-  if (
-    jxa(
-      "ObjC.import('ApplicationServices'); $.AXIsProcessTrusted() ? 'yes' : 'no'",
-    ) !== "yes"
-  )
-    throw new Error(
-      "NOT RUN: Accessibility permission is not granted; not requested",
-    );
+  const helper = inputHelper();
+  const before = helper("info") as {
+    postEventAccess?: boolean;
+    accessibilityTrusted?: number;
+  };
+  if (!before.postEventAccess || !before.accessibilityTrusted)
+    throw new Error("NOT RUN: posting events is not allowed; not requested");
   test.setTimeout(300_000);
   mkdirSync(".test-data/disposable", { recursive: true });
   const data = mkdtempSync(resolve(".test-data/disposable/native-order-diag-"));
@@ -114,10 +130,14 @@ test("native diagnostic: which pages receive the drag events of a real pointer d
   const app = await _electron.launch({
     args: [resolve("."), `--data-root=${data}`],
   });
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = { before };
   try {
     const page = await app.firstWindow();
     await ready(page);
+    result.app = await app.evaluate(({ app }) => ({
+      pid: process.pid,
+      name: app.getName(),
+    }));
     result.display = await app.evaluate(({ BrowserWindow, screen, app }) => {
       const w = BrowserWindow.getAllWindows()[0];
       const bounds = w.getBounds();
@@ -151,75 +171,101 @@ test("native diagnostic: which pages receive the drag events of a real pointer d
     await expect.poll(() => widgetPages().length).toBeGreaterThanOrEqual(2);
     await page.getByRole("button", { name: "编辑布局", exact: true }).click();
     await page.waitForTimeout(500);
-    result.focused = await app.evaluate(
-      ({ BrowserWindow }) =>
+    result.windowBounds = await app.evaluate(({ BrowserWindow }) => ({
+      bounds: BrowserWindow.getAllWindows()[0].getBounds(),
+      content: BrowserWindow.getAllWindows()[0].getContentBounds(),
+      focused:
         BrowserWindow.getFocusedWindow()?.id ===
         BrowserWindow.getAllWindows()[0].id,
-    );
-    result.widgetViews = await app.evaluate(({ webContents }) =>
-      webContents
-        .getAllWebContents()
-        .filter((c) => c.getURL().startsWith("csthink-widget:"))
-        .map((c) => ({ id: c.id, url: c.getURL().slice(0, 60) })),
-    );
+    }));
+    result.afterSetup = helper("info");
     const install = async () => {
       await page.evaluate(recorder);
       for (const p of widgetPages())
         await p.evaluate(recorder).catch((e) => `not installed: ${e}`);
     };
     const collect = async () => ({
+      layoutEdit: await page
+        .getByRole("button", { name: "完成布局编辑", exact: true })
+        .count(),
       host: await page.evaluate(
         () => (window as unknown as { __dragLog: unknown[] }).__dragLog,
       ),
-      widgets: await Promise.all(
-        widgetPages().map(async (p) => ({
-          url: p.url().slice(0, 60),
-          log: await p
-            .evaluate(
-              () =>
-                (window as unknown as { __dragLog?: unknown[] }).__dragLog ??
-                null,
-            )
-            .catch((e) => `unreadable: ${e}`),
-        })),
-      ),
+      widgets: (
+        await Promise.all(
+          widgetPages().map((p) =>
+            p
+              .evaluate(
+                () =>
+                  (window as unknown as { __dragLog?: unknown[] }).__dragLog ??
+                  null,
+              )
+              .catch((e) => `unreadable: ${e}`),
+          ),
+        )
+      ).filter((log) => !Array.isArray(log) || log.length),
     });
+    const toggle = `button[aria-pressed]:has-text("布局")`;
+    // 1. Minimal check of the osascript path: move and click the layout toggle.
+    await install();
+    const t1 = await onScreen(app, page, toggle, { x: 0.5, y: 0.5 });
+    const cursor1 = osascriptClick(t1);
+    await page.waitForTimeout(800);
+    result.osascriptClick = {
+      at: t1,
+      cursorAfter: cursor1,
+      state: helper("info"),
+      ...(await collect()),
+    };
+    // 2. The same with the native helper.
+    await install();
+    const t2 = await onScreen(app, page, toggle, { x: 0.5, y: 0.5 });
+    const click2 = helper("click", t2.x, t2.y);
+    await page.waitForTimeout(800);
+    result.helperClick = { at: t2, helper: click2, ...(await collect()) };
+    // Back in 编辑布局 for the drags, whatever the clicks did.
+    if (
+      !(await page
+        .getByRole("button", { name: "完成布局编辑", exact: true })
+        .count())
+    )
+      await page.getByRole("button", { name: "编辑布局", exact: true }).click();
+    await page.waitForTimeout(500);
     const grip = `[data-formal-widget][aria-label^="控件 汇率 "] .widget-order-grip`;
     const weather = `[data-formal-widget][aria-label^="控件 天气 "]`;
-    // 1. As V-15: drop on 天气's widget content.
+    // 3. Drop on 天气's widget content (a native widget view covers it).
     await install();
-    const from1 = await onScreen(app, page, grip, { x: 0.5, y: 0.5 });
-    const to1 = await onScreen(app, page, weather, {
-      x: 0.2,
-      y: 0.6,
-    });
-    drag(from1, to1);
+    const from3 = await onScreen(app, page, grip, { x: 0.5, y: 0.5 });
+    const to3 = await onScreen(app, page, weather, { x: 0.2, y: 0.6 });
+    const drag3 = helper("drag", from3.x, from3.y, to3.x, to3.y, 24);
     await page.waitForTimeout(2000);
     result.contentDrop = {
-      from: from1,
-      to: to1,
+      from: from3,
+      to: to3,
+      helper: drag3,
       order: stored(data),
       ...(await collect()),
     };
-    // 2. Control: drop on 天气's title row, which the host page draws.
+    // 4. Control: drop on 天气's title row, which the host page draws.
     await install();
-    const from2 = await onScreen(app, page, grip, { x: 0.5, y: 0.5 });
-    const to2 = await onScreen(
+    const from4 = await onScreen(app, page, grip, { x: 0.5, y: 0.5 });
+    const to4 = await onScreen(
       app,
       page,
       `${weather} .widget-formal-controls`,
       { x: 0.3, y: 0.5 },
     );
-    drag(from2, to2);
+    const drag4 = helper("drag", from4.x, from4.y, to4.x, to4.y, 24);
     await page.waitForTimeout(2000);
     result.titleDrop = {
-      from: from2,
-      to: to2,
+      from: from4,
+      to: to4,
+      helper: drag4,
       order: stored(data),
       ...(await collect()),
     };
   } finally {
-    await info.attach("drag-diagnostic", {
+    await info.attach("input-diagnostic", {
       body: JSON.stringify(result, null, 1),
       contentType: "application/json",
     });
