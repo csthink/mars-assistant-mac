@@ -236,11 +236,42 @@ test("widget order: a failed save returns to the saved order with a retry, and a
     );
     expect(stored(dir)).toEqual(retried);
 
-    // Another writer committed an order this view has not seen: the next move is refused, not applied on top.
-    db.exec("UPDATE widget_order SET revision=revision+1 WHERE id=1");
-    await shell
-      .getByRole("button", { name: `后移 汇率 ${ids[4].slice(0, 8)}` })
-      .isDisabled();
+    // Another writer commits first: the host boundary lets a competing move of 天气 to the front land just
+    // before this view's move arrives with the revision it saw. The view's move is refused, not applied on top.
+    await app.evaluate(({ ipcMain }) => {
+      const internal = ipcMain as unknown as {
+        _invokeHandlers: Map<
+          string,
+          (
+            event: unknown,
+            command: { type: string; orderRevision?: number },
+          ) => Promise<unknown>
+        >;
+      };
+      const original = internal._invokeHandlers.get("business:command")!;
+      let competed = false;
+      ipcMain.removeHandler("business:command");
+      ipcMain.handle("business:command", async (event, command) => {
+        if (command.type === "moveWidget" && !competed) {
+          competed = true;
+          const snapshot = (await original(event, { type: "snapshot" })) as {
+            snapshot: {
+              widgetGeneration: { widgets: { id: string; name: string }[] };
+            };
+          };
+          const first = snapshot.snapshot.widgetGeneration.widgets.find(
+            (w) => w.name === "天气",
+          )!;
+          await original(event, {
+            type: "moveWidget",
+            widgetId: first.id,
+            toIndex: 0,
+            orderRevision: command.orderRevision,
+          } as never);
+        }
+        return original(event, command);
+      });
+    });
     await shell
       .getByRole("button", { name: `前移 汇率 ${ids[4].slice(0, 8)}` })
       .click();
@@ -249,8 +280,9 @@ test("widget order: a failed save returns to the saved order with a retry, and a
     ).toContainText(
       "顺序已在另一入口更新，「汇率」的移动未应用，已显示最新顺序。",
     );
-    await expect.poll(() => shown(shell)).toEqual(retried);
-    expect(stored(dir)).toEqual(retried);
+    const competing = [ids[0], ids[1], ids[2], ids[3], ids[4]];
+    await expect.poll(() => shown(shell)).toEqual(competing);
+    expect(stored(dir)).toEqual(competing);
     await expect(
       shell
         .locator(".widget-order-notice[role=alert]")

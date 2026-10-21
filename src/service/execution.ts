@@ -473,6 +473,7 @@ export function applyHostCommand(
   db: DatabaseSync,
   command: Exclude<
     HostCommand,
+    | { type: "runWorkbenchTool" }
     | CapabilityHostCommand
     | WidgetGenerationHostCommand
     | WidgetHostCommand

@@ -1305,6 +1305,9 @@ function App() {
                 void model.stop(executionId);
               }}
               onOpenAttachment={openAttachment}
+              workbenchActions={(snapshot?.workbenchActions ?? []).filter(
+                (a) => a.conversationId === id,
+              )}
             />
           ) : (
             <div className="welcome">

@@ -21,6 +21,11 @@ export function createCodexFixture(root: string) {
     runtimeStyle: "code",
     attachmentId: "selected-material",
     widgetPackage: "{}",
+    /** mode "turn_workbench": dynamic tool calls the turn makes in order (WB-02). */
+    workbenchCalls: [] as {
+      tool: string;
+      arguments: Record<string, unknown>;
+    }[],
     instructionsPath: "",
     inlineInstructions: "",
     /** Per-model reasoning effort advertised by model/list, and the user's configured default. */
@@ -97,6 +102,8 @@ const rl = readline.createInterface({ input: process.stdin });
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n');
 const fixtureProvider = process.argv.find(arg=>arg.startsWith('model_providers.csthink_contract='));
 let contractCall;
+// Dynamic tools the thread registered beyond the material tool; Codex lists them with its own tools.
+let dynamicExtra=[];
 const contractInput=[];
 async function contractNext(output) {
   if (output) contractInput.push(state.runtimeStyle==='functions'?{type:'function_call_output',call_id:contractCall,output:typeof output==='string'?output:JSON.stringify(output)}:{type:'custom_tool_call_output',call_id:contractCall,output:[{type:'input_text',text:JSON.stringify(output)}]});
@@ -108,7 +115,7 @@ async function contractNext(output) {
   const skillList=listsSkills&&fs.existsSync(skillsDir)?fs.readdirSync(skillsDir):[];
   const instructions=skillList.length?[{type:'message',role:'developer',content:[{type:'input_text',text:'<skills_instructions>'+skillList.map(name=>'- '+name+': (file: '+name+'/SKILL.md)').join('\n')+'</skills_instructions>'}]}]:[];
   const skillTools=['list','read'].filter(name=>state.runtimeTools.includes('skills__'+name)).map(name=>({type:'function',name}));
-  const response=await fetch(match[1]+'/responses',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:JSON.parse(modelArg.slice(6)),input:[...instructions,...contractInput],...(state.runtimeStyle==='functions'?{tools:[...(skillTools.length?[{type:'namespace',name:'skills',tools:skillTools}]:[]),...state.runtimeTools.filter(t=>!t.startsWith('skills__')&&t!=='clock__curr_time').map(name=>({type:'function',name})),{type:'function',name:'request_user_input'}]}:{})})});
+  const response=await fetch(match[1]+'/responses',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:JSON.parse(modelArg.slice(6)),input:[...instructions,...contractInput],...(state.runtimeStyle==='functions'?{tools:[...(skillTools.length?[{type:'namespace',name:'skills',tools:skillTools}]:[]),...state.runtimeTools.filter(t=>!t.startsWith('skills__')&&t!=='clock__curr_time').map(name=>({type:'function',name})),...dynamicExtra.map(name=>({type:'function',name})),{type:'function',name:'request_user_input'}]}:{})})});
   const events=(await response.text()).split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
   const item=events.find(e=>e.type==='response.output_item.done')?.item;
   if(!item)throw new Error('missing fixture response');
@@ -118,16 +125,25 @@ async function contractNext(output) {
     if(item.namespace==='skills'&&item.name==='list'&&state.runtimeTools.includes('skills__list'))await contractNext({skills:[],warnings:[],next_cursor:null});
     else if(item.namespace==='skills'&&item.name==='read'&&state.runtimeTools.includes('skills__read'))await contractNext('skill package is not available');
     else if(item.name==='read_selected_material')materialCall('contract-request',{arguments:{attachmentId:'contract-material'}});
+    else if(item.name==='list_workbench_widgets'&&dynamicExtra.includes('list_workbench_widgets'))materialCall('contract-workbench',{tool:'list_workbench_widgets',arguments:{}});
     else await contractNext('unsupported tool call');
     return;
   }
-  if(item.input.includes('Object.keys(tools)'))await contractNext({tools:state.runtimeTools??['clock__curr_time','read_selected_material','skills__list','skills__read'],fetch:'undefined',process:'undefined',require:'undefined'});
+  if(item.input.includes('Object.keys(tools)'))await contractNext({tools:[...(state.runtimeTools??['clock__curr_time','read_selected_material','skills__list','skills__read']),...dynamicExtra],fetch:'undefined',process:'undefined',require:'undefined'});
   else if(item.input.includes('skills__list'))await contractNext(state.runtimeTools.includes('skills__list')?{orchestrator:{skills:[],warnings:[],next_cursor:null},executor:{skills:[],warnings:[],next_cursor:null}}:'Script error: TypeError: tools.skills__list is not a function');
   else if(item.input.includes('bypassDenied'))await contractNext({bypassDenied:true});
   else if(item.input.includes('import('))await contractNext({nodeImportDenied:true});
+  else if(item.input.includes('list_workbench_widgets'))await (dynamicExtra.includes('list_workbench_widgets')?Promise.resolve(materialCall('contract-workbench',{tool:'list_workbench_widgets',arguments:{}})):contractNext('Script error: TypeError: tools.list_workbench_widgets is not a function'));
   else materialCall('contract-request',{arguments:{attachmentId:'contract-material'}});
 }
 let answer='';
+let workbenchIndex=0;
+function nextWorkbench(){
+  const call=state.workbenchCalls[workbenchIndex];
+  if(!call){delta('fixture-workbench-done');completed('completed');return;}
+  const id='wb-'+(workbenchIndex++);
+  send({id,method:'item/tool/call',params:{threadId:'thread-fixture',turnId:'turn-fixture',callId:id,tool:call.tool,arguments:call.arguments}});
+}
 const delta = text => {answer+=text;send({method:'item/agentMessage/delta',params:{threadId:'thread-fixture',turnId:'turn-fixture',itemId:'answer-fixture',delta:text}});};
 const completed = status => {fs.writeFileSync(path.join(process.cwd(),'history.json'),JSON.stringify({id:'turn-fixture',status,items:[{type:'agentMessage',id:'answer-fixture',text:answer}]}));if(reviewerThread&&status==='completed')send({method:'item/completed',params:{threadId:'thread-fixture',turnId:'turn-fixture',item:{type:'agentMessage',id:'answer-fixture',text:answer}}});send({method:'turn/completed',params:{threadId:'thread-fixture',turn:{id:'turn-fixture',status}}});};
 const materialCall = (id='material-request',override={}) => send({id,method:'item/tool/call',params:{threadId:'thread-fixture',turnId:'turn-fixture',callId:id,tool:'read_selected_material',arguments:{attachmentId:state.attachmentId},...override}});
@@ -195,6 +211,8 @@ rl.on('line', line => {
   if (!m.method) {
     if(typeof m.id==='string'&&approvalWaiters.has(m.id)){const resolve=approvalWaiters.get(m.id);approvalWaiters.delete(m.id);resolve(m.error?null:m.result);return;}
     if(m.id==='contract-request'&&m.result){void contractNext({contractMaterialRead:true});return;}
+    if(m.id==='contract-workbench'&&m.result){void contractNext(JSON.parse(m.result.contentItems[0].text));return;}
+    if(typeof m.id==='string'&&m.id.startsWith('wb-')){fs.appendFileSync(path.join(__dirname,'calls.jsonl'),JSON.stringify({workbenchResult:m.result??null,error:m.error??null,id:m.id})+'\n');nextWorkbench();return;}
     if (['material-request','widget-request'].includes(m.id) && m.result) { delta('fixture-read-completed'); completed('completed'); }
     return;
   }
@@ -210,7 +228,7 @@ rl.on('line', line => {
   } else if (m.method === 'config/read') result = { config: config(), origins: {}, layers: [{ name: { type: 'user', file: '/synthetic/config.toml' }, config: { token: 'SYNTHETIC_SECRET_NOT_REAL' }}] };
   else if (m.method === 'account/read') result = { account: state.authentication === 'signedOut' ? null : { type: state.authentication, email: 'private@synthetic.invalid', token: 'SYNTHETIC_SECRET_NOT_REAL' }, requiresOpenaiAuth: true };
   else if (m.method === 'thread/resume') {const historyPath=path.join(process.cwd(),'history.json');const previous=fs.existsSync(historyPath)?JSON.parse(fs.readFileSync(historyPath,'utf8')):null;if(previous&&state.mode==='resume_unknown')previous.status='inProgress';result={thread:{id:'thread-fixture',turns:previous?[previous]:[]},model:m.params.model,modelProvider:m.params.modelProvider,approvalPolicy:'never',activePermissionProfile:{id:'csthink_assistant'},instructionSources:fixtureProvider?[]:(state.instructionsPath?[state.instructionsPath]:[]),reasoningEffort:readback(m.params)};}
-  else if (m.method === 'thread/start') { reviewerThread = m.params.approvalPolicy && typeof m.params.approvalPolicy === 'object'; result = {thread:{id:'thread-fixture',environments:environmentsOf(m.params)},model:m.params.model,modelProvider:m.params.modelProvider,approvalPolicy:m.params.approvalPolicy ?? 'never',activePermissionProfile:{id:m.params.permissions ?? 'csthink_assistant'},instructionSources:fixtureProvider?[]:(state.instructionsPath?[state.instructionsPath]:[]),reasoningEffort:readback(m.params)}; }
+  else if (m.method === 'thread/start') { dynamicExtra=(m.params.dynamicTools||[]).map(t=>t.name).filter(n=>n!=='read_selected_material'&&n!=='submit_widget_candidate'); reviewerThread = m.params.approvalPolicy && typeof m.params.approvalPolicy === 'object'; result = {thread:{id:'thread-fixture',environments:environmentsOf(m.params)},model:m.params.model,modelProvider:m.params.modelProvider,approvalPolicy:m.params.approvalPolicy ?? 'never',activePermissionProfile:{id:m.params.permissions ?? 'csthink_assistant'},instructionSources:fixtureProvider?[]:(state.instructionsPath?[state.instructionsPath]:[]),reasoningEffort:readback(m.params)}; }
   else if (m.method === 'turn/interrupt') { result={}; completed('interrupted'); }
   else if (m.method === 'turn/start') {
     result={turn:{id:'turn-fixture',status:'inProgress'}};
@@ -220,6 +238,7 @@ rl.on('line', line => {
       if(reviewerThread){reviewerTurn(m.params);return;}
       if (state.mode==='turn_hang') { delta('partial-before-stop'); return; }
       if (state.mode==='turn_tool') { materialCall(); return; }
+      if (state.mode==='turn_workbench') { workbenchIndex=0; nextWorkbench(); return; }
       if (state.mode==='turn_widget') { materialCall('widget-request',{tool:'submit_widget_candidate',arguments:{package:state.widgetPackage}}); return; }
       if (state.mode==='turn_spoof') { materialCall('spoof-request',{threadId:'other-thread'}); return; }
       if (state.mode==='turn_namespace') { materialCall('namespace-request',{namespace:'unregistered'}); return; }

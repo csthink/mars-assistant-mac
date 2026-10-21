@@ -20,6 +20,10 @@ import {
   initializeRestrictedCodex,
 } from "./codex-policy";
 import { readToolName } from "../shared/capabilities";
+import {
+  listWidgetsToolName,
+  workbenchToolNames,
+} from "../shared/workbench-tools";
 import { startCodexThread } from "./codex-session";
 import { TransportError } from "./transport";
 /** A synthetic model endpoint measures the installed runtime; no account or personal context is loaded. */
@@ -76,6 +80,7 @@ export async function verifyCodexRuntime(
     'let denied=0; for (const attempt of [()=>tools.exec_command({cmd:"touch forbidden-effect"}),()=>tools.apply_patch("*** Begin Patch\\n*** Add File: forbidden-effect\\n+bad\\n*** End Patch"),()=>fetch("http://127.0.0.1:1/forbidden"),()=>tools.skills__read({package:' +
       JSON.stringify(personalSkill) +
       "})]) {try {await attempt();} catch {denied++;}} text({bypassDenied:denied===4});",
+    "text(await tools." + listWidgetsToolName + "({}));",
     "text(await tools." +
       readToolName +
       '({attachmentId:"contract-material"}));',
@@ -131,6 +136,7 @@ export async function verifyCodexRuntime(
       name: readToolName,
       arguments: JSON.stringify({ attachmentId: "contract-material" }),
     },
+    { name: listWidgetsToolName, arguments: "{}" },
   ];
   let direct: boolean | undefined;
   /** Whether the direct-function session offers the skill tools (Codex 0.159 no longer does). */
@@ -161,11 +167,18 @@ export async function verifyCodexRuntime(
     const present = skills.filter((name) => names.includes(name)).length;
     if (
       new Set(names).size !== names.length ||
-      !names.includes(readToolName) ||
+      [readToolName, ...workbenchToolNames].some(
+        (name) => !names.includes(name),
+      ) ||
       present === 1 ||
       names.some(
         (name) =>
-          ![readToolName, ...skills, "request_user_input"].includes(name),
+          ![
+            readToolName,
+            ...workbenchToolNames,
+            ...skills,
+            "request_user_input",
+          ].includes(name),
       )
     )
       throw error();
@@ -240,7 +253,7 @@ export async function verifyCodexRuntime(
           if (direct && item.type === "function_call_output") {
             if (
               typeof item.call_id !== "string" ||
-              !/^fixture-[0-7]$/.test(item.call_id) ||
+              !/^fixture-[0-8]$/.test(item.call_id) ||
               typeof item.output !== "string" ||
               item.output.length > 32768 ||
               item.output.includes("UNSELECTED_SYNTHETIC_SKILL_SECRET")
@@ -404,13 +417,10 @@ export async function verifyCodexRuntime(
       cwd,
       inventory,
     );
-    const thread = await startCodexThread(
-      rpc,
-      cwd,
-      model,
-      "csthink_contract",
-      true,
-    );
+    const thread = await startCodexThread(rpc, cwd, model, "csthink_contract", [
+      "material",
+      "workbench",
+    ]);
     if (thread.instructions.length) throw error();
     rpc.setEvents({
       notification(method, params) {
@@ -422,13 +432,17 @@ export async function verifyCodexRuntime(
       },
       async request(method, raw) {
         const p = record(raw);
+        const workbench =
+          p.tool === listWidgetsToolName &&
+          JSON.stringify(p.arguments ?? {}) === "{}";
         if (
           method !== "item/tool/call" ||
           p.threadId !== thread.id ||
-          p.tool !== readToolName ||
-          JSON.stringify(p.arguments) !==
-            '{"attachmentId":"contract-material"}' ||
-          ++callbacks !== 1
+          (!workbench &&
+            (p.tool !== readToolName ||
+              JSON.stringify(p.arguments) !==
+                '{"attachmentId":"contract-material"}')) ||
+          ++callbacks > 2
         ) {
           finish(error());
           throw error();
@@ -438,7 +452,11 @@ export async function verifyCodexRuntime(
           contentItems: [
             {
               type: "inputText",
-              text: JSON.stringify({ contractMaterialRead: true }),
+              text: JSON.stringify(
+                workbench
+                  ? { contractWorkbenchList: true }
+                  : { contractMaterialRead: true },
+              ),
             },
           ],
         };
@@ -470,8 +488,8 @@ export async function verifyCodexRuntime(
     const skillTools = !!named?.includes("skills__list");
     const expected = {
       tools: (skillTools
-        ? [readToolName, "skills__list", "skills__read"]
-        : [readToolName]
+        ? [readToolName, ...workbenchToolNames, "skills__list", "skills__read"]
+        : [readToolName, ...workbenchToolNames]
       ).sort(),
       fetch: "undefined",
       process: "undefined",
@@ -480,7 +498,7 @@ export async function verifyCodexRuntime(
     if (
       !direct &&
       (requests !== scripts.length + 1 ||
-        callbacks !== 1 ||
+        callbacks !== 2 ||
         !reported ||
         !tools ||
         !named ||
@@ -494,7 +512,8 @@ export async function verifyCodexRuntime(
           })) ||
         !includes({ nodeImportDenied: true }) ||
         !includes({ bypassDenied: true }) ||
-        !includes({ contractMaterialRead: true }))
+        !includes({ contractMaterialRead: true }) ||
+        !includes({ contractWorkbenchList: true }))
     )
       throw error();
     if (direct) {
@@ -503,13 +522,15 @@ export async function verifyCodexRuntime(
       const emptySkills = { skills: [], warnings: [], next_cursor: null };
       if (
         requests !== functions.length + 1 ||
-        callbacks !== 1 ||
+        callbacks !== 2 ||
         functionOutputs.size !== functions.length ||
         (directSkillTools &&
           (JSON.stringify(parse(0)) !== JSON.stringify(emptySkills) ||
             JSON.stringify(parse(1)) !== JSON.stringify(emptySkills))) ||
         JSON.stringify(parse(7)) !==
           JSON.stringify({ contractMaterialRead: true }) ||
+        JSON.stringify(parse(8)) !==
+          JSON.stringify({ contractWorkbenchList: true }) ||
         (directSkillTools ? [2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5, 6]).some(
           (id) =>
             !/unsupported|unknown|not (?:available|found)|unavailable/i.test(

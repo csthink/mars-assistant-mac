@@ -29,9 +29,14 @@ import {
   CodexProcessError,
 } from "./codex-process";
 import { CodexConnector } from "./codex-connector";
-import { runCodexTurn } from "./codex-session";
+import {
+  codexToolNames,
+  runCodexTurn,
+  type CodexToolKind,
+} from "./codex-session";
 import { CodexDetector } from "./codex";
 import { runToolLoop } from "./tool-loop";
+import { workbenchToolNames } from "../shared/workbench-tools";
 import { setTimeout as wait } from "node:timers/promises";
 import { authorizationWindowMs } from "../shared/capabilities";
 import {
@@ -670,6 +675,20 @@ function launchQueuedTurns(value: Snapshot) {
   }
   widgetGenerationRunner.adopt(value, inflight.size + domain);
 }
+/**
+ * Whether a connection's model may receive the workbench tools (WB-02): Codex and Claude Code pass their tool
+ * contract checks before any turn; an API model only after its tool call check confirmed it.
+ */
+function workbenchToolsConfirmed(
+  provider: string,
+  connection: Snapshot["connections"][number] | undefined,
+  model: string,
+) {
+  if (provider === "claude" || provider === "codex") return true;
+  return (
+    connection?.models.find((m) => m.model === model)?.toolCalls === "verified"
+  );
+}
 /** Runs one turn: context and secret are read for this single request; deltas are batched back. */
 async function runTurn(executionId: string, connectionId: string) {
   const controller = new AbortController();
@@ -850,6 +869,40 @@ async function runTurn(executionId: string, connectionId: string) {
       signal.throwIfAborted();
       return result.toolText;
     };
+    // WB-02: an ordinary (non-project) conversation turn may move the user's retained widgets on explicit
+    // request; the business service resolves every call and records the committed or refused result.
+    const projectConversation = context.snapshot.projects.some((p) =>
+      p.chats.some((c) => c.conversationId === turn?.conversationId),
+    );
+    const materialTools = turn?.materialMode === "tools";
+    const workbench =
+      !!turn &&
+      !projectConversation &&
+      workbenchToolsConfirmed(
+        connection.provider,
+        liveConnection,
+        connection.model,
+      );
+    const invokeWorkbench = async (call: ToolCall) => {
+      await flush();
+      const reply = await report({
+        type: "runWorkbenchTool",
+        executionId,
+        callId: call.id,
+        tool: call.function.name,
+        arguments: call.function.arguments,
+      });
+      return reply.ok && reply.toolText !== undefined
+        ? reply.toolText
+        : JSON.stringify({
+            status: "refused",
+            message: reply.ok ? "工作台未改变。" : reply.message,
+          });
+    };
+    const invokeTool = (call: ToolCall, signal = controller.signal) =>
+      workbenchToolNames.includes(call.function.name)
+        ? invokeWorkbench(call)
+        : invokeMaterial(call, signal);
     if (connection.provider === "claude") {
       if (!connection.claude)
         throw new TransportError(
@@ -862,7 +915,9 @@ async function runTurn(executionId: string, connectionId: string) {
         messages,
         signal: controller.signal,
         onDelta,
-        invoke: turn?.materialMode === "tools" ? invokeMaterial : undefined,
+        invoke: materialTools || workbench ? invokeTool : undefined,
+        material: materialTools,
+        workbench,
         resume: context.claudeRun,
         effort: connection.effort ?? null,
         budget:
@@ -887,10 +942,14 @@ async function runTurn(executionId: string, connectionId: string) {
           "auth",
           "Codex 连接来源尚未确认，请在设置中完成配置。",
         );
+      const codexKinds: CodexToolKind[] = [
+        ...(materialTools ? (["material"] as const) : []),
+        ...(workbench ? (["workbench"] as const) : []),
+      ];
       const native = await codexConnector.openApproved(
         connection.model,
         connection.codex,
-        turn?.materialMode === "tools",
+        codexKinds,
         context.codexRun,
         connection.effort ?? null,
       );
@@ -930,7 +989,8 @@ async function runTurn(executionId: string, connectionId: string) {
           messages,
           signal: controller.signal,
           onDelta,
-          invoke: turn?.materialMode === "tools" ? invokeMaterial : undefined,
+          invoke: codexKinds.length ? invokeTool : undefined,
+          toolNames: codexToolNames(codexKinds),
           budget:
             liveConnection?.models.find((m) => m.model === connection.model)
               ?.contextChars ?? defaultContextChars,

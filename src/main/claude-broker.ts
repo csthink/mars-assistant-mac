@@ -13,16 +13,58 @@ import {
   toolResultLimit,
 } from "../shared/capabilities";
 import type { ToolCall } from "./transport";
+import {
+  parseWorkbenchArguments,
+  workbenchToolNames,
+} from "../shared/workbench-tools";
 export const claudeWidgetTool =
   "mcp__csthink_assistant__submit_widget_candidate";
 export const claudeReadTool = "mcp__csthink_assistant__read_material";
+/** The product tools of one Claude Code execution: widget generation alone, or materials and the workbench. */
+export type ClaudeToolKind = "generation" | "material" | "workbench";
+/** MCP names (inside the product server) of each kind. */
+function mcpNames(kinds: ClaudeToolKind[]) {
+  return kinds.flatMap((kind) =>
+    kind === "generation"
+      ? [widgetSubmitToolName]
+      : kind === "material"
+        ? ["read_material"]
+        : workbenchToolNames,
+  );
+}
+/** Tool names as Claude Code reports and allows them. */
+export function claudeToolNames(kinds: ClaudeToolKind[]) {
+  return mcpNames(kinds).map((name) => `mcp__csthink_assistant__${name}`);
+}
+/** The relayed arguments have their tool's declared shape; the product still checks them when it runs. */
+function validCall(tool: string, text: string) {
+  let args: unknown;
+  try {
+    args = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  if (!args || typeof args !== "object" || Array.isArray(args)) return false;
+  if (tool === widgetSubmitToolName) return validWidgetSubmission(args);
+  if (tool === "read_material") {
+    const a = args as Record<string, unknown>;
+    return (
+      Object.keys(a).join(",") === "attachmentId" &&
+      typeof a.attachmentId === "string" &&
+      /^[a-zA-Z0-9_-]{1,200}$/.test(a.attachmentId)
+    );
+  }
+  return parseWorkbenchArguments(tool, text) !== null;
+}
 /** Private local channel owned by one product execution. The model never chooses its identity. */
 export async function createClaudeBroker(
   helper: string,
   runTool: (call: ToolCall, signal: AbortSignal) => Promise<string>,
   signal: AbortSignal,
-  generation = false,
+  kinds: ClaudeToolKind[] = ["material"],
 ) {
+  const generation = kinds.includes("generation");
+  const allowed = mcpNames(kinds);
   const root = await mkdtemp("/private/tmp/csthink-mcp-");
   await chmod(root, 0o700);
   const path = join(root, "socket"),
@@ -63,14 +105,14 @@ export async function createClaudeBroker(
               signal.aborted ||
               !value ||
               Object.keys(value).sort().join(",") !==
-                (generation ? "id,package,token" : "attachmentId,id,token") ||
+                "arguments,id,token,tool" ||
               value.token !== token ||
               typeof value.id !== "string" ||
               value.id.length > 200 ||
-              (generation
-                ? !validWidgetSubmission({ package: value.package })
-                : typeof value.attachmentId !== "string" ||
-                  !/^[a-zA-Z0-9_-]{1,200}$/.test(value.attachmentId)) ||
+              typeof value.tool !== "string" ||
+              !allowed.includes(value.tool) ||
+              typeof value.arguments !== "string" ||
+              !validCall(value.tool, value.arguments) ||
               seen.has(value.id) ||
               ++calls > toolRoundsLimit
             )
@@ -82,12 +124,10 @@ export async function createClaudeBroker(
                 id: randomUUID(),
                 type: "function",
                 function: {
-                  name: generation ? widgetSubmitToolName : readToolName,
-                  arguments: JSON.stringify(
-                    generation
-                      ? { package: value.package }
-                      : { attachmentId: value.attachmentId },
-                  ),
+                  // The product names: materials keep their product tool name, the others match.
+                  name:
+                    value.tool === "read_material" ? readToolName : value.tool,
+                  arguments: value.arguments,
                 },
               },
               signal,
@@ -134,7 +174,7 @@ export async function createClaudeBroker(
             helper,
             path,
             token,
-            ...(generation ? ["generation"] : []),
+            kinds.join(","),
           ],
         },
       },

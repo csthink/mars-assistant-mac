@@ -140,6 +140,12 @@ import {
 
 import { migrateWidgetOrder } from "./widget-order";
 import {
+  runWorkbenchTool,
+  workbenchActionSchema,
+  workbenchActions,
+} from "./workbench-tools";
+import { validWorkbenchToolCommand } from "../shared/workbench-tools";
+import {
   migrateOrganization,
   organizeConversation,
   assertConversationAvailable,
@@ -230,6 +236,7 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     34: (db) => {
       migrateWidgetOrder(db);
       upgradeSearchIndex(db);
+      db.exec(workbenchActionSchema);
     },
     33: `ALTER TABLE settings ADD COLUMN widget_generation_minutes INTEGER NOT NULL DEFAULT 10 CHECK(widget_generation_minutes BETWEEN 5 AND 30);
       ALTER TABLE widget_generation_tasks ADD COLUMN started_at INTEGER;
@@ -516,6 +523,7 @@ export class Store {
       dataRoot: this.root,
       projects: projectSnapshot(this.db),
       widgetGeneration: widgetGenerationSnapshot(this.db),
+      workbenchActions: workbenchActions(this.db),
       selected,
       conversations: (
         this.db
@@ -732,6 +740,8 @@ export class Store {
           input,
           new Date().toISOString(),
         );
+      else if (host && validWorkbenchToolCommand(input))
+        toolResult = runWorkbenchTool(this.db, input, new Date().toISOString());
       else if (!host && validWidgetGenerationCommand(input))
         applyWidgetGeneration(
           this.db,
@@ -759,6 +769,7 @@ export class Store {
         this.applyHost(
           input as Exclude<
             HostCommand,
+            | { type: "runWorkbenchTool" }
             | WidgetGenerationHostCommand
             | CapabilityHostCommand
             | WidgetHostCommand
@@ -1030,6 +1041,7 @@ export class Store {
   private applyHost(
     command: Exclude<
       HostCommand,
+      | { type: "runWorkbenchTool" }
       | WidgetGenerationHostCommand
       | CapabilityHostCommand
       | WidgetHostCommand

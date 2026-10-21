@@ -3537,3 +3537,24 @@ input.setting-switch:disabled {
   font-size: 11px;
   line-height: 1.6;
 }
+
+/* WB-02: the committed result of an Agent's workbench move, under the request that asked for it. */
+.workbench-actions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.workbench-action {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--c-accent-edge);
+  background: var(--c-accent-soft);
+  font-size: 13px;
+}
+.workbench-action.refused {
+  border-color: var(--c-amber-edge);
+  background: var(--c-amber-bg);
+  color: var(--c-text);
+}

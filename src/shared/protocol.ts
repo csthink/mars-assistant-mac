@@ -1,4 +1,9 @@
 import {
+  validWorkbenchToolCommand,
+  type WorkbenchAction,
+  type WorkbenchToolCommand,
+} from "./workbench-tools";
+import {
   validWidgetGenerationCommand,
   validWidgetGenerationHostCommand,
   type WidgetGenerationCommand,
@@ -313,6 +318,8 @@ export interface ConnectionModel {
   imageInputCheckedAt: string | null;
   contextChars: number | null;
   effort: EffortRecord | null;
+  /** Tool calls of this model, from its own check (WB-02, API connections): unknown until checked. */
+  toolCalls?: "unknown" | "verified" | "unsupported";
 }
 export interface Connection {
   codex?: CodexConnection;
@@ -715,6 +722,8 @@ export interface Snapshot {
   projects: Project[];
   permissions: Permission[];
   toolOperations: ToolOperation[];
+  /** Workbench moves Agents asked for in conversation turns, as committed or refused (WB-02). */
+  workbenchActions: WorkbenchAction[];
   revision: number;
   rootId: string;
   dataRoot: string;
@@ -911,6 +920,7 @@ export interface TurnAttachment {
 }
 /** Adapter reports from the host process; never accepted from a renderer. */
 export type HostCommand =
+  | WorkbenchToolCommand
   | WidgetGenerationHostCommand
   | ProjectHostCommand
   | WidgetHostCommand
@@ -1404,6 +1414,7 @@ export function validCommand(value: unknown): value is Command {
   );
 }
 export function validHostCommand(value: unknown): value is HostCommand {
+  if (validWorkbenchToolCommand(value)) return true;
   if (validWidgetGenerationHostCommand(value)) return true;
   if (validProjectHostCommand(value)) return true;
   if (validWidgetHostCommand(value)) return true;

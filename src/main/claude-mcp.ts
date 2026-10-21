@@ -4,12 +4,73 @@ import {
   widgetToolWireLimit,
   validWidgetSubmission,
 } from "../shared/widget-generation-tool";
+import {
+  workbenchTools,
+  parseWorkbenchArguments,
+} from "../shared/workbench-tools";
 /** Product-owned MCP process. The launcher clears its environment before execution. */
 import { connect } from "node:net";
 const [socketPath, token, mode] = process.argv.slice(2);
-const generation = mode === "generation";
+// The tool kinds of this execution: "generation" alone, or any of "material" and "workbench".
+const kinds = (mode ?? "material").split(",");
+const generation = kinds.includes("generation");
 const wireLimit = generation ? widgetToolWireLimit : 64 * 1024;
-if (!socketPath || !token) process.exit(2);
+if (
+  !socketPath ||
+  !token ||
+  kinds.some((k) => !["generation", "material", "workbench"].includes(k)) ||
+  new Set(kinds).size !== kinds.length ||
+  (generation && kinds.length !== 1)
+)
+  process.exit(2);
+const tools = [
+  ...(generation
+    ? [
+        {
+          name: widgetSubmitToolName,
+          description:
+            "Submit a generated widget package for product validation, never retain automatically.",
+          inputSchema: widgetSubmitParameters,
+        },
+      ]
+    : []),
+  ...(kinds.includes("material")
+    ? [
+        {
+          name: "read_material",
+          description:
+            "Read a selected material by its attachment identity, subject to user permission.",
+          inputSchema: {
+            type: "object",
+            properties: { attachmentId: { type: "string" } },
+            required: ["attachmentId"],
+            additionalProperties: false,
+          },
+        },
+      ]
+    : []),
+  ...(kinds.includes("workbench")
+    ? workbenchTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.parameters,
+      }))
+    : []),
+];
+/** Whether a call's arguments have the declared shape of its tool. */
+function validArguments(name: string, args: unknown) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return false;
+  if (name === widgetSubmitToolName) return validWidgetSubmission(args);
+  if (name === "read_material") {
+    const a = args as Record<string, unknown>;
+    return (
+      Object.keys(a).join(",") === "attachmentId" &&
+      typeof a.attachmentId === "string" &&
+      a.attachmentId.length <= 200
+    );
+  }
+  return parseWorkbenchArguments(name, JSON.stringify(args)) !== null;
+}
 const socket = connect(socketPath);
 let buffer = "";
 const pending = new Map<string, unknown>();
@@ -25,7 +86,7 @@ function error(id: unknown) {
         type: "text",
         text: generation
           ? "控件候选未通过校验或已取消。"
-          : "资料读取未获准或已取消。",
+          : "工具调用未获准、参数无效或已取消。",
       },
     ],
   });
@@ -63,36 +124,14 @@ function receive(line: string) {
         capabilities: { tools: {} },
         serverInfo: { name: "csthink_assistant", version: "1" },
       });
-    else if (message.method === "tools/list")
-      send(message.id, {
-        tools: [
-          {
-            name: generation ? widgetSubmitToolName : "read_material",
-            description: generation
-              ? "Submit a generated widget package for product validation, never retain automatically."
-              : "Read a selected material by its attachment identity, subject to user permission.",
-            inputSchema: generation
-              ? widgetSubmitParameters
-              : {
-                  type: "object",
-                  properties: { attachmentId: { type: "string" } },
-                  required: ["attachmentId"],
-                  additionalProperties: false,
-                },
-          },
-        ],
-      });
+    else if (message.method === "tools/list") send(message.id, { tools });
     else if (message.method === "tools/call") {
-      const args = message.params?.arguments;
+      const name = message.params?.name;
+      const args = message.params?.arguments ?? {};
       if (
-        message.params?.name !==
-          (generation ? widgetSubmitToolName : "read_material") ||
-        !args ||
-        (generation
-          ? !validWidgetSubmission(args)
-          : Object.keys(args).join(",") !== "attachmentId" ||
-            typeof args.attachmentId !== "string" ||
-            args.attachmentId.length > 200) ||
+        typeof name !== "string" ||
+        !tools.some((tool) => tool.name === name) ||
+        !validArguments(name, args) ||
         ++count > 16
       )
         return error(message.id);
@@ -103,9 +142,8 @@ function receive(line: string) {
         JSON.stringify({
           id,
           token,
-          ...(generation
-            ? { package: args.package }
-            : { attachmentId: args.attachmentId }),
+          tool: name,
+          arguments: JSON.stringify(args),
         }) + "\n",
       );
     } else if (message.id != null)
