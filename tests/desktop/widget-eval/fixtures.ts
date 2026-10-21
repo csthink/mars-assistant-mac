@@ -393,9 +393,15 @@ function negativeFixtures(): SyntheticFixture[] {
  * handlers while the submission itself goes nowhere, so this variant satisfies every rule. The form
  * sets novalidate because the handler validates the email itself; without it the browser's own
  * constraint validation stops the submission before the handler runs.
+ *
+ * The habit grid written the way generated widgets commonly draw checkboxes: each habit's name and
+ * its streak share one element, and every native checkbox is visually hidden inside a label whose
+ * span draws the box. The name is still visible text and a click on the label checks the box, so
+ * this variant satisfies every rule as well.
  */
 function variantFixtures(): SyntheticFixture[] {
   const contact = references["form-contact-zh"];
+  const habit = references["habit-grid-en"];
   return [
     {
       fixture: fixture(
@@ -418,6 +424,42 @@ function variantFixtures(): SyntheticFixture[] {
                   'document.querySelector("#submit").addEventListener("click", () => {',
                   'document.querySelector("#form").addEventListener("submit", (event) => {\n  event.preventDefault();',
                 ),
+              }),
+            ),
+          ],
+        }),
+      ),
+      expect: pass,
+    },
+    {
+      fixture: fixture(
+        "synthetic.variant.habit-hidden-checkboxes",
+        "habit-grid-en",
+        "variant",
+        41_200,
+        stream({
+          calls: [
+            submit(
+              withView(habit, {
+                css:
+                  habit.view.css +
+                  ".cell{position:relative;display:inline-flex;cursor:pointer}" +
+                  ".cell input{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}" +
+                  ".cell span{display:inline-block;width:18px;height:18px;border:1px solid currentColor;border-radius:4px}" +
+                  ".cell input:checked+span{background:currentColor}",
+                js: habit.view.js
+                  .replace(
+                    "th.textContent = habit;",
+                    'th.textContent = habit;\n    const own = document.createElement("div");\n    own.textContent = "Streak: " + streak(cells[h]);\n    th.append(own);',
+                  )
+                  .replace(
+                    "td.append(box);",
+                    'const label = document.createElement("label");\n      label.className = "cell";\n      label.append(box, document.createElement("span"));\n      td.append(label);',
+                  )
+                  .replace(
+                    'const s = document.createElement("td");\n    s.textContent = "Streak: " + streak(cells[h]);\n    tr.append(s);\n',
+                    "",
+                  ),
               }),
             ),
           ],
