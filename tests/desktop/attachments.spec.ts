@@ -697,11 +697,30 @@ test("history and retry with material: follow-ups carry the version that was sen
   await confirm.getByRole("button", { name: "确认发送" }).click();
   await expect(page.getByRole("article", { name: "助手消息" })).toHaveCount(3);
   expect(requests[2].path).toBe("/chat/v1/chat/completions");
-  const third = requests[2].body as { messages: { content: unknown }[] };
+  const third = requests[2].body as {
+    messages: { role: string; content: unknown }[];
+  };
   expect(JSON.stringify(third.messages)).toContain(JSON.stringify(block));
-  expect(JSON.stringify(third.messages[5].content)).toContain(
+  expect(JSON.stringify(third.messages.at(-1)!.content)).toContain(
     `data:image/png;base64,${pngSample().toString("base64")}`,
   );
+  // Material framing stays first; the answers 甲家 wrote reach 乙家 with their source.
+  expect(third.messages.map((m) => m.role)).toEqual([
+    "system",
+    "system",
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+    "user",
+  ]);
+  expect(String(third.messages[1].content)).toContain(
+    "本回合由 乙家（DeepSeek · mock-model）回答",
+  );
+  for (const index of [3, 5])
+    expect(String(third.messages[index].content)).toMatch(
+      /^【历史回答来源：甲家（自定义 · mock-model）】\n/,
+    );
   // A failed turn retried from 待处理 resends exactly the same material.
   await page
     .getByRole("combobox", { name: "本次连接" })

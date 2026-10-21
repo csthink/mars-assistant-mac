@@ -1,4 +1,4 @@
-import type { ConnectionSnapshot, Message } from "./protocol";
+import type { ConnectionSnapshot, ContextMessage } from "./protocol";
 import type { BuiltWidget } from "./widget";
 
 export const generationWait = {
@@ -96,7 +96,8 @@ export interface WidgetEditTarget {
 export interface GenerationContext {
   widgets?: WidgetEditTarget[];
   layoutRevision?: number;
-  messages: Message[];
+  /** Assistant messages carry their recorded source; tasks captured before sources were recorded have no source field. */
+  messages: ContextMessage[];
   attachments: {
     attachmentId: string;
     sha256: string;

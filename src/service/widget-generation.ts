@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID, createHash } from "node:crypto";
 import { StoreError } from "./errors";
 import { selectedModel } from "./models";
+import { withAnswerSources } from "./answer-sources";
 import { applyWidgetHost, readWidgetPreview } from "./widgets";
 import { widgetDifferences } from "../shared/widget-diff";
 import { verifyBuiltWidget } from "../main/widget-package";
@@ -147,11 +148,15 @@ function capture(
     if (`${p.connectionId}|${p.baseUrl}` !== dest && !grants.includes(dest))
       refuse("向另一提供方发送历史前需要确认范围，任务未接收。");
   }
-  const messages = db
-    .prepare(
-      "SELECT id,conversation_id AS conversationId,turn_id AS turnId,role,content,created_at AS createdAt FROM messages WHERE conversation_id=? ORDER BY created_at,rowid",
-    )
-    .all(d.sourceConversationId) as unknown as Message[];
+  const messages = withAnswerSources(
+    db,
+    db
+      .prepare(
+        "SELECT id,conversation_id AS conversationId,turn_id AS turnId,role,content,created_at AS createdAt FROM messages WHERE conversation_id=? ORDER BY created_at,rowid",
+      )
+      .all(d.sourceConversationId) as unknown as Message[],
+    connection,
+  );
   const attachments = db
     .prepare(
       "SELECT a.id AS attachmentId,a.sha256,m.message_id AS messageId,m.position FROM message_attachments m JOIN attachments a ON a.id=m.attachment_id JOIN messages x ON x.id=m.message_id WHERE x.conversation_id=? ORDER BY x.rowid,m.position",

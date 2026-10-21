@@ -15,6 +15,7 @@ import {
   type Command,
   type ConnectionCheck,
   type ConnectionSnapshot,
+  type ContextMessage,
   type EffortRecord,
   type EventKind,
   type ExecutionState,
@@ -28,6 +29,7 @@ import {
   type TurnAttachment,
 } from "../shared/protocol";
 import { selectedModel } from "./models";
+import { withAnswerSources } from "./answer-sources";
 import { StoreError } from "./errors";
 import {
   attachDraftToMessage,
@@ -917,7 +919,7 @@ export function turnContext(
   db: DatabaseSync,
   executionId: string,
 ): {
-  messages: Message[];
+  messages: ContextMessage[];
   attachments: TurnAttachment[];
   projectContext: string | null;
 } {
@@ -937,7 +939,14 @@ export function turnContext(
       "SELECT id, conversation_id AS conversationId, turn_id AS turnId, role, content, created_at AS createdAt FROM messages WHERE conversation_id=? AND rowid <= ? ORDER BY created_at, rowid",
     )
     .all(turn.conversationId, own.rowid) as unknown as Message[];
-  const messages = withUnfinishedAnswers(db, saved);
+  const current = row.connectionSnapshot
+    ? (JSON.parse(row.connectionSnapshot) as ConnectionSnapshot)
+    : null;
+  const messages = withAnswerSources(
+    db,
+    withUnfinishedAnswers(db, saved),
+    current,
+  );
   const connection = row.connectionId
     ? (db
         .prepare(

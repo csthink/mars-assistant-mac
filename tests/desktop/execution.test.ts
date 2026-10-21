@@ -5,6 +5,11 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Store } from "../../src/service/store";
 import type { Command, HostCommand, Turn } from "../../src/shared/protocol";
+import {
+  answerSourceNote,
+  answerSourcePrompt,
+  needsAnswerSources,
+} from "../../src/shared/answer-source";
 
 mkdirSync(".test-data/disposable", { recursive: true });
 function root() {
@@ -509,6 +514,192 @@ test("回合上下文只含该对话到本回合用户消息为止的内容；�
     store.close();
     rmSync(dir, { recursive: true });
   }
+});
+
+test("回合上下文为每条历史回答附上当时记录的来源及是否与本回合同一连接和模型，旧数据缺少来源时为未知，用户消息不附来源", () => {
+  const dir = root();
+  const store = new Store(dir);
+  try {
+    const ids = seed(store);
+    const first = submit(store, ids);
+    host(store, {
+      type: "reportDelta",
+      executionId: first.executionId,
+      seq: 1,
+      text: "第一答",
+    });
+    host(store, {
+      type: "reportFinished",
+      executionId: first.executionId,
+      seq: 2,
+    });
+    // A stopped answer keeps the source of its own turn too.
+    const stopped = submit(store, ids);
+    host(store, { type: "beginExecution", executionId: stopped.executionId });
+    host(store, {
+      type: "reportDelta",
+      executionId: stopped.executionId,
+      seq: 1,
+      text: "停止前收到的",
+    });
+    store.execute(
+      { type: "stopExecution", executionId: stopped.executionId },
+      "main",
+    );
+    host(store, {
+      type: "reportStopped",
+      executionId: stopped.executionId,
+      seq: 2,
+    });
+    // An answer saved without a turn (older data) has no recorded source.
+    store.db
+      .prepare(
+        "INSERT INTO messages (id, conversation_id, turn_id, role, content, created_at) VALUES (?,?,NULL,'assistant','旧回答',?)",
+      )
+      .run(randomUUID(), ids.conversationId, new Date().toISOString());
+    // The next turn goes to another provider after the scope is granted.
+    const other = randomUUID();
+    store.execute(
+      {
+        type: "upsertConnection",
+        id: other,
+        name: "深度求索",
+        provider: "deepseek",
+        baseUrl: "https://api.deepseek.com",
+        model: "deepseek-chat",
+        secretRef: randomUUID(),
+        imageInput: "unknown" as const,
+        contextChars: null,
+        revision: 0,
+      },
+      "main",
+    );
+    const grant = (connectionId: string, baseUrl: string) =>
+      assert.equal(
+        store.execute(
+          {
+            type: "grantConnectionScope",
+            conversationId: ids.conversationId,
+            connectionId,
+            baseUrl,
+          },
+          "main",
+        ).ok,
+        true,
+      );
+    grant(other, "https://api.deepseek.com");
+    const next = submit(store, { ...ids, connectionId: other });
+    const sources = (executionId: string) => {
+      const context = host(store, { type: "loadTurnContext", executionId });
+      assert.equal(context.ok, true);
+      if (!context.ok) return [];
+      // Only non-secret name snapshots: no address, connection id, key reference or session identity.
+      assert.doesNotMatch(
+        JSON.stringify(context.messages),
+        /127\.0\.0\.1|api\.deepseek\.com|secretRef|connectionId/,
+      );
+      return context.messages!.map((m) => [
+        m.role,
+        m.content,
+        "source" in m ? m.source : "absent",
+      ]);
+    };
+    const simulated = (sameAsTurn: boolean) => ({
+      provider: "custom",
+      connectionName: "模拟连接",
+      model: "test-model",
+      sameAsTurn,
+    });
+    assert.deepEqual(sources(next.executionId), [
+      ["user", "你好", "absent"],
+      ["assistant", "第一答", simulated(false)],
+      ["user", "你好", "absent"],
+      [
+        "assistant",
+        "停止前收到的\n\n（回答未完成：已停止。）",
+        simulated(false),
+      ],
+      ["assistant", "旧回答", null],
+      ["user", "你好", "absent"],
+    ]);
+    host(store, { type: "beginExecution", executionId: next.executionId });
+    host(store, {
+      type: "reportDelta",
+      executionId: next.executionId,
+      seq: 1,
+      text: "第二答",
+    });
+    host(store, {
+      type: "reportFinished",
+      executionId: next.executionId,
+      seq: 2,
+    });
+    // Back on the first connection, its own answers are marked as this turn's and the other provider's are not.
+    grant(ids.connectionId, "http://127.0.0.1:1/v1");
+    const back = submit(store, ids);
+    assert.deepEqual(sources(back.executionId).slice(-3), [
+      ["user", "你好", "absent"],
+      [
+        "assistant",
+        "第二答",
+        {
+          provider: "deepseek",
+          connectionName: "深度求索",
+          model: "deepseek-chat",
+          sameAsTurn: false,
+        },
+      ],
+      ["user", "你好", "absent"],
+    ]);
+    assert.deepEqual(sources(back.executionId)[1], [
+      "assistant",
+      "第一答",
+      simulated(true),
+    ]);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("来源说明：已知来源写连接、提供方与模型，未知来源明确写未知；只有出现其他连接或模型的回答或未知来源时才需要附带", () => {
+  const own = {
+    provider: "deepseek" as const,
+    connectionName: "深度求索",
+    model: "deepseek-chat",
+    sameAsTurn: true,
+  };
+  assert.equal(
+    answerSourceNote(own),
+    "【历史回答来源：深度求索（DeepSeek · deepseek-chat）】",
+  );
+  assert.equal(
+    answerSourceNote(null),
+    "【历史回答来源：未知，保存时没有记录提供方与模型】",
+  );
+  const user = { role: "user" };
+  assert.equal(
+    needsAnswerSources([user, { role: "assistant", source: own }]),
+    false,
+  );
+  assert.equal(
+    needsAnswerSources([
+      user,
+      { role: "assistant", source: own },
+      { role: "assistant", source: { ...own, sameAsTurn: false } },
+    ]),
+    true,
+  );
+  assert.equal(
+    needsAnswerSources([user, { role: "assistant", source: null }]),
+    true,
+  );
+  // Captured before sources were recorded: no field, so no notes are made up.
+  assert.equal(needsAnswerSources([user, { role: "assistant" }]), false);
+  assert.match(
+    answerSourcePrompt({ name: "本机", provider: "codex", model: "gpt-5" }),
+    /^本回合由 本机（Codex · gpt-5）回答。.*不要在你的回答中输出这类标注。$/,
+  );
 });
 
 test("停止或失败后保留的部分回答随追问进入上下文并标明未完成；重试清空后不再携带；预算计入该文本", () => {

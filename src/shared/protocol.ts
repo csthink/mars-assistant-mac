@@ -508,6 +508,21 @@ export interface Message {
   content: string;
   createdAt: string;
 }
+/**
+ * Source recorded with a saved answer's turn, as sent with model context (CONN-04): non-secret
+ * name snapshots only. sameAsTurn tells whether the answer came from the connection, address and
+ * model of the turn the context is built for.
+ */
+export interface AnswerSource {
+  provider: Provider;
+  connectionName: string;
+  model: string;
+  sameAsTurn: boolean;
+}
+/** A message as loaded for model context: assistant messages carry their source, null when unknown. */
+export interface ContextMessage extends Message {
+  source?: AnswerSource | null;
+}
 export interface Turn {
   materialMode: "inline" | "tools";
   id: string;
@@ -985,7 +1000,7 @@ export type Reply =
       generationStopEvidence?: WidgetStopEvidence;
       widget?: WidgetReply;
       widgetPreview?: WidgetPreview;
-      messages?: Message[];
+      messages?: ContextMessage[];
       attachments?: TurnAttachment[];
       codexRun?: CodexRun;
       claudeRun?: ClaudeRun;

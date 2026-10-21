@@ -3,6 +3,7 @@ import { displayName } from "../../src/shared/app-name";
 import { goTo, recent } from "./shell";
 import { addProvider, openProvider } from "./provider-ui";
 import type { Provider } from "../../src/shared/protocol";
+import { answerSourcePrompt } from "../../src/shared/answer-source";
 import {
   test,
   expect,
@@ -233,11 +234,31 @@ test("chat: stopping shows stopping before stopped and keeps the partial output;
   await expect(failed.getByRole("alert")).toContainText("输出中断");
   await expect(failed.getByText("断流模拟 · mock-model")).toBeVisible();
   // The stopped answer's partial text reaches the model as an unfinished answer, not as an unanswered question.
+  // The new provider is told, per answer, which connection and model wrote it, and which one answers now.
   expect((requests[1].body as { messages: unknown[] }).messages).toEqual([
+    {
+      role: "system",
+      content: answerSourcePrompt({
+        name: "断流模拟",
+        provider: "custom",
+        model: "mock-model",
+      }),
+    },
     { role: "user", content: "请慢慢回答" },
-    { role: "assistant", content: "第一段。\n\n（回答未完成：已停止。）" },
+    {
+      role: "assistant",
+      content:
+        "【历史回答来源：挂起模拟（自定义 · mock-model）】\n第一段。\n\n（回答未完成：已停止。）",
+    },
     { role: "user", content: "这次会断流" },
   ]);
+  const sourcePrompt = (requests[1].body as { messages: { content: string }[] })
+    .messages[0].content;
+  expect(sourcePrompt).toContain(
+    "本回合由 断流模拟（自定义 · mock-model）回答",
+  );
+  expect(sourcePrompt).not.toContain("127.0.0.1");
+  expect(sourcePrompt).not.toContain(secret);
   await goTo(page, "待处理");
   await expect(
     page.getByRole("list", { name: "待处理事项" }).getByRole("listitem"),
@@ -574,9 +595,25 @@ test("defaults and providers: changing the default keeps the active turn on its 
   await confirm.getByRole("button", { name: "确认发送" }).click();
   await expect(page.getByRole("article", { name: "助手消息" })).toHaveCount(2);
   expect(requests[1].path).toBe("/stream/v1/chat/completions");
-  expect((requests[1].body as { messages: unknown[] }).messages).toHaveLength(
-    3,
-  );
+  // The new provider receives the saved answer with the source recorded for it, not as its own.
+  const answer = "第一段。第二段，回答结束。";
+  const fromFirst = `【历史回答来源：甲家（自定义 · mock-model）】\n${answer}`;
+  const fromSecond = `【历史回答来源：乙家（DeepSeek · mock-model）】\n${answer}`;
+  const sentTo = (index: number) =>
+    (requests[index].body as { messages: unknown[] }).messages;
+  expect(sentTo(1)).toEqual([
+    {
+      role: "system",
+      content: answerSourcePrompt({
+        name: "乙家",
+        provider: "deepseek",
+        model: "mock-model",
+      }),
+    },
+    { role: "user", content: "在甲家生成中改默认" },
+    { role: "assistant", content: fromFirst },
+    { role: "user", content: "换到乙家继续" },
+  ]);
   // Same provider again: no second confirmation.
   await input().fill("再问乙家");
   await input().press("Enter");
@@ -594,6 +631,31 @@ test("defaults and providers: changing the default keeps the active turn on its 
     timeout: 15000,
   });
   expect(requests[3].path).toBe("/slow/v1/chat/completions");
+  // Every saved answer keeps its own source in a mixed history, whichever provider receives it.
+  expect(sentTo(2).slice(1)).toEqual([
+    { role: "user", content: "在甲家生成中改默认" },
+    { role: "assistant", content: fromFirst },
+    { role: "user", content: "换到乙家继续" },
+    { role: "assistant", content: fromSecond },
+    { role: "user", content: "再问乙家" },
+  ]);
+  expect(sentTo(3)).toEqual([
+    {
+      role: "system",
+      content: answerSourcePrompt({
+        name: "甲家",
+        provider: "custom",
+        model: "mock-model",
+      }),
+    },
+    { role: "user", content: "在甲家生成中改默认" },
+    { role: "assistant", content: fromFirst },
+    { role: "user", content: "换到乙家继续" },
+    { role: "assistant", content: fromSecond },
+    { role: "user", content: "再问乙家" },
+    { role: "assistant", content: fromSecond },
+    { role: "user", content: "回到甲家" },
+  ]);
 
   // Deleting a referenced connection is refused with a reason; history keeps the connection names.
   await goTo(page, "设置");
