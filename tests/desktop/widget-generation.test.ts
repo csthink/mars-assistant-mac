@@ -1767,7 +1767,7 @@ test("widget waiting migration: schema 33 preserves widget data and settings wit
     assert.equal(s.store.snapshot().settings.appearance, "dark");
     assert.equal(
       s.store.db.prepare("PRAGMA user_version").get()?.user_version,
-      34,
+      35,
     );
     assert.equal(
       s.store.db.prepare("PRAGMA quick_check").get()?.quick_check,

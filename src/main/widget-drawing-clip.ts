@@ -5,8 +5,18 @@ import { View, type Rectangle, type WebContentsView } from "electron";
 // adapter version-bound; an Electron upgrade requires native pixel validation.
 // https://github.com/electron/electron/blob/v44.2.0/shell/browser/api/electron_api_view.cc
 export const widgetDrawingClipElectron = "44.2.0";
-const padding = 32;
+/** Every mask keeps at least this size on both axes, so its rounded clip path is never empty. */
+const minimumMask = 32;
 const radius = 8;
+/**
+ * How far each one-sided mask reaches past the visible rectangle. The masks are ui::Views above the host page,
+ * and a mouse event inside a mask goes to that mask, not to the host page (mac-feature-t11:KB-04). The reach is
+ * therefore as small as the clip allows: past the rounded corners, and wide enough to keep every mask at the
+ * minimum size when the visible rectangle is a narrow strip.
+ */
+export function widgetDrawingClipReach(rect: Rectangle) {
+  return Math.max(radius, minimumMask - Math.min(rect.width, rect.height));
+}
 
 export function assertWidgetDrawingClipVersion(version: string | undefined) {
   if (version !== widgetDrawingClipElectron)
@@ -27,6 +37,7 @@ function valid(rect: Rectangle, positive: boolean) {
 export function widgetDrawingClipPlanes(rect: Rectangle): Rectangle[] {
   if (!valid(rect, false)) throw new Error("控件显示边界无效。");
   const { x, y, width, height } = rect;
+  const padding = widgetDrawingClipReach(rect);
   return [
     { x, y: y - padding, width: width + padding, height: height + 2 * padding },
     {

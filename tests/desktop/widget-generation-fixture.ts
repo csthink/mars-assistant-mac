@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Store } from "../../src/service/store";
 import { buildWidgetPackage } from "../../src/main/widget-package";
+import { widgetFixture } from "../../src/main/widget-fixture";
 import type { Command, HostCommand } from "../../src/shared/protocol";
 /** Offline fixture: a validated artifact enters the real store, never a model acceptance claim. */
 export function seedWidgetCandidate(
@@ -205,6 +206,39 @@ export function seedWidgetCandidateSet(root: string) {
     );
     command({ type: "selectWidgetDraft", id: draftId });
     return { draftId, targets };
+  } finally {
+    store.close();
+  }
+}
+
+/**
+ * Offline fixture: retained widgets with the given names, appended in this order. Each is a validated fixture
+ * package that went through the real retain command; no model produced it.
+ */
+export function seedRetainedWidgets(root: string, names: string[]) {
+  for (const name of names) {
+    const source = JSON.parse(widgetFixture);
+    source.name = name;
+    seedWidgetCandidate(root, false, JSON.stringify(source));
+  }
+  const store = new Store(root);
+  try {
+    for (const c of store
+      .snapshot()
+      .widgetGeneration!.candidates.filter((c) => c.state === "preview")) {
+      const reply = store.execute(
+        {
+          type: "retainWidgetCandidate",
+          candidateId: c.id,
+          digest: c.digest,
+          requirementRevision: c.requirementRevision,
+        },
+        "main",
+      );
+      if (!reply.ok) throw new Error(reply.message);
+    }
+    store.execute({ type: "selectWidgetDraft", id: null }, "main");
+    return store.snapshot().widgetGeneration!.widgets;
   } finally {
     store.close();
   }

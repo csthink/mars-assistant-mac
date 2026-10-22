@@ -163,7 +163,7 @@ test("settings dialog: a press outside, Escape and the close button each close i
     await expect(dialog).toBeVisible();
     // Command + K does not open the search panel over the settings dialog.
     await page.keyboard.press("Meta+k");
-    await expect(page.getByRole("dialog", { name: "搜索对话" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "全局搜索" })).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);

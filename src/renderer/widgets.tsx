@@ -209,6 +209,17 @@ export function WidgetWorkspace({
         element
           ?.closest(".viewport, .right-body")
           ?.scrollBy(signal.x, signal.y);
+      else if (signal.kind === "drag")
+        // Reorder drags over the native view arrive here; the card decides whether one of its own is active.
+        element?.closest<HTMLElement>(".widget-saved-card")?.dispatchEvent(
+          new CustomEvent("widget-native-drag", {
+            bubbles: true,
+            detail: {
+              phase: signal.phase,
+              after: signal.x >= signal.width / 2,
+            },
+          }),
+        );
       else {
         const article = element?.closest<HTMLElement>(".widget-saved-card");
         if (article) {
@@ -285,9 +296,16 @@ export function WidgetWorkspace({
         !contentOnly &&
         controls &&
         (article?.matches(":hover, :focus-within") ||
+          article?.dataset.layoutEdit === "true" ||
           article?.dataset.nativeHover === "true" ||
           article?.dataset.nativeFocus === "true")
-          ? controls.getBoundingClientRect().bottom
+          ? Math.max(
+              controls.getBoundingClientRect().bottom,
+              // An open widget menu hangs below the row; the view starts below it while it is open.
+              controls
+                .querySelector(".widget-order-menu")
+                ?.getBoundingClientRect().bottom ?? 0,
+            )
           : bounds.top;
       const x = bounds.left + element.clientLeft,
         y = bounds.top + element.clientTop;

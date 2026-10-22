@@ -219,11 +219,11 @@ test("project columns: enlarged content restores scroll, focus and drafts with m
         await expect(restore).toBeVisible();
         await f.page.keyboard.press("Meta+k");
         await expect(
-          f.page.getByRole("dialog", { name: "搜索对话", exact: true }),
+          f.page.getByRole("dialog", { name: "全局搜索", exact: true }),
         ).toBeVisible();
         await f.page.keyboard.press("Escape");
         await expect(
-          f.page.getByRole("dialog", { name: "搜索对话", exact: true }),
+          f.page.getByRole("dialog", { name: "全局搜索", exact: true }),
         ).toBeHidden();
         await expect(restore).toBeVisible();
         await f.page.mouse.move(5, 5);

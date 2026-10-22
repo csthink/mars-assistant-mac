@@ -131,6 +131,7 @@ interface ExecutionRow {
     | "connection_test"
     | "model_list"
     | "image_probe"
+    | "tool_probe"
     | "agent_execution";
   connectionId: string | null;
   attempt: number;
@@ -473,6 +474,7 @@ export function applyHostCommand(
   db: DatabaseSync,
   command: Exclude<
     HostCommand,
+    | { type: "runWorkbenchTool" }
     | CapabilityHostCommand
     | WidgetGenerationHostCommand
     | WidgetHostCommand
@@ -618,6 +620,12 @@ export function applyHostCommand(
     if (row.state === "stopping") appendEvent(db, row, "stop_timeout", now, {});
     return;
   }
+  if (command.type === "reportToolsUnsupported") {
+    // The provider itself refused the tools parameter for this model: that is its measured capability.
+    if (row.kind === "tool_probe" && row.connectionId && !terminal(row.state))
+      markToolCalls(db, row, "unsupported", now);
+    return;
+  }
   if (command.type === "reportImageUnsupported") {
     // The provider itself refused image content: that is this connection's measured capability.
     if (row.connectionId && !terminal(row.state))
@@ -673,6 +681,8 @@ export function applyHostCommand(
   if (command.type === "reportFinished") {
     if (row.kind === "image_probe" && row.connectionId)
       markImageInput(db, row, "verified", now);
+    if (row.kind === "tool_probe" && row.connectionId)
+      markToolCalls(db, row, "verified", now);
     if (row.turnId) {
       const turn = db
         .prepare(
@@ -825,13 +835,13 @@ export function connectionChecks(db: DatabaseSync) {
   const rows = db
     .prepare(
       `SELECT connection_id AS connectionId, kind, id AS executionId, state, error_class AS errorClass, error_message AS errorMessage, created_at AS createdAt, ended_at AS endedAt
-       FROM executions e WHERE kind IN ('connection_test','model_list','image_probe')
+       FROM executions e WHERE kind IN ('connection_test','model_list','image_probe','tool_probe')
        AND EXISTS (SELECT 1 FROM run_events r JOIN connections c ON c.id=e.connection_id WHERE r.execution_id=e.id AND r.kind='submitted' AND json_extract(r.snapshot,'$.revision')=c.revision)
        AND rowid = (SELECT MAX(rowid) FROM executions WHERE connection_id = e.connection_id AND kind = e.kind)`,
     )
     .all() as unknown as (ConnectionCheck & {
     connectionId: string;
-    kind: "connection_test" | "model_list" | "image_probe";
+    kind: "connection_test" | "model_list" | "image_probe" | "tool_probe";
   })[];
   const result = new Map<
     string,
@@ -849,10 +859,29 @@ export function connectionChecks(db: DatabaseSync) {
     };
     if (kind === "connection_test") entry.lastTest = check;
     else if (kind === "model_list") entry.lastModelList = check;
-    else entry.lastImageProbe = check;
+    else if (kind === "image_probe") entry.lastImageProbe = check;
     result.set(connectionId, entry);
   }
   return result;
+}
+function markToolCalls(
+  db: DatabaseSync,
+  row: ExecutionRow,
+  value: "verified" | "unsupported",
+  at: string,
+) {
+  if (!row.connectionSnapshot) return;
+  const snap = JSON.parse(row.connectionSnapshot) as ConnectionSnapshot;
+  db.prepare(
+    `UPDATE connection_models SET tool_calls=?,tool_calls_checked_at=? WHERE connection_id=? AND model_id=? AND EXISTS(SELECT 1 FROM connections WHERE id=? AND revision=?)`,
+  ).run(
+    value,
+    at,
+    snap.connectionId,
+    snap.model,
+    snap.connectionId,
+    snap.revision,
+  );
 }
 function markImageInput(
   db: DatabaseSync,

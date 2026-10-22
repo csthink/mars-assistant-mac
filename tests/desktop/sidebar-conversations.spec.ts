@@ -180,7 +180,7 @@ test("existing data root: a schema 26 data root opens with every conversation, p
     });
     try {
       expect(migrated.prepare("PRAGMA user_version").get()!.user_version).toBe(
-        34,
+        35,
       );
       expect(
         migrated
@@ -233,7 +233,7 @@ test("existing data root: a schema 26 data root opens with every conversation, p
     await expect.poll(async () => (await groups(page))[0]?.[0]).toBe("今天");
     // Search still finds the old conversations by title.
     await page.keyboard.press("Meta+k");
-    const search = page.getByRole("dialog", { name: "搜索对话" });
+    const search = page.getByRole("dialog", { name: "全局搜索" });
     await search.getByRole("combobox").fill("八天前");
     await expect(search.getByRole("option")).toHaveCount(1);
     await page.keyboard.press("Escape");

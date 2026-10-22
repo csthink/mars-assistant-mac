@@ -1,6 +1,5 @@
 import type { ClaudeRun } from "../shared/claude";
 import { ClaudeRpc } from "./claude-rpc";
-import { claudeReadTool, claudeWidgetTool } from "./claude-broker";
 import {
   TransportError,
   validateInputBudget,
@@ -108,7 +107,8 @@ export async function runClaudeSession(options: {
   rpc: ClaudeRpc;
   run: ClaudeRun;
   messages: ChatMessage[];
-  tools: boolean;
+  /** The product tools the session must report, exactly (besides EndConversation). */
+  toolNames: string[];
   generation?: boolean;
   onProgress?: () => void;
   signal: AbortSignal;
@@ -223,17 +223,9 @@ export async function runClaudeSession(options: {
             tools.some(
               (tool) =>
                 typeof tool !== "string" ||
-                ![
-                  ...(options.tools
-                    ? [options.generation ? claudeWidgetTool : claudeReadTool]
-                    : []),
-                  "EndConversation",
-                ].includes(tool),
+                ![...options.toolNames, "EndConversation"].includes(tool),
             ) ||
-            (options.tools &&
-              !tools.includes(
-                options.generation ? claudeWidgetTool : claudeReadTool,
-              )) ||
+            options.toolNames.some((tool) => !tools.includes(tool)) ||
             !Array.isArray(message.plugins) ||
             message.plugins.length ||
             !Array.isArray(message.skills) ||

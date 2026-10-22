@@ -9,6 +9,8 @@ import type { WidgetDraftModel } from "./widget-drafts";
 import { WidgetWorkspace } from "./widgets";
 import { Icon } from "./icons";
 import { openModal } from "./modal-focus";
+import { useWidgetOrder } from "./widget-order";
+import { widgetOrderDragType } from "../shared/widget-ui";
 import "./widget-studio.css";
 export const generationLabels = {
   queued: "等待生成",
@@ -219,6 +221,8 @@ export function WidgetStudio({
   full = false,
   onFull,
   panel = false,
+  focusWidget,
+  onFocused,
 }: {
   snapshot?: Snapshot;
   connected: boolean;
@@ -232,8 +236,27 @@ export function WidgetStudio({
   full?: boolean;
   onFull?: (value: boolean) => void;
   panel?: boolean;
+  /** A retained widget to bring into view and focus, from a search result (SEARCH-01). */
+  focusWidget?: string;
+  onFocused?: () => void;
 }) {
   const studio = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!focusWidget || selected || section !== "widgets") return;
+    const card = studio.current?.querySelector<HTMLElement>(
+      `[data-formal-widget="${focusWidget}"]`,
+    );
+    if (!card) return;
+    onFocused?.();
+    card.scrollIntoView({ block: "center" });
+    card.dataset.searchTarget = "true";
+    // The search panel returns focus to its opener as it closes; focus the card after that frame.
+    // Clearing the target re-runs this effect; the scheduled focus and mark removal still apply to this card.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => card.focus({ preventScroll: true })),
+    );
+    setTimeout(() => delete card.dataset.searchTarget, 2400);
+  }, [focusWidget, selected, section, snapshot, onFocused]);
   const fullButton = useRef<HTMLButtonElement>(null);
   const scroll = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
@@ -261,6 +284,95 @@ export function WidgetStudio({
     };
   }, [full, onFull]);
   const [rowMenu, setRowMenu] = useState<string>();
+  const order = useWidgetOrder(snapshot);
+  const [layoutEdit, setLayoutEdit] = useState(false);
+  const [widgetMenu, setWidgetMenu] = useState<string>();
+  const [drag, setDrag] = useState<{
+    id: string;
+    over?: string;
+    after?: boolean;
+  }>();
+  // The card being dragged. A drop over a native widget view reaches the host through the main process and can
+  // arrive after the source's dragend, so the source stays known for a moment after the drag ends (KB-04).
+  const dragSource = useRef<{ id: string; ended?: number }>(undefined);
+  const dragEnded = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    // The overlay rows of every card show or hide, or a card's menu opens below its row; native views
+    // re-measure their clip so trusted controls are never covered.
+    window.dispatchEvent(new Event("widget-display-change"));
+  }, [layoutEdit, widgetMenu]);
+  useEffect(() => {
+    if (!widgetMenu) return;
+    const close = (event: PointerEvent) => {
+      if (!(event.target as Element).closest?.(".widget-order-menu-anchor"))
+        setWidgetMenu(undefined);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [widgetMenu]);
+  /** Moves a widget by one place and keeps focus on the control the person used (WB-02). */
+  function step(id: string, delta: -1 | 1, focus: "layout" | "menu") {
+    const index = order.widgets.findIndex((w) => w.id === id);
+    order.move(id, index + delta);
+    requestAnimationFrame(() => {
+      const card = studio.current?.querySelector(
+        `[data-formal-widget="${id}"]`,
+      );
+      const target =
+        focus === "layout"
+          ? card?.querySelector<HTMLButtonElement>(
+              `[data-order-step="${delta}"]:not(:disabled)`,
+            )
+          : null;
+      (
+        target ?? card?.querySelector<HTMLButtonElement>(".widget-order-more")
+      )?.focus();
+    });
+  }
+  function dropOn(id: string, event: React.DragEvent<HTMLElement>) {
+    if (!drag || drag.id === id) return;
+    event.preventDefault();
+    const box = event.currentTarget.getBoundingClientRect();
+    const after = event.clientX >= box.left + box.width / 2;
+    if (drag.over !== id || drag.after !== after)
+      setDrag({ ...drag, over: id, after });
+  }
+  function drop() {
+    if (!drag?.over) return setDrag(undefined);
+    commitDrop(drag.id, drag.over, !!drag.after);
+  }
+  function commitDrop(id: string, over: string, after: boolean) {
+    dragSource.current = undefined;
+    setDrag(undefined);
+    if (id === over) return;
+    const rest = order.widgets.filter((w) => w.id !== id);
+    order.move(id, rest.findIndex((w) => w.id === over) + (after ? 1 : 0));
+  }
+  // Drag events relayed from the native widget views: the same indicator and drop as over the host page.
+  const nativeDrag = useRef<(event: Event) => void>(undefined);
+  nativeDrag.current = (event: Event) => {
+    const source = dragSource.current;
+    const over = (event.target as HTMLElement).dataset?.formalWidget;
+    const detail = (event as CustomEvent<{ phase: string; after: boolean }>)
+      .detail;
+    if (!source || !over) return;
+    if (detail.phase === "drop") commitDrop(source.id, over, detail.after);
+    else if (!source.ended && source.id !== over)
+      setDrag((current) =>
+        current?.over === over && current.after === detail.after
+          ? current
+          : { id: source.id, over, after: detail.after },
+      );
+  };
+  useEffect(() => {
+    const node = studio.current;
+    const listener = (event: Event) => nativeDrag.current?.(event);
+    node?.addEventListener("widget-native-drag", listener);
+    return () => {
+      node?.removeEventListener("widget-native-drag", listener);
+      clearTimeout(dragEnded.current);
+    };
+  }, []);
   const [deletingDraft, setDeletingDraft] = useState<WidgetDraft>();
   const [undo, setUndo] = useState<{ id: string; token: string }>();
   const [query, setQuery] = useState("");
@@ -413,6 +525,19 @@ export function WidgetStudio({
               修改所选 {targets.length} 个控件
             </button>
           )}
+          {!draft &&
+            section === "widgets" &&
+            !panel &&
+            order.widgets.length > 1 && (
+              <button
+                className="button"
+                aria-pressed={layoutEdit}
+                onClick={() => setLayoutEdit(!layoutEdit)}
+              >
+                <Icon name="layout" />
+                {layoutEdit ? "完成布局编辑" : "编辑布局"}
+              </button>
+            )}
           {!draft && section === "widgets" && (
             <button className="button" onClick={() => onSection("drafts")}>
               草稿 {drafts.length}
@@ -689,6 +814,44 @@ export function WidgetStudio({
         </>
       ) : (snapshot?.widgetGeneration?.widgets.length ?? 0) ? (
         <div>
+          {!panel && layoutEdit && (
+            <p className="widget-layout-note">
+              拖动控件或用「前移 / 后移」调整顺序，立即生效，不需要保存。
+            </p>
+          )}
+          {/* Progress and success are announced; the moved card itself is the visible result (WB-02). */}
+          {!panel && (
+            <p className="widget-order-announce" role="status">
+              {order.notice?.kind === "saving"
+                ? "正在保存顺序…"
+                : order.notice?.kind === "saved"
+                  ? order.notice.text
+                  : ""}
+            </p>
+          )}
+          {!panel &&
+            (order.notice?.kind === "failed" ||
+              order.notice?.kind === "conflict") && (
+              <div className="widget-order-notice error" role="alert">
+                <span>{order.notice.text}</span>
+                {order.notice.kind === "failed" && order.notice.retry && (
+                  <button
+                    className="button small"
+                    disabled={!connected}
+                    onClick={order.retry}
+                  >
+                    重试
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label="关闭顺序提示"
+                  onClick={order.dismiss}
+                >
+                  ×
+                </button>
+              </div>
+            )}
           {snapshot?.widgetGeneration?.layout?.fallback && (
             <p role="alert" className="error">
               {snapshot.widgetGeneration.layout.fallback}
@@ -702,60 +865,217 @@ export function WidgetStudio({
             }}
             data-density={snapshot?.widgetGeneration?.layout?.value.density}
           >
-            {snapshot!.widgetGeneration!.widgets.map((w) => (
+            {order.widgets.map((w, index, list) => (
               <article
-                className="widget-saved-card"
+                className={`widget-saved-card ${drag?.id === w.id ? "dragging" : ""} ${drag?.over === w.id ? (drag.after ? "drop-after" : "drop-before") : ""}`}
                 key={w.id}
                 data-formal-widget={w.id}
+                tabIndex={-1}
+                aria-label={`控件 ${w.name} ${w.id.slice(0, 8)}`}
+                data-layout-edit={(!panel && layoutEdit) || undefined}
+                onDragOver={drag ? (event) => dropOn(w.id, event) : undefined}
+                onDrop={
+                  drag
+                    ? (event) => {
+                        event.preventDefault();
+                        drop();
+                      }
+                    : undefined
+                }
               >
                 {/* One row at every card width: text truncates with its full value in title,
                     and narrow cards show the actions as icons with the same names. */}
                 <div className="widget-formal-controls">
+                  {layoutEdit && !panel && (
+                    <span
+                      className="widget-order-grip"
+                      draggable
+                      title="拖动调整顺序"
+                      aria-hidden="true"
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        // Only the private order type: no text a widget or another app could take in.
+                        event.dataTransfer.setData(widgetOrderDragType, w.id);
+                        const card = event.currentTarget.closest("article");
+                        if (card) event.dataTransfer.setDragImage(card, 24, 24);
+                        clearTimeout(dragEnded.current);
+                        dragSource.current = { id: w.id };
+                        setDrag({ id: w.id });
+                      }}
+                      onDragEnd={() => {
+                        setDrag(undefined);
+                        const source = dragSource.current;
+                        if (!source) return;
+                        source.ended = Date.now();
+                        dragEnded.current = setTimeout(() => {
+                          if (dragSource.current === source)
+                            dragSource.current = undefined;
+                        }, 1000);
+                      }}
+                    >
+                      <Icon name="grip" />
+                    </span>
+                  )}
                   <h2 title={w.name}>{w.name}</h2>
                   <p title={`已保留 · 版本 ${w.revision}`}>
                     已保留 · 版本 {w.revision}
                   </p>
-                  <label className="widget-target-choice" title="选择修改">
-                    <input
-                      type="checkbox"
-                      aria-label={`选择控件 ${w.name} ${w.id.slice(0, 8)}`}
-                      checked={targets.includes(w.id)}
-                      onChange={(e) =>
-                        setTargets(
-                          e.target.checked
-                            ? [...targets, w.id]
-                            : targets.filter((id) => id !== w.id),
-                        )
-                      }
-                    />
-                    <span className="widget-control-text">选择修改</span>
-                  </label>
-                  <button
-                    className="button widget-control-action"
-                    aria-label="打开控件"
-                    title="打开控件"
-                    onClick={() => {
-                      const d = snapshot!.widgetGeneration!.drafts.find(
-                        (d) => d.widgetId === w.id,
-                      );
-                      if (d) onSelect(d.id);
-                    }}
-                  >
-                    <Icon name="open" />
-                    <span className="widget-control-text">打开控件</span>
-                  </button>
-                  <button
-                    className="button widget-control-action"
-                    aria-label="新建修改草稿"
-                    title="新建修改草稿"
-                    onClick={async () => {
-                      const id = await model.createEdit([w.id]);
-                      if (id) onSelect(id);
-                    }}
-                  >
-                    <Icon name="compose" />
-                    <span className="widget-control-text">新建修改草稿</span>
-                  </button>
+                  {layoutEdit && !panel ? (
+                    <>
+                      <button
+                        className="button widget-control-action"
+                        data-order-step={-1}
+                        aria-label={`前移 ${w.name} ${w.id.slice(0, 8)}`}
+                        title={index === 0 ? "已在最前" : "前移"}
+                        disabled={index === 0 || !connected}
+                        onClick={() => step(w.id, -1, "layout")}
+                      >
+                        <Icon name="arrowUp" />
+                        <span className="widget-control-text">前移</span>
+                      </button>
+                      <button
+                        className="button widget-control-action"
+                        data-order-step={1}
+                        aria-label={`后移 ${w.name} ${w.id.slice(0, 8)}`}
+                        title={index === list.length - 1 ? "已在最后" : "后移"}
+                        disabled={index === list.length - 1 || !connected}
+                        onClick={() => step(w.id, 1, "layout")}
+                      >
+                        <Icon name="arrowDown" />
+                        <span className="widget-control-text">后移</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <label className="widget-target-choice" title="选择修改">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择控件 ${w.name} ${w.id.slice(0, 8)}`}
+                          checked={targets.includes(w.id)}
+                          onChange={(e) =>
+                            setTargets(
+                              e.target.checked
+                                ? [...targets, w.id]
+                                : targets.filter((id) => id !== w.id),
+                            )
+                          }
+                        />
+                        <span className="widget-control-text">选择修改</span>
+                      </label>
+                      <button
+                        className="button widget-control-action"
+                        aria-label="打开控件"
+                        title="打开控件"
+                        onClick={() => {
+                          const d = snapshot!.widgetGeneration!.drafts.find(
+                            (d) => d.widgetId === w.id,
+                          );
+                          if (d) onSelect(d.id);
+                        }}
+                      >
+                        <Icon name="open" />
+                        <span className="widget-control-text">打开控件</span>
+                      </button>
+                      <button
+                        className="button widget-control-action"
+                        aria-label="新建修改草稿"
+                        title="新建修改草稿"
+                        onClick={async () => {
+                          const id = await model.createEdit([w.id]);
+                          if (id) onSelect(id);
+                        }}
+                      >
+                        <Icon name="compose" />
+                        <span className="widget-control-text">
+                          新建修改草稿
+                        </span>
+                      </button>
+                    </>
+                  )}
+                  {!panel && (
+                    <div className="widget-order-menu-anchor">
+                      <button
+                        className="icon-button widget-order-more"
+                        aria-label={`控件操作 ${w.name} ${w.id.slice(0, 8)}`}
+                        title="控件操作"
+                        aria-haspopup="menu"
+                        aria-expanded={widgetMenu === w.id}
+                        onClick={() =>
+                          setWidgetMenu(widgetMenu === w.id ? undefined : w.id)
+                        }
+                      >
+                        ···
+                      </button>
+                      {widgetMenu === w.id && (
+                        <div
+                          className="widget-draft-menu widget-order-menu"
+                          role="menu"
+                          aria-label={`控件操作：${w.name}`}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              e.stopPropagation();
+                              setWidgetMenu(undefined);
+                              e.currentTarget.parentElement
+                                ?.querySelector<HTMLButtonElement>(
+                                  ".widget-order-more",
+                                )
+                                ?.focus();
+                            }
+                            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                              e.preventDefault();
+                              const items = [
+                                ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                                  "[role=menuitem]",
+                                ),
+                              ];
+                              const at = items.indexOf(
+                                document.activeElement as HTMLButtonElement,
+                              );
+                              items[
+                                (at +
+                                  (e.key === "ArrowDown" ? 1 : -1) +
+                                  items.length) %
+                                  items.length
+                              ]?.focus();
+                            }
+                          }}
+                        >
+                          <button
+                            className="button"
+                            role="menuitem"
+                            autoFocus
+                            aria-disabled={index === 0 || !connected}
+                            onClick={() => {
+                              if (index === 0 || !connected) return;
+                              setWidgetMenu(undefined);
+                              step(w.id, -1, "menu");
+                            }}
+                          >
+                            前移
+                            {index === 0 && <small>已在最前</small>}
+                          </button>
+                          <button
+                            className="button"
+                            role="menuitem"
+                            aria-disabled={
+                              index === list.length - 1 || !connected
+                            }
+                            onClick={() => {
+                              if (index === list.length - 1 || !connected)
+                                return;
+                              setWidgetMenu(undefined);
+                              step(w.id, 1, "menu");
+                            }}
+                          >
+                            后移
+                            {index === list.length - 1 && (
+                              <small>已在最后</small>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <WidgetWorkspace
                   key={w.candidateId}

@@ -1,3 +1,7 @@
+import {
+  createSearchIndex,
+  registerSearchFunctions,
+} from "../../src/service/search-index";
 import type { DatabaseSync } from "node:sqlite";
 /** Test-only reverse fixture construction: restore the exact pre-Codex table shape before testing old migrations. */
 export function restorePreCodexFixture(db: DatabaseSync) {
@@ -164,7 +168,34 @@ export function restorePreClaudeFixture(db: DatabaseSync) {
 }
 
 /** Remove schemas 29 through 34 before reconstructing a real earlier schema boundary. */
+/**
+ * Restore the schema-34 boundary: schema 35 added the workbench order revision and replaced the conversation-only
+ * search index (schema 10) with the three-kind index.
+ */
+export function restorePreUnifiedSearchFixture(db: DatabaseSync) {
+  for (const row of db
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE type='trigger' AND name LIKE '%search%'",
+    )
+    .all())
+    db.exec(`DROP TRIGGER "${String(row.name)}"`);
+  db.exec(
+    "DROP TABLE search_fts; DROP TABLE search_documents; DROP TABLE search_meta; DROP TABLE widget_order; DROP TABLE workbench_actions; ALTER TABLE connection_models DROP COLUMN tool_calls_checked_at; ALTER TABLE connection_models DROP COLUMN tool_calls; PRAGMA foreign_keys=OFF;",
+  );
+  narrowCheck(
+    db,
+    "executions",
+    ",'tool_probe'",
+    "CREATE INDEX executions_turn ON executions(turn_id, attempt);",
+  );
+  db.exec("PRAGMA foreign_keys=ON");
+  // A raw test connection has no product functions; the schema-10 triggers need them.
+  registerSearchFunctions(db);
+  createSearchIndex(db);
+  db.exec("PRAGMA user_version=34");
+}
 export function restorePreWidgetGenerationFixture(db: DatabaseSync) {
+  restorePreUnifiedSearchFixture(db);
   db.exec(
     "ALTER TABLE settings DROP COLUMN widget_generation_minutes; DROP TABLE widget_draft_undo; DROP TABLE widget_candidate_sets; DROP TABLE widget_layout; DROP TABLE widget_draft_selection; DROP TABLE saved_widgets; DROP TABLE generated_candidates; DROP TABLE widget_generation_attempts; DROP TABLE widget_generation_tasks; DROP TABLE widget_generation_events; DROP TABLE widget_drafts;",
   );

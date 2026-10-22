@@ -1,25 +1,51 @@
+export type SearchCategory = "all" | "conversation" | "project" | "widget";
+export type SearchKind = Exclude<SearchCategory, "all">;
+export const searchCategories: SearchCategory[] = [
+  "all",
+  "conversation",
+  "project",
+  "widget",
+];
 export interface SearchRequest {
   sequence: number;
   query: string;
-  offset: number;
+  category: SearchCategory;
+  /** Opaque position after the last hit of the previous page; null for the first page. */
+  cursor: string | null;
 }
+/**
+ * One result. Conversations give one hit per matching title or saved message; projects and retained widgets give
+ * one hit per object. `conversationId` is set only for conversation hits. `updatedAt` is null when the object has
+ * no confirmable time (retained widgets), so no time is shown.
+ */
 export interface SearchHit {
-  archived: boolean;
-  conversationId: string;
+  kind: SearchKind;
+  objectId: string;
+  conversationId: string | null;
   messageId: string | null;
+  archived: boolean;
   title: string;
-  updatedAt: string;
+  titleRanges: [number, number][];
   text: string;
   ranges: [number, number][];
-  titleRanges: [number, number][];
+  updatedAt: string | null;
+  /** Project name of a project conversation; null elsewhere. */
+  projectName: string | null;
 }
+export type SearchCounts = Record<SearchKind, number>;
 export type SearchReply =
   | {
       ok: true;
       sequence: number;
       query: string;
+      category: SearchCategory;
+      /** Matches per kind, read in the same transaction as the hits; zero for an empty query. */
+      counts: SearchCounts;
       hits: SearchHit[];
+      next: string | null;
       hasMore: boolean;
+      /** Index generation and revision the counts and hits were read from. */
+      snapshot: { generation: number; revision: number };
     }
   | {
       ok: false;
@@ -30,15 +56,17 @@ export function validSearch(value: unknown): value is SearchRequest {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   return (
-    Object.keys(v).sort().join(",") === "offset,query,sequence" &&
+    Object.keys(v).sort().join(",") === "category,cursor,query,sequence" &&
     typeof v.query === "string" &&
     [...v.query].length <= 200 &&
     !v.query.includes("\0") &&
     Number.isSafeInteger(v.sequence) &&
     Number(v.sequence) >= 0 &&
-    Number.isSafeInteger(v.offset) &&
-    Number(v.offset) >= 0 &&
-    Number(v.offset) <= 20000
+    searchCategories.includes(v.category as SearchCategory) &&
+    (v.cursor === null ||
+      (typeof v.cursor === "string" &&
+        v.cursor.length > 0 &&
+        v.cursor.length <= 1024))
   );
 }
 // Unicode canonical normalization and caseless literal matching. These expansions

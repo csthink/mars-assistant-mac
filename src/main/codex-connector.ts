@@ -19,6 +19,7 @@ import {
   codexInstructionSources,
   startCodexThread,
   type CodexThread,
+  type CodexTools,
 } from "./codex-session";
 import { TransportError } from "./transport";
 const digest = (value: unknown) =>
@@ -132,7 +133,7 @@ export class CodexConnector {
   ) {}
   async open(
     expectedModel?: string,
-    tools: boolean | "generation" = false,
+    tools: CodexTools = false,
     resume?: CodexRun,
     effort: string | null = null,
     signal?: AbortSignal,
@@ -324,7 +325,7 @@ export class CodexConnector {
   async openApproved(
     model: string,
     configuration: CodexConnection,
-    tools: boolean | "generation",
+    tools: CodexTools,
     resume?: CodexRun,
     effort: string | null = null,
     signal?: AbortSignal,

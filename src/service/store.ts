@@ -135,8 +135,17 @@ import {
   registerSearchFunctions,
   createSearchIndex,
   rebuildSearchIndex,
+  upgradeSearchIndex,
 } from "./search-index";
 
+import { migrateWidgetOrder } from "./widget-order";
+import {
+  migrateToolCalls,
+  runWorkbenchTool,
+  workbenchActionSchema,
+  workbenchActions,
+} from "./workbench-tools";
+import { validWorkbenchToolCommand } from "../shared/workbench-tools";
 import {
   migrateOrganization,
   organizeConversation,
@@ -146,7 +155,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 34;
+export const schemaVersion = 35;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -223,6 +232,14 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     26: migrateConversationOrder,
     27: migrateProjectOrganization,
     28: widgetGenerationSchema,
+    // Version 35: the workbench order revision of retained widgets (WB-02) and the index over conversations,
+    // projects and retained widgets with its generation (SEARCH-01).
+    34: (db) => {
+      migrateWidgetOrder(db);
+      upgradeSearchIndex(db);
+      db.exec(workbenchActionSchema);
+      migrateToolCalls(db);
+    },
     33: `ALTER TABLE settings ADD COLUMN widget_generation_minutes INTEGER NOT NULL DEFAULT 10 CHECK(widget_generation_minutes BETWEEN 5 AND 30);
       ALTER TABLE widget_generation_tasks ADD COLUMN started_at INTEGER;
       ALTER TABLE widget_generation_tasks ADD COLUMN deadline_at INTEGER;
@@ -508,6 +525,7 @@ export class Store {
       dataRoot: this.root,
       projects: projectSnapshot(this.db),
       widgetGeneration: widgetGenerationSnapshot(this.db),
+      workbenchActions: workbenchActions(this.db),
       selected,
       conversations: (
         this.db
@@ -724,6 +742,8 @@ export class Store {
           input,
           new Date().toISOString(),
         );
+      else if (host && validWorkbenchToolCommand(input))
+        toolResult = runWorkbenchTool(this.db, input, new Date().toISOString());
       else if (!host && validWidgetGenerationCommand(input))
         applyWidgetGeneration(
           this.db,
@@ -751,6 +771,7 @@ export class Store {
         this.applyHost(
           input as Exclude<
             HostCommand,
+            | { type: "runWorkbenchTool" }
             | WidgetGenerationHostCommand
             | CapabilityHostCommand
             | WidgetHostCommand
@@ -1022,6 +1043,7 @@ export class Store {
   private applyHost(
     command: Exclude<
       HostCommand,
+      | { type: "runWorkbenchTool" }
       | WidgetGenerationHostCommand
       | CapabilityHostCommand
       | WidgetHostCommand

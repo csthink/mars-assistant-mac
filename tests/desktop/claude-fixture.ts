@@ -16,6 +16,11 @@ export function createClaudeFixture(root: string) {
     model: "claude-synthetic[1m]",
     attachmentId: "selected",
     widgetPackage: "{}",
+    /** mode "workbench": product tool calls the synthetic model makes in order, by MCP name and arguments. */
+    workbenchCalls: [] as {
+      name: string;
+      arguments: Record<string, unknown>;
+    }[],
     /** Whether --help lists --effort, and the levels each resolved model advertises in initialize. */
     effortFlag: true,
     efforts: {
@@ -154,10 +159,12 @@ const input=rl.createInterface({input:process.stdin});
 const synthetic=process.env.ANTHROPIC_API_KEY==='SYNTHETIC_ONLY_NOT_REAL';
 const session=flag(args.includes('--resume')?'--resume':'--session-id');
 const config=JSON.parse(flag('--mcp-config')||'{"mcpServers":{}}');
-const widget=flag('--allowedTools')==='mcp__csthink_assistant__submit_widget_candidate';
+const allowed=(flag('--allowedTools')||'').split(',').filter(Boolean);
+const widget=allowed.includes('mcp__csthink_assistant__submit_widget_candidate');
 const tool=widget?'mcp__csthink_assistant__submit_widget_candidate':'mcp__csthink_assistant__read_material';
 let child;
-async function readMaterial(input){
+async function readMaterial(input){return callTool(widget?'submit_widget_candidate':'read_material',input);}
+async function callTool(name,input){
  const server=config.mcpServers.csthink_assistant;
  if(!server)return {is_error:true,content:'unavailable'};
  if(!child)child=cp.spawn(server.command,server.args,{stdio:['pipe','pipe','ignore']});
@@ -165,25 +172,31 @@ async function readMaterial(input){
   let b='';const id=crypto.randomUUID();
   const listener=(chunk)=>{b+=chunk;let end;while((end=b.indexOf('\n'))>=0){const line=b.slice(0,end);b=b.slice(end+1);const r=JSON.parse(line);if(r.id===id){child.stdout.off('data',listener);resolve({is_error:r.result.isError===true,content:r.result.content});}}};
   child.stdout.on('data',listener);
-  child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name:widget?'submit_widget_candidate':'read_material',arguments:input}})+'\n');
+  child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:input}})+'\n');
  });
 }
 async function user(m){
- const tools=config.mcpServers.csthink_assistant?[tool]:[];
+ const tools=config.mcpServers.csthink_assistant?allowed:[];
  emit({type:'system',subtype:'init',model:flag('--model'),permissionMode:'dontAsk',session_id:!synthetic&&state.mode==='wrongSession'?'unowned':session,tools:!synthetic&&state.mode==='unsafeTools'?['Bash']:tools,plugins:loadedPlugins,skills:[]});
  if(process.env.ANTHROPIC_API_KEY==='SYNTHETIC_ONLY_NOT_REAL'){
   const messages=[{role:'user',content:'synthetic fixture'}];
-  for(let turn=0;turn<4;turn++){
+  for(let turn=0;turn<8;turn++){
    const response=await fetch(process.env.ANTHROPIC_BASE_URL+'/v1/messages',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:flag('--model'),tools:tools.map(name=>({name})),messages})});
    const value=await response.json();messages.push({role:'assistant',content:value.content});
    const call=value.content.find(b=>b.type==='tool_use');
    if(!call)break;
-   const result=call.name===tool?await readMaterial(call.input):{is_error:true,content:'unavailable'};
+   const result=tools.includes(call.name)?await callTool(call.name.replace('mcp__csthink_assistant__',''),call.input):{is_error:true,content:'unavailable'};
    messages.push({role:'user',content:[{type:'tool_result',tool_use_id:call.id,...result}]});
   }
  }else if(state.mode==='tools'||state.mode==='widget'){
   const result=await readMaterial(widget?{package:state.widgetPackage}:{attachmentId:state.attachmentId});record({materialResult:result});
   if(result.is_error){emit({type:'result',session_id:session,subtype:'error_during_execution',is_error:true,errors:['permission denied']});return;}
+ }else if(state.mode==='workbench'){
+  for(const call of state.workbenchCalls){
+   const name='mcp__csthink_assistant__'+call.name;
+   const result=tools.includes(name)?await callTool(call.name,call.arguments):{is_error:true,content:'unavailable'};
+   record({workbenchResult:result,name:call.name});
+  }
  }
  if(!synthetic&&state.mode==='apiError'){
   emit({type:'assistant',session_id:session,isApiErrorMessage:true,error:state.errorCode,message:{content:[{type:'text',text:state.errorText}]}});

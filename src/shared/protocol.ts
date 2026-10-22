@@ -1,4 +1,9 @@
 import {
+  validWorkbenchToolCommand,
+  type WorkbenchAction,
+  type WorkbenchToolCommand,
+} from "./workbench-tools";
+import {
   validWidgetGenerationCommand,
   validWidgetGenerationHostCommand,
   type WidgetGenerationCommand,
@@ -242,6 +247,12 @@ export const imageInputLabels: Record<ImageInput, string> = {
   verified: "支持（已实测）",
   unsupported: "不支持",
 };
+/** WB-02 tool call capability of an API model, as its own check measured it. */
+export const toolCallLabels: Record<ConnectionModel["toolCalls"], string> = {
+  unknown: "未检测（对话中的助手不能调整控件顺序）",
+  verified: "已确认",
+  unsupported: "不支持",
+};
 export function acceptsImages(imageInput: ImageInput) {
   return imageInput !== "unsupported";
 }
@@ -313,6 +324,12 @@ export interface ConnectionModel {
   imageInputCheckedAt: string | null;
   contextChars: number | null;
   effort: EffortRecord | null;
+  /** Tool calls of this model, set only by its own check (WB-02, API connections); unknown until checked. */
+  toolCalls: "unknown" | "verified" | "unsupported";
+  /** When the current tool call value was measured; null while unknown. */
+  toolCallsCheckedAt: string | null;
+  /** The latest tool call check, failed or not; a failure keeps the last measured value. */
+  lastToolProbe: ConnectionCheck | null;
 }
 export interface Connection {
   codex?: CodexConnection;
@@ -715,6 +732,8 @@ export interface Snapshot {
   projects: Project[];
   permissions: Permission[];
   toolOperations: ToolOperation[];
+  /** Workbench moves Agents asked for in conversation turns, as committed or refused (WB-02). */
+  workbenchActions: WorkbenchAction[];
   revision: number;
   rootId: string;
   dataRoot: string;
@@ -888,11 +907,13 @@ export interface AttachmentPreview {
 export type ExtractionOutcome =
   | { ok: true; text: string; pages: number | null }
   | { ok: false; reason: AttachmentReason };
-export type CheckKind = "connection_test" | "model_list" | "image_probe";
+export type CheckKind =
+  "connection_test" | "model_list" | "image_probe" | "tool_probe";
 export const checkKinds: CheckKind[] = [
   "connection_test",
   "model_list",
   "image_probe",
+  "tool_probe",
 ];
 /** Material of one saved user message as handed to the host for a request. */
 export interface TurnAttachment {
@@ -911,6 +932,7 @@ export interface TurnAttachment {
 }
 /** Adapter reports from the host process; never accepted from a renderer. */
 export type HostCommand =
+  | WorkbenchToolCommand
   | WidgetGenerationHostCommand
   | ProjectHostCommand
   | WidgetHostCommand
@@ -970,6 +992,7 @@ export type HostCommand =
   | { type: "reportStopTimeout"; executionId: string }
   /** The provider rejected image content for this execution's connection. */
   | { type: "reportImageUnsupported"; executionId: string }
+  | { type: "reportToolsUnsupported"; executionId: string }
   /** The host gave up waiting for an execution (for example at quit); it becomes interrupted. */
   | { type: "reportInterrupted"; executionId: string }
   | { type: "reportDelta"; executionId: string; seq: number; text: string }
@@ -1059,10 +1082,7 @@ export interface DesktopBridge {
   ) => () => void;
   onWidgetDisplayInput: (
     callback: (
-      signal: { generation: string } & (
-        | { kind: "hover" | "focus"; value: boolean }
-        | { kind: "scroll"; x: number; y: number }
-      ),
+      signal: { generation: string } & import("./widget-ui").WidgetDisplayInput,
     ) => void,
   ) => () => void;
   onWidgetStatus: (callback: (signal: WidgetSignal) => void) => () => void;
@@ -1404,6 +1424,7 @@ export function validCommand(value: unknown): value is Command {
   );
 }
 export function validHostCommand(value: unknown): value is HostCommand {
+  if (validWorkbenchToolCommand(value)) return true;
   if (validWidgetGenerationHostCommand(value)) return true;
   if (validProjectHostCommand(value)) return true;
   if (validWidgetHostCommand(value)) return true;
@@ -1499,6 +1520,7 @@ export function validHostCommand(value: unknown): value is HostCommand {
     c.type === "loadTurnContext" ||
     c.type === "reportStopTimeout" ||
     c.type === "reportImageUnsupported" ||
+    c.type === "reportToolsUnsupported" ||
     c.type === "reportInterrupted"
   )
     return keys === "executionId,type";

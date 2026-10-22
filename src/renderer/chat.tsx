@@ -11,6 +11,7 @@ import {
   type Turn,
 } from "../shared/protocol";
 import { MessageAttachments } from "./attachments";
+import type { WorkbenchAction } from "../shared/workbench-tools";
 
 /** The level actually passed to the executor; nothing is shown when no parameter was sent. */
 function effortSuffix(effort: string | null | undefined) {
@@ -32,7 +33,10 @@ export function Transcript({
   onOpenAttachment,
   focus,
   onClearFocus,
+  workbenchActions = [],
 }: {
+  /** Workbench moves the Agent asked for in this conversation (WB-02); drawn from the committed results. */
+  workbenchActions?: WorkbenchAction[];
   focus?: { messageId: string; query: string };
   onClearFocus?: () => void;
   messages: Message[];
@@ -108,6 +112,11 @@ export function Transcript({
                   </p>
                 )}
             </article>
+            {message.role === "user" && turn && (
+              <WorkbenchActionCards
+                actions={workbenchActions.filter((a) => a.turnId === turn.id)}
+              />
+            )}
             {message.role === "user" &&
               turn &&
               assistantByTurn.has(turn.id) && (
@@ -201,5 +210,38 @@ function TurnCard({
         <p className="quiet">在收到内容前已停止。</p>
       )}
     </article>
+  );
+}
+
+/**
+ * The product's own record of what an Agent's workbench request did (WB-02): a move the business service
+ * committed, or the reason nothing moved. The Agent's text is never the evidence of a move.
+ */
+function WorkbenchActionCards({ actions }: { actions: WorkbenchAction[] }) {
+  if (!actions.length) return null;
+  return (
+    <ul className="workbench-actions" aria-label="工作台操作结果">
+      {actions.map((a) => (
+        <li
+          key={a.id}
+          className={`workbench-action ${a.status === "moved" || a.status === "unchanged" ? "" : "refused"}`}
+          data-status={a.status}
+        >
+          {a.status === "moved"
+            ? `已将「${a.widgetName}」移到第 ${a.position} 位`
+            : a.status === "unchanged"
+              ? `「${a.widgetName}」已在第 ${a.position} 位，顺序未变`
+              : a.status === "ambiguous"
+                ? `未移动：有 ${a.candidates.length} 个名为「${a.reference}」的控件（${a.candidates
+                    .map((c) => `第 ${c.position} 位 ${c.widgetId.slice(0, 8)}`)
+                    .join("、")}），需要先说明是哪一个`
+                : a.status === "stale"
+                  ? `未移动：控件顺序已在之后被改动，「${a.widgetName}」保持在第 ${a.position} 位`
+                  : a.status === "not_found"
+                    ? `未移动：没有名为「${a.reference ?? ""}」的控件`
+                    : `未移动：目标位置超出控件数量`}
+        </li>
+      ))}
+    </ul>
   );
 }

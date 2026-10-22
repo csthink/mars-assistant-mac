@@ -1,3 +1,8 @@
+import {
+  advanceWidgetOrder,
+  moveWidget,
+  widgetOrderRevision,
+} from "./widget-order";
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID, createHash } from "node:crypto";
 import { StoreError } from "./errors";
@@ -342,6 +347,7 @@ export function widgetGenerationSnapshot(
         "SELECT id,name,candidate_id AS candidateId,digest,revision,position FROM saved_widgets ORDER BY position",
       )
       .all() as unknown as WidgetGenerationSnapshot["widgets"],
+    orderRevision: widgetOrderRevision(db),
   };
 }
 export function recoverWidgetGeneration(db: DatabaseSync, now: string) {
@@ -367,6 +373,10 @@ export function applyWidgetGeneration(
   now: string,
   surface: "main" | "panel" = "main",
 ) {
+  if (c.type === "moveWidget") {
+    moveWidget(db, c);
+    return;
+  }
   if (c.type === "undoWidgetDraftDeletion") {
     const undo = db
       .prepare(
@@ -757,6 +767,7 @@ export function applyWidgetGeneration(
       db.prepare(
         "INSERT INTO saved_widgets(id,name,candidate_id,digest,position) VALUES(?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM saved_widgets))",
       ).run(widgetId, member.name, member.id, member.digest);
+      advanceWidgetOrder(db);
       db.prepare(
         "UPDATE widget_drafts SET widget_id=?,target_ids=?,updated_at=? WHERE id=?",
       ).run(widgetId, JSON.stringify([widgetId]), now, d.id);

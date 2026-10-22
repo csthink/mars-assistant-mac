@@ -23,7 +23,11 @@ import { sameEffort } from "../shared/protocol";
 import { claudeEnvironment } from "./claude-discovery";
 import { ClaudeRpc, ClaudeProtocolError } from "./claude-rpc";
 import { claudeRunArgs, verifyClaudeRuntime } from "./claude-contract";
-import { createClaudeBroker } from "./claude-broker";
+import {
+  createClaudeBroker,
+  claudeToolNames,
+  type ClaudeToolKind,
+} from "./claude-broker";
 import { runClaudeSession, claudeInput } from "./claude-session";
 import { TransportError, type ChatMessage, type ToolCall } from "./transport";
 const digest = (value: unknown) =>
@@ -174,6 +178,10 @@ export class ClaudeConnector {
     budget: number;
     invoke?: (call: ToolCall, signal: AbortSignal) => Promise<string>;
     generation?: boolean;
+    /** Selected materials are readable through the product tool (default with an invoke handler). */
+    material?: boolean;
+    /** The workbench ordering tools of a main-window conversation (WB-02). */
+    workbench?: boolean;
     onProgress?: () => void;
     resume?: ClaudeRun;
     /** Level fixed in the turn snapshot; null runs at the CLI's own default. */
@@ -254,12 +262,20 @@ export class ClaudeConnector {
       await rename(temporary, journalPath);
     };
     await save("running");
-    const broker = options.invoke
+    const kinds: ClaudeToolKind[] = !options.invoke
+      ? []
+      : options.generation
+        ? ["generation"]
+        : [
+            ...((options.material ?? true) ? (["material"] as const) : []),
+            ...(options.workbench ? (["workbench"] as const) : []),
+          ];
+    const broker = kinds.length
       ? await createClaudeBroker(
           this.helper,
-          options.invoke,
+          options.invoke!,
           options.signal,
-          options.generation,
+          kinds,
         )
       : undefined;
     let rpc: ClaudeRpc | undefined;
@@ -277,7 +293,7 @@ export class ClaudeConnector {
           broker?.config ?? { mcpServers: {} },
           resume,
           effort,
-          options.generation,
+          claudeToolNames(kinds),
         ),
         {
           cwd,
@@ -298,7 +314,7 @@ export class ClaudeConnector {
         rpc,
         run,
         messages: options.messages,
-        tools: !!broker,
+        toolNames: claudeToolNames(kinds),
         generation: options.generation,
         onProgress: options.onProgress,
         signal: options.signal,

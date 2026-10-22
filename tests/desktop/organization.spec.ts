@@ -121,7 +121,8 @@ test("organization: deletion confirmation, search exclusion, restoration and sep
       window.desktop.search({
         sequence: 901,
         query: "已保存的消息",
-        offset: 0,
+        category: "all",
+        cursor: null,
       }),
     );
     expect(results.ok).toBe(true);
@@ -200,7 +201,12 @@ test("organization: copy exports saved messages only, archives are searchable an
     );
     await page.keyboard.press("Meta+Shift+a");
     const results = await page.evaluate(() =>
-      window.desktop.search({ sequence: 902, query: "松果计划", offset: 0 }),
+      window.desktop.search({
+        sequence: 902,
+        query: "松果计划",
+        category: "all",
+        cursor: null,
+      }),
     );
     expect(results.ok).toBe(true);
     if (results.ok)
@@ -727,7 +733,7 @@ test("organization: dialogs restore pointer focus without rings and preserve key
     };
     for (const close of ["Escape", "关闭搜索"]) {
       await search.click();
-      await page.getByRole("dialog", { name: "搜索对话" }).waitFor();
+      await page.getByRole("dialog", { name: "全局搜索" }).waitFor();
       if (close === "Escape") await page.keyboard.press("Escape");
       else await page.getByRole("button", { name: close, exact: true }).click();
       await indicator(search, false);

@@ -39,6 +39,11 @@ const icons: Record<string, string> = {
   diff: "M5 3h14v18H5ZM8 8h8M8 15h8M12 12v6",
   activity: "M3.5 12h3.8l2.4-6 4.6 12 2.4-6h3.8",
   open: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+  // Prototype mac-feature-t33 icons.js arrowUpShort and arrowDown (WB-02 前移 / 后移).
+  arrowUp: "M12 19V5M6.5 10.5 12 5l5.5 5.5",
+  arrowDown: "M12 5v14M6.5 13.5 12 19l5.5-5.5",
+  layout:
+    "M6 4.5h12A2.5 2.5 0 0 1 20.5 7v10a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 17V7A2.5 2.5 0 0 1 6 4.5ZM8.5 4.5v15M15.5 4.5v15",
 };
 export function Icon({ name }: { name: string }) {
   return (

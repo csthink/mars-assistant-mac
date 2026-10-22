@@ -204,9 +204,9 @@ export function organizeConversation(
         "purged_at=?,title='已删除对话',manual_title=NULL,auto_title=NULL,draft='',revision=revision+1,connection_id=NULL,model_id=NULL,granted_connections='[]',granted_providers='[]'",
         now,
       );
-      db.prepare("DELETE FROM search_documents WHERE conversation_id=?").run(
-        id,
-      );
+      db.prepare(
+        "DELETE FROM search_documents WHERE kind='conversation' AND object_id=?",
+      ).run(id);
       break;
     }
   }
