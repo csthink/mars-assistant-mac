@@ -6,7 +6,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { seedRetainedWidgets } from "./widget-generation-fixture";
@@ -64,6 +64,55 @@ function inputHelper(log: unknown[]) {
   };
 }
 type Point = { x: number; y: number };
+type Hit = {
+  class: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+let hitProbe = "";
+/** The view AppKit gives a mouse event at a global point (tests/desktop/widget-hit-probe.mm, read-only). */
+async function hitAt(app: ElectronApplication, point: Point): Promise<Hit> {
+  if (!hitProbe) {
+    const build = mkdtempSync(
+      resolve(".test-data/disposable/order-hit-probe-"),
+    );
+    hitProbe = join(build, "widget-hit-probe.node");
+    execFileSync("/usr/bin/clang++", [
+      "-O2",
+      "-std=c++17",
+      "-fobjc-arc",
+      "-bundle",
+      "-undefined",
+      "dynamic_lookup",
+      "-framework",
+      "AppKit",
+      "-I",
+      resolve(dirname(process.execPath), "../include/node"),
+      resolve("tests/desktop/widget-hit-probe.mm"),
+      "-o",
+      hitProbe,
+    ]);
+  }
+  return app.evaluate(
+    ({ BrowserWindow }, a) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      const content = w.getContentBounds();
+      const probe = process.getBuiltinModule("module").createRequire(a.probe)(
+        a.probe,
+      );
+      return JSON.parse(
+        probe.hit(
+          w.getNativeWindowHandle(),
+          a.point.x - content.x,
+          a.point.y - content.y,
+        ),
+      );
+    },
+    { probe: hitProbe, point },
+  );
+}
 const stored = (data: string) => {
   const db = new DatabaseSync(join(data, "state.sqlite"), { readOnly: true });
   try {
@@ -162,6 +211,18 @@ test("native: a real pointer drags a widget across native widget views, real key
       )
       .toBeGreaterThanOrEqual(2);
     await page.getByRole("button", { name: "编辑布局", exact: true }).click();
+    // 编辑布局 adds its note above the grid; positions are taken only once the grip has stopped moving.
+    await expect(page.locator(".widget-layout-note")).toBeVisible();
+    const grip = `[data-formal-widget]:nth-child(5) .widget-order-grip`;
+    let settled = "";
+    await expect
+      .poll(async () => {
+        const box = JSON.stringify(await page.locator(grip).boundingBox());
+        const same = box === settled;
+        settled = box;
+        return same;
+      })
+      .toBe(true);
     const focused = await app.evaluate(
       ({ BrowserWindow }) =>
         BrowserWindow.getFocusedWindow()?.id ===
@@ -171,15 +232,24 @@ test("native: a real pointer drags a widget across native widget views, real key
 
     // 1. Real pointer: drag 汇率's grip across the other cards and drop it on the left half of 天气's widget
     //    content, which a native widget view covers.
-    const from = await onScreen(
-      app,
-      page,
-      `[data-formal-widget]:nth-child(5) .widget-order-grip`,
-    );
+    const from = await onScreen(app, page, grip);
     const to = await onScreen(app, page, `[data-formal-widget]:nth-child(1)`, {
       x: 0.2,
       y: 0.6,
     });
+    // Before any input: AppKit must give the press point to the host page and the drop point to a widget view.
+    const hits = {
+      from: await hitAt(app, from),
+      to: await hitAt(app, to),
+    };
+    await info.attach("hit-before-drag", {
+      body: JSON.stringify({ from, to, hits }),
+      contentType: "application/json",
+    });
+    expect(hits.from.class).toBe("RenderWidgetHostViewCocoa");
+    expect(hits.from.width).toBe(1440);
+    expect(hits.to.class).toBe("RenderWidgetHostViewCocoa");
+    expect(hits.to.width).toBeLessThan(1440);
     input("drag", from.x, from.y, to.x, to.y, 24);
     await expect
       .poll(() => stored(data), { timeout: 10_000 })
