@@ -165,6 +165,7 @@ test("native: a real pointer drags a widget across native widget views, real key
   const app = await _electron.launch({
     args: [resolve("."), `--data-root=${data}`],
   });
+  const focusLog: Record<string, unknown>[] = [];
   try {
     const page = await app.firstWindow();
     await ready(page);
@@ -259,8 +260,56 @@ test("native: a real pointer drags a widget across native widget views, real key
     await expect(announce).toHaveAttribute("role", "status");
 
     // 2. Real keys: Space on the focused 后移 of 天气 moves it one place, and focus stays on that control.
+    // Which web contents holds the system keyboard focus right after the drop (recorded, not asserted).
+    const keyboardFocus = async (label: string) => {
+      const state = await app.evaluate(({ BrowserWindow, webContents }) => {
+        const owner = BrowserWindow.getAllWindows()[0];
+        const focused = webContents.getFocusedWebContents();
+        return {
+          keyWindow: BrowserWindow.getFocusedWindow()?.id === owner.id,
+          host: focused?.id === owner.webContents.id,
+          focusedURL: focused ? focused.getURL().slice(0, 40) : null,
+          hostFocused: owner.webContents.isFocused(),
+        };
+      });
+      const entry = {
+        label,
+        ...state,
+        active: await page.evaluate(
+          () =>
+            document.activeElement?.getAttribute("aria-label") ??
+            document.activeElement?.tagName,
+        ),
+      };
+      focusLog.push(entry);
+      return entry;
+    };
+    await keyboardFocus("after drop");
+    // A person returns to the host by clicking a place that does nothing: the 编辑布局 note text.
+    const neutral = await onScreen(app, page, ".widget-layout-note", {
+      x: 0.2,
+      y: 0.5,
+    });
+    const neutralHit = await hitAt(app, neutral);
+    focusLog.push({ label: "neutral point", point: neutral, hit: neutralHit });
+    expect(neutralHit.class).toBe("RenderWidgetHostViewCocoa");
+    expect(neutralHit.width).toBe(1440);
+    input("click", neutral.x, neutral.y);
+    await expect
+      .poll(async () => (await keyboardFocus("after neutral click")).host)
+      .toBe(true);
+    // Before each key press the host page must hold the system keyboard focus and the button the DOM focus.
+    const hostHoldsKeys = async (label: string) => {
+      const state = await keyboardFocus(label);
+      if (!state.keyWindow || !state.host || !state.hostFocused)
+        throw new Error(
+          `Keyboard focus is not on the host page before the key press: ${JSON.stringify(focusLog)}`,
+        );
+    };
     const later = page.getByRole("button", { name: /^后移 天气 / });
     await later.focus();
+    await expect(later).toBeFocused();
+    await hostHoldsKeys("before space on 后移 天气");
     input("key", 49);
     await expect
       .poll(() => stored(data))
@@ -270,6 +319,8 @@ test("native: a real pointer drags a widget across native widget views, real key
     // Return on 前移 moves it back, and focus stays on 前移; the first card's 前移 is disabled.
     const earlier = page.getByRole("button", { name: /^前移 天气 / });
     await earlier.focus();
+    await expect(earlier).toBeFocused();
+    await hostHoldsKeys("before return on 前移 天气");
     input("key", 36);
     await expect
       .poll(() => stored(data))
@@ -293,6 +344,10 @@ test("native: a real pointer drags a widget across native widget views, real key
       .click();
     await expect(cards.first()).toHaveAttribute("aria-label", /^控件 汇率 /);
   } finally {
+    await info.attach("keyboard-focus", {
+      body: JSON.stringify(focusLog, null, 1),
+      contentType: "application/json",
+    });
     await info.attach("input-events", {
       body: JSON.stringify(inputs, null, 1),
       contentType: "application/json",
