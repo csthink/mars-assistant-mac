@@ -15,6 +15,7 @@ import { validProjectAccessRequest } from "../shared/project-access";
 import { ProjectFolders, folderFailure } from "./projects";
 import { validProjectCreateInput } from "../shared/projects";
 import { WidgetHost } from "./widget-host";
+import { panelSnapshot } from "./panel-snapshot";
 import { PanelOutsideClicks, type MouseMonitor } from "./panel-outside";
 import { createRequire } from "node:module";
 import { imageProbeMessages, requireImageProbeAnswer } from "./transport";
@@ -643,7 +644,12 @@ function adoptSnapshot(next: Snapshot, startup = false) {
     )
       inflight.get(op.executionId)?.abort();
   }
-  publish("business:snapshot", snapshot);
+  for (const entry of windows.values())
+    if (!entry.window.isDestroyed())
+      entry.window.webContents.send(
+        "business:snapshot",
+        entry.surface === "panel" ? panelSnapshot(snapshot) : snapshot,
+      );
   launchQueuedTurns(next);
   runtimeHost.supervisor.adopt(
     next.runtimeInstallations,
@@ -1520,7 +1526,15 @@ async function runConnectionCheck(
   })();
   return { ok: true, executionId };
 }
-function sender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) {
+/**
+ * The registered window behind an IPC call. Every channel serves the main window; the menu bar panel's
+ * renderer reaches only the channels that show widgets, run their light interactions and order them
+ * (WB-03, architecture 可信界面), which pass `panel` explicitly.
+ */
+function sender(
+  event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent,
+  panel: "panel" | undefined = undefined,
+) {
   const entry = windows.get(event.sender.id);
   if (
     !entry ||
@@ -1528,9 +1542,12 @@ function sender(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) {
     event.senderFrame.url.split("?")[0] !== fileURL
   )
     throw new Error("Unregistered sender");
+  if (entry.surface === "panel" && panel !== "panel")
+    throw new Error("菜单栏面板不提供此操作，请在主窗口进行。");
   return entry;
 }
-const panelDialogs = new Set<number>();
+/** The business commands the menu bar panel may send: read the snapshot and move a retained widget. */
+const panelCommands = new Set<string>(["snapshot", "moveWidget"]);
 const panelOutside =
   process.platform === "darwin"
     ? new PanelOutsideClicks(
@@ -1540,12 +1557,7 @@ const panelOutside =
       )
     : undefined;
 function watchPanel(win: BrowserWindow) {
-  if (
-    win.isDestroyed() ||
-    !win.isVisible() ||
-    panelDialogs.has(win.webContents.id)
-  )
-    return;
+  if (win.isDestroyed() || !win.isVisible()) return;
   panelOutside?.watch(
     () => win.getBounds(),
     () => tray.getBounds(),
@@ -1587,7 +1599,7 @@ function createWindow(surface: Surface) {
     resizable: !panel,
     alwaysOnTop: panel,
     show: false,
-    title: panel ? "工作台助手" : displayName,
+    title: panel ? "菜单栏面板" : displayName,
     backgroundColor: currentBackground(),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
@@ -1633,10 +1645,9 @@ function createWindow(surface: Surface) {
     win.on("hide", () => panelOutside?.stop());
     win.on("closed", () => {
       panelOutside?.stop();
-      panelDialogs.delete(id);
     });
     win.on("blur", () => {
-      if (!quitting && !panelDialogs.has(id)) {
+      if (!quitting) {
         entry.retire = true;
         win.hide();
         if (!entry.dirty) win.destroy();
@@ -1894,11 +1905,7 @@ if (!instance) {
     const panel = [...windows.values()].find(
       (entry) => entry.surface === "panel",
     );
-    if (
-      panel?.window.isVisible() &&
-      !panelDialogs.has(panel.window.webContents.id)
-    )
-      panel.window.close();
+    if (panel?.window.isVisible()) panel.window.close();
   });
   app.on("window-all-closed", () => {});
   app.on("before-quit", (event) => {
@@ -1925,7 +1932,7 @@ if (!instance) {
       request(command, surface, "host"),
     );
     ipcMain.handle("widget:control", (event, command: unknown) => {
-      const entry = sender(event);
+      const entry = sender(event, "panel");
       return widgetHost!.control(entry.window, entry.surface, command);
     });
     ipcMain.on("widget:occlude", (event, slot: unknown) => {
@@ -1935,7 +1942,10 @@ if (!instance) {
           (typeof slot !== "string" || !/^[a-zA-Z0-9:-]{1,200}$/.test(slot))
         )
           throw new Error("Invalid widget slot");
-        widgetHost!.occlude(sender(event).window, slot as string | undefined);
+        widgetHost!.occlude(
+          sender(event, "panel").window,
+          slot as string | undefined,
+        );
         event.returnValue = true;
       } catch {
         event.returnValue = false;
@@ -2144,12 +2154,18 @@ if (!instance) {
       searchService?.cancel(sender(event).surface);
     });
     ipcMain.handle("business:command", async (event, command: unknown) => {
-      const entry = sender(event);
+      const entry = sender(event, "panel");
       if (!validCommand(command))
         return {
           ok: false,
           code: "INVALID_COMMAND",
           message: "操作未开放或参数无效。",
+        };
+      if (entry.surface === "panel" && !panelCommands.has(command.type))
+        return {
+          ok: false,
+          code: "INVALID_COMMAND",
+          message: "菜单栏面板只提供控件展示、轻量操作与排序，请在主窗口进行。",
         };
       if (command.type === "setClaudeSettings" && claudeSetupOperations > 0)
         return {
@@ -2196,6 +2212,10 @@ if (!instance) {
         return widgetGenerationRunner.confirmStop(task);
       }
       const reply = await request(command, entry.surface);
+      if (entry.surface === "panel")
+        return reply.ok
+          ? { ...reply, snapshot: panelSnapshot(reply.snapshot) }
+          : reply;
       // The business service records "stopping" first; only then does the host abort the request.
       if (reply.ok && command.type === "stopExecution")
         abortExecution(command.executionId);
@@ -2244,40 +2264,26 @@ if (!instance) {
             code: "UNAVAILABLE",
             message: "业务服务未连接，未打开文件选择。",
           };
-        const panel = entry.surface === "panel";
-        if (panel) {
-          panelDialogs.add(entry.window.webContents.id);
-          panelOutside?.stop();
-        }
-        const chosen = await (async () => {
-          try {
-            return await dialog.showOpenDialog(entry.window, {
-              title: "添加资料",
-              buttonLabel: "添加",
-              properties: ["openFile", "multiSelections", "dontAddToRecent"],
-              filters: [
-                {
-                  name: "资料文件",
-                  extensions: [
-                    "txt",
-                    "text",
-                    "md",
-                    "markdown",
-                    "pdf",
-                    "png",
-                    "jpg",
-                    "jpeg",
-                  ],
-                },
+        const chosen = await dialog.showOpenDialog(entry.window, {
+          title: "添加资料",
+          buttonLabel: "添加",
+          properties: ["openFile", "multiSelections", "dontAddToRecent"],
+          filters: [
+            {
+              name: "资料文件",
+              extensions: [
+                "txt",
+                "text",
+                "md",
+                "markdown",
+                "pdf",
+                "png",
+                "jpg",
+                "jpeg",
               ],
-            });
-          } finally {
-            if (panel && !entry.window.isDestroyed()) {
-              panelDialogs.delete(entry.window.webContents.id);
-              watchPanel(entry.window);
-            }
-          }
-        })();
+            },
+          ],
+        });
         if (chosen.canceled) return { ok: true, imported: 0, failures: [] };
         let imported = 0;
         const failures: string[] = [];
@@ -2604,14 +2610,14 @@ if (!instance) {
       }
     });
     ipcMain.on("window:dirty", (event, dirty: unknown) => {
-      const entry = sender(event);
+      const entry = sender(event, "panel");
       if (typeof dirty !== "boolean") return;
       entry.dirty = dirty;
       if (!dirty && entry.retire && !entry.window.isDestroyed())
         entry.window.destroy();
     });
     ipcMain.handle("business:reconnect", async (event) => {
-      sender(event);
+      sender(event, "panel");
       if (status.connected || reconnecting || quitting) return;
       reconnecting = true;
       try {
@@ -2637,10 +2643,27 @@ if (!instance) {
         reconnecting = false;
       }
     });
-    ipcMain.handle("window:open-main", async (event, id: unknown) => {
-      sender(event);
-      if (id !== undefined && !validId(id)) return;
-      if (typeof id === "string") await request({ type: "select", id }, "main");
+    ipcMain.handle("window:open-main", async (event, target: unknown) => {
+      sender(event, "panel");
+      // A retained widget: the main window shows it on its 控件 page, the same object the panel showed (WB-03).
+      if (
+        target !== null &&
+        typeof target === "object" &&
+        !Array.isArray(target)
+      ) {
+        const widgetId = (target as { widgetId?: unknown }).widgetId;
+        if (Object.keys(target).join(",") !== "widgetId" || !validId(widgetId))
+          return;
+        const win = createWindow("main");
+        const show = () => win.webContents.send("window:open-widget", widgetId);
+        if (win.webContents.isLoading())
+          win.webContents.once("did-finish-load", show);
+        else show();
+        return;
+      }
+      if (target !== undefined && !validId(target)) return;
+      if (typeof target === "string")
+        await request({ type: "select", id: target }, "main");
       const win = createWindow("main");
       if (!win.webContents.isLoading())
         win.webContents.send("window:open-conversation");
@@ -2680,7 +2703,7 @@ if (!instance) {
             { role: "about", label: `关于 ${displayName}` },
             { type: "separator" },
             { label: "打开主窗口", click: () => createWindow("main") },
-            { label: "打开工作台助手", click: () => createWindow("panel") },
+            { label: "打开菜单栏面板", click: () => createWindow("panel") },
             { type: "separator" },
             {
               label: `退出 ${displayName}`,

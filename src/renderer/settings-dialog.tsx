@@ -18,10 +18,10 @@ export const settingTabs = [
   "数据与隐私",
 ];
 /** The extension category's content title is "扩展"; other categories keep their name. */
-export const settingTitles: Record<string, string> = { 扩展管理: "扩展" };
+const settingTitles: Record<string, string> = { 扩展管理: "扩展" };
 
 /** Category list: arrows, Home and End move between categories as a person expects of a vertical list. */
-export function SettingsNav({
+function SettingsNav({
   tab,
   onTab,
 }: {

@@ -226,11 +226,10 @@ test("widget sizing: workspace, fullscreen and panel preserve natural geometry, 
     const newPanel = f.app.waitForEvent("window");
     await f.app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click(),
     );
     const panel = await newPanel;
-    await panel.getByRole("button", { name: "工作台", exact: true }).click();
     const panelSecond = await isolated(
       f.app,
       panel,
@@ -532,7 +531,7 @@ test("widget sizing: retained panel widgets start after either data and connecti
       const panelEvent = f.app.waitForEvent("window");
       await f.app.evaluate(({ Menu }) =>
         Menu.getApplicationMenu()!
-          .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+          .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
           .click(),
       );
       const panel = await panelEvent;
@@ -548,7 +547,6 @@ test("widget sizing: retained panel widgets start after either data and connecti
           ),
         )
         .toBe(true);
-      await panel.getByRole("button", { name: "工作台", exact: true }).click();
       await expect(panel.locator("[data-formal-widget]")).toHaveCount(2);
       await expect
         .poll(() =>

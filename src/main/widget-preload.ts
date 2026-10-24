@@ -283,7 +283,9 @@ if (process.isMainFrame) {
         kind: "drag",
         phase,
         x: event.clientX,
+        y: event.clientY,
         width: innerWidth,
+        height: innerHeight,
       });
     };
     for (const [type, phase] of [

@@ -4,6 +4,7 @@ import { widgetFixture } from "./widget-fixture";
 import { WidgetRuntime, type WidgetInstance } from "./widget-runtime";
 import { widgetFailure } from "../shared/widget-runtime";
 import type { WidgetIdentity } from "../shared/widget-runtime";
+import { widgetStaleMessage } from "../shared/widget-ui";
 import type {
   WidgetControl,
   WidgetSignal,
@@ -15,7 +16,17 @@ import type { Reply, Surface } from "../shared/protocol";
 interface PendingInput {
   revision: number;
   value?: string;
+  /** The object of a data write, kept so the person can retry it (WB-03). */
+  data?: Record<string, unknown>;
   pending: boolean;
+}
+/** The text a person typed into a data write: every string in the object, in order. */
+function inputText(value: unknown): string[] {
+  if (typeof value === "string") return value ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(inputText);
+  if (value && typeof value === "object")
+    return Object.values(value).flatMap(inputText);
+  return [];
 }
 interface Entry {
   token: number;
@@ -30,6 +41,21 @@ export class WidgetHost {
   private entries = new Map<string, Entry>();
   private owners = new Set<number>();
   private buffers = new Map<string, Map<string, PendingInput>>();
+  /**
+   * Input another entry or instance made stale, per surface and candidate (WB-03, mac-feature-t12:OD-02 A):
+   * it is no longer offered to the widget, which shows the latest saved content, and the person can read or
+   * discard it. It lives as long as the application, so hiding the panel keeps it.
+   */
+  private conflicts = new Map<string, Map<string, string>>();
+  private conflictsOf(surface: Surface, candidateId: string) {
+    const key = `${surface}:${candidateId}`;
+    let map = this.conflicts.get(key);
+    if (!map) {
+      map = new Map();
+      this.conflicts.set(key, map);
+    }
+    return map;
+  }
   private buffer(surface: Surface, candidateId: string) {
     const key = `${surface}:${candidateId}`;
     let buffer = this.buffers.get(key);
@@ -48,64 +74,7 @@ export class WidgetHost {
     ) => Promise<Reply>,
   ) {
     this.runtime = new WidgetRuntime(
-      async (identity, command) => {
-        const write =
-          command.method === "writeData" || command.method === "writeDraft";
-        const buffer = this.buffer(identity.surface, identity.candidateId);
-        const input: PendingInput = {
-          revision: "revision" in command ? command.revision : 0,
-          value: command.method === "writeDraft" ? command.value : undefined,
-          pending: true,
-        };
-        const key =
-          command.method === "writeDraft" ? `draft:${command.field}` : "data";
-        if (
-          input.value !== undefined &&
-          (Buffer.byteLength(input.value) > 4096 ||
-            [...buffer.entries()].reduce(
-              (bytes, [name, input]) =>
-                bytes +
-                (name === key ? 0 : Buffer.byteLength(input.value ?? "")),
-              Buffer.byteLength(input.value),
-            ) > 60000)
-        )
-          return widgetFailure;
-        if (write) {
-          buffer.set(key, input);
-          this.signal(identity, "saving", "输入尚未确认保存");
-        }
-        const reply = await this.request(
-          { type: "widgetRequest", identity, request: command },
-          identity.surface,
-        ).finally(() => {
-          input.pending = false;
-        });
-        const result = reply.ok
-          ? (reply.widget ?? widgetFailure)
-          : { ok: false as const, message: reply.message };
-        input.pending = false;
-        if (write && result.ok && buffer.get(key) === input) buffer.delete(key);
-        if (result.ok && command.method === "readDraft") {
-          for (const [key, pending] of buffer)
-            if (key.startsWith("draft:") && pending.value !== undefined)
-              result.value[key.slice(6)] = {
-                text: pending.value,
-                revision: pending.revision,
-                unconfirmed: true,
-              };
-        }
-        if (write)
-          this.signal(
-            identity,
-            result.ok ? "saved" : "failed",
-            result.ok
-              ? buffer.size
-                ? "本次写入已保存，仍有其他输入未确认。"
-                : "本次写入已确认保存"
-              : result.message,
-          );
-        return result;
-      },
+      (identity, command) => this.forward(identity, command),
       (identity, message) => this.signal(identity, "stopped", message),
       async (identity) => {
         const reply = await this.request(
@@ -142,13 +111,90 @@ export class WidgetHost {
     );
   }
   hasUnconfirmed() {
-    return [...this.buffers.values()].some((buffer) => buffer.size > 0);
+    return [...this.buffers.values(), ...this.conflicts.values()].some(
+      (map) => map.size > 0,
+    );
   }
   hasUnconfirmedCandidate(candidateId: string) {
     return (["main", "panel"] as const).some(
       (surface) =>
-        (this.buffers.get(`${surface}:${candidateId}`)?.size ?? 0) > 0,
+        (this.buffers.get(`${surface}:${candidateId}`)?.size ?? 0) > 0 ||
+        (this.conflicts.get(`${surface}:${candidateId}`)?.size ?? 0) > 0,
     );
+  }
+  /** Forwards one request of a widget view; writes stay buffered until confirmed (WB-03, WIDGET-05). */
+  private async forward(
+    identity: WidgetIdentity,
+    command: Parameters<ConstructorParameters<typeof WidgetRuntime>[0]>[1],
+  ) {
+    const write =
+      command.method === "writeData" || command.method === "writeDraft";
+    const buffer = this.buffer(identity.surface, identity.candidateId);
+    const input: PendingInput = {
+      revision: "revision" in command ? command.revision : 0,
+      value: command.method === "writeDraft" ? command.value : undefined,
+      data: command.method === "writeData" ? command.value : undefined,
+      pending: true,
+    };
+    const key =
+      command.method === "writeDraft" ? `draft:${command.field}` : "data";
+    if (
+      input.value !== undefined &&
+      (Buffer.byteLength(input.value) > 4096 ||
+        [...buffer.entries()].reduce(
+          (bytes, [name, input]) =>
+            bytes + (name === key ? 0 : Buffer.byteLength(input.value ?? "")),
+          Buffer.byteLength(input.value),
+        ) > 60000)
+    )
+      return widgetFailure;
+    if (write) {
+      buffer.set(key, input);
+      this.signal(identity, "saving", "输入尚未确认保存");
+    }
+    const reply = await this.request(
+      { type: "widgetRequest", identity, request: command },
+      identity.surface,
+    ).finally(() => {
+      input.pending = false;
+    });
+    const result = reply.ok
+      ? (reply.widget ?? widgetFailure)
+      : { ok: false as const, message: reply.message };
+    input.pending = false;
+    if (write && result.ok && buffer.get(key) === input) buffer.delete(key);
+    if (write && !reply.ok && reply.code === "CONFLICT") {
+      // Stale: the newer saved content wins. The typed input leaves the buffer, so the reopened view reads
+      // the latest content, and stays with the host for the person to read or discard.
+      if (buffer.get(key) === input) buffer.delete(key);
+      const text = (
+        input.value !== undefined ? [input.value] : inputText(input.data)
+      ).join("\n");
+      if (text)
+        this.conflictsOf(identity.surface, identity.candidateId).set(key, text);
+      this.signal(identity, "conflict", widgetStaleMessage);
+      return result;
+    }
+    if (result.ok && command.method === "readDraft") {
+      for (const [key, pending] of buffer)
+        if (key.startsWith("draft:") && pending.value !== undefined)
+          result.value[key.slice(6)] = {
+            text: pending.value,
+            revision: pending.revision,
+            unconfirmed: true,
+          };
+    }
+    if (write)
+      this.signal(
+        identity,
+        result.ok ? "saved" : "failed",
+        result.ok
+          ? buffer.size
+            ? "本次写入已保存，仍有其他输入未确认。"
+            : "本次写入已确认保存"
+          : result.message,
+      );
+    return result;
   }
   private signal(
     identity: WidgetIdentity,
@@ -165,6 +211,12 @@ export class WidgetHost {
           unconfirmed: entry.unconfirmed.size > 0,
           state,
           message,
+          conflicts: [
+            ...this.conflictsOf(
+              identity.surface,
+              identity.candidateId,
+            ).values(),
+          ],
         } satisfies WidgetSignal);
     }
   }
@@ -219,6 +271,8 @@ export class WidgetHost {
         "configure",
         "draftConfig",
         "recover",
+        "retry",
+        "discardConflicts",
       ].includes(command.action)
     )
       return { ok: false, message: "控件操作无效。" };
@@ -376,6 +430,39 @@ export class WidgetHost {
           entry.unconfirmed.clear();
           this.closeEntry(entry);
         }
+        if (command.action === "retry") {
+          // Saves the inputs a failed write left behind, against the revision they were typed on; a stale one
+          // becomes a conflict. The view then reopens on what was saved.
+          if (!entry.instance) throw new Error("控件未打开，无法重试。");
+          if ([...entry.unconfirmed.values()].some((input) => input.pending))
+            throw new Error("写入尚未结束，请稍后再核对。");
+          const identity = entry.instance.identity;
+          for (const [key, input] of [...entry.unconfirmed]) {
+            if (key === "data" && input.data)
+              await this.forward(identity, {
+                method: "writeData",
+                revision: input.revision,
+                value: input.data,
+              });
+            else if (key.startsWith("draft:") && input.value !== undefined)
+              await this.forward(identity, {
+                method: "writeDraft",
+                revision: input.revision,
+                field: key.slice(6),
+                value: input.value,
+              });
+          }
+          if (!entry.unconfirmed.size) this.closeEntry(entry);
+        }
+        if (command.action === "discardConflicts" && entry.preview) {
+          this.conflicts.delete(`${surface}:${entry.preview.candidateId}`);
+          if (entry.instance)
+            this.signal(
+              entry.instance.identity,
+              "saved",
+              "未保存的输入已放弃。",
+            );
+        }
         if (command.action === "hide") this.closeEntry(entry);
         if (command.action === "suspend" && entry.instance)
           entry.instance.view.setVisible(false);
@@ -457,7 +544,12 @@ export class WidgetHost {
               if (entry.contentOnly) event.preventDefault();
               owner.webContents.send("widget:restore");
             }
-            if (input.meta && input.key.toLowerCase() === "k") {
+            // Global search belongs to the main window; the menu bar panel has none (WB-03).
+            if (
+              surface === "main" &&
+              input.meta &&
+              input.key.toLowerCase() === "k"
+            ) {
               event.preventDefault();
               this.occlude(owner);
               owner.webContents.send("widget:search");
@@ -480,6 +572,9 @@ export class WidgetHost {
         ok: true,
         enabled: true,
         unconfirmed: entry.unconfirmed.size > 0,
+        conflicts: entry.preview
+          ? [...this.conflictsOf(surface, entry.preview.candidateId).values()]
+          : [],
         preview,
         generation: entry.instance?.active
           ? entry.instance.identity.generation

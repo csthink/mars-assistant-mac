@@ -28,7 +28,7 @@ Host 与 Runtime 之间的协议是 Runtime Contract 0.1.0，本仓在 [`contrac
 | 资料提取 worker | `src/service/extract.ts` → `dist/extract.cjs` | 业务服务内的 worker 线程；提取文本、Markdown 与 PDF 的正文（PDF 经 PDF.js），内存上限与时限由业务服务从外部施加 |
 | 搜索 worker | `src/service/search-worker.ts` → `dist/search-worker.cjs` | 主进程内的 worker 线程，每个入口一个并常驻；以只读方式打开数据库，在同一读事务中查询对话、项目与正式控件三类 FTS5 索引并分页 |
 | 控件包构建 worker | `src/main/widget-build-worker.ts` → `dist/widget-build-worker.cjs` | 主进程内的 worker 线程；校验并构建控件包，不执行包内代码 |
-| 可信界面 | `src/renderer/index.tsx` → `dist/renderer.js`；preload `src/main/preload.ts` | 主窗口与菜单栏面板各一个 renderer，共用同一界面包 |
+| 可信界面 | `src/renderer/index.tsx` → `dist/renderer.js`；preload `src/main/preload.ts` | 主窗口与菜单栏面板各一个 renderer，共用同一界面包；面板只渲染控件页（`src/renderer/panel-app.tsx`） |
 | 控件视图 | `src/main/widget-runtime.ts`；preload `src/main/widget-preload.ts` | 每个控件实例一个 WebContentsView |
 | 产品 MCP 进程 | `src/main/claude-mcp.ts` → `dist/claude-mcp.cjs` | 为 Claude Code 受限会话提供经授权的资料读取与工作台排序工具；启动器清空其环境变量 |
 | 进程身份辅助程序 | `src/main/codex-process.c` → `dist/codex-process` | 读取并核对子进程身份（PID、UID、内核启动时间、可执行映像、session），按身份发信号 |
@@ -72,7 +72,7 @@ src/service ───┘
 
 ## 双入口
 
-主窗口与菜单栏面板是同一份业务状态的两个展示入口，由同一个界面包以不同的入口参数渲染。对话、输入草稿与控件数据属于业务服务，不随窗口销毁；两个入口各自持有可见状态。关闭主窗口保留 Tray，进行中的回合继续执行。完整退出前，未保存的草稿或进行中的回合会先给出确认；选择停止并退出时，先请求停止本应用启动的回合并等待确认，时限内未确认的执行记为已中断，重启后可在待处理中重试或忽略。
+主窗口与菜单栏面板是同一份业务状态的两个展示入口，由同一个界面包以不同的入口参数渲染。菜单栏面板只显示已保留的控件、控件内的轻量操作与排序：主进程只向面板推送这些控件、顺序与界面设置（`src/main/panel-snapshot.ts`），面板的 renderer 只能读取快照、移动控件、操作控件视图、重新连接与打开主窗口，其余进程间通道对面板一律拒绝。对话、输入草稿与控件数据属于业务服务，不随窗口销毁；两个入口各自持有可见状态。关闭主窗口保留 Tray，进行中的回合继续执行。完整退出前，未保存的草稿或进行中的回合会先给出确认；选择停止并退出时，先请求停止本应用启动的回合并等待确认，时限内未确认的执行记为已中断，重启后可在待处理中重试或忽略。
 
 ## 模型连接与本地 Agent
 

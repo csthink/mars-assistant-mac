@@ -1450,94 +1450,13 @@ p {
   display: flex;
   gap: 10px;
 }
-.panel-nav {
-  display: flex;
-  gap: 4px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--c-line);
-  flex-shrink: 0;
-}
-.panel-nav button {
-  padding: 6px 11px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--c-muted);
-}
-.panel-nav button.active {
-  background: var(--c-selected);
-  color: var(--c-accent);
-}
-.panel-app .page {
-  padding: 23px 20px;
-}
-.panel-app h1 {
-  font-size: 22px;
-}
-.panel-app .page-heading {
-  gap: 8px;
-}
-.panel-app .page-heading .button {
-  padding: 7px 9px;
-}
+/* The menu bar panel (WB-03): one widget page under the service banners. */
 .panel-app .empty {
   margin-top: 48px;
-}
-.panel-app .welcome {
-  margin: 23px auto 16px;
-}
-.panel-app .welcome h1 {
-  font-size: 23px;
-}
-.panel-app .welcome > p {
-  font-size: 12px;
-  margin-bottom: 18px;
-}
-.panel-app .large-mark {
-  display: none;
-}
-.panel-app .messages {
-  padding: 0 20px;
-}
-.panel-app .suggestions {
-  gap: 7px;
-}
-.panel-app .suggestion {
-  padding: 10px;
-  gap: 7px;
-}
-.panel-app .suggestion small {
-  display: none;
-}
-.panel-app .composer-wrap {
-  padding: 12px 16px;
-}
-.panel-app .composer textarea {
-  height: 65px;
-}
-.panel-app .settings-layout {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-}
-.panel-app .settings-nav {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.panel-app .settings-nav button {
-  padding: 6px 9px;
-  font-size: 11px;
 }
 .panel-app .service-error {
   padding: 9px 15px;
   font-size: 11px;
-}
-.panel-conversations {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px 0;
-  font-size: 11px;
-  color: var(--c-muted);
 }
 select {
   min-width: 0;

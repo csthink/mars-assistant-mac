@@ -291,6 +291,8 @@ export function WidgetStudio({
     id: string;
     over?: string;
     after?: boolean;
+    /** The cards stand in one column, so the drop line runs across the card (see dropAfter). */
+    vertical?: boolean;
   }>();
   // The card being dragged. A drop over a native widget view reaches the host through the main process and can
   // arrive after the source's dragend, so the source stays known for a moment after the drag ends (KB-04).
@@ -329,13 +331,35 @@ export function WidgetStudio({
       )?.focus();
     });
   }
+  /**
+   * Whether a drop at a point lands after a card: across its middle in reading order, so beside it in a grid
+   * of several columns and below its middle when the cards stand in one column (the menu bar panel).
+   */
+  function dropAfter(card: HTMLElement, x: number, y: number) {
+    const box = card.getBoundingClientRect();
+    // One column when no other card shares this card's row.
+    const vertical = ![...(card.parentElement?.children ?? [])].some(
+      (other) =>
+        other !== card &&
+        Math.abs(other.getBoundingClientRect().top - box.top) < 1,
+    );
+    return {
+      vertical,
+      after: vertical
+        ? y >= box.top + box.height / 2
+        : x >= box.left + box.width / 2,
+    };
+  }
   function dropOn(id: string, event: React.DragEvent<HTMLElement>) {
     if (!drag || drag.id === id) return;
     event.preventDefault();
-    const box = event.currentTarget.getBoundingClientRect();
-    const after = event.clientX >= box.left + box.width / 2;
+    const { after, vertical } = dropAfter(
+      event.currentTarget,
+      event.clientX,
+      event.clientY,
+    );
     if (drag.over !== id || drag.after !== after)
-      setDrag({ ...drag, over: id, after });
+      setDrag({ ...drag, over: id, after, vertical });
   }
   function drop() {
     if (!drag?.over) return setDrag(undefined);
@@ -361,15 +385,21 @@ export function WidgetStudio({
   nativeDrag.current = (event: Event) => {
     const source = dragSource.current;
     const over = (event.target as HTMLElement).dataset?.formalWidget;
-    const detail = (event as CustomEvent<{ phase: string; after: boolean }>)
-      .detail;
+    const detail = (
+      event as CustomEvent<{ phase: string; x: number; y: number }>
+    ).detail;
     if (!source || !over) return;
-    if (detail.phase === "drop") commitDrop(source.id, over, detail.after);
+    const { after, vertical } = dropAfter(
+      event.target as HTMLElement,
+      detail.x,
+      detail.y,
+    );
+    if (detail.phase === "drop") commitDrop(source.id, over, after);
     else if (!source.ended && source.id !== over)
       setDrag((current) =>
-        current?.over === over && current.after === detail.after
+        current?.over === over && current.after === after
           ? current
-          : { id: source.id, over, after: detail.after },
+          : { id: source.id, over, after, vertical },
       );
   };
   useEffect(() => {
@@ -471,7 +501,7 @@ export function WidgetStudio({
           />
         ) : (
           <h1 tabIndex={-1} data-center-title>
-            {panel ? "工作台" : section === "drafts" ? "控件草稿" : "控件"}
+            {section === "drafts" ? "控件草稿" : "控件"}
           </h1>
         )}
         {!draft && (
@@ -480,14 +510,6 @@ export function WidgetStudio({
               ? drafts.length
               : (snapshot?.widgetGeneration?.widgets.length ?? 0)}
           </span>
-        )}
-        {panel && (
-          <button
-            className="button"
-            onClick={() => void window.desktop.openMain()}
-          >
-            打开主窗口编辑
-          </button>
         )}
         <div className="widget-studio-actions">
           {!draft &&
@@ -519,7 +541,7 @@ export function WidgetStudio({
                 删除草稿
               </button>
             )}
-          {!draft && section === "widgets" && targets.length > 0 && (
+          {!panel && !draft && section === "widgets" && targets.length > 0 && (
             <button
               className="button"
               onClick={async () => {
@@ -533,20 +555,17 @@ export function WidgetStudio({
               修改所选 {targets.length} 个控件
             </button>
           )}
-          {!draft &&
-            section === "widgets" &&
-            !panel &&
-            order.widgets.length > 1 && (
-              <button
-                className="button"
-                aria-pressed={layoutEdit}
-                onClick={() => setLayoutEdit(!layoutEdit)}
-              >
-                <Icon name="layout" />
-                {layoutEdit ? "完成布局编辑" : "编辑布局"}
-              </button>
-            )}
-          {!draft && section === "widgets" && (
+          {!draft && section === "widgets" && order.widgets.length > 1 && (
+            <button
+              className="button"
+              aria-pressed={layoutEdit}
+              onClick={() => setLayoutEdit(!layoutEdit)}
+            >
+              <Icon name="layout" />
+              {layoutEdit ? "完成布局编辑" : "编辑布局"}
+            </button>
+          )}
+          {!panel && !draft && section === "widgets" && (
             <button className="button" onClick={() => onSection("drafts")}>
               草稿 {drafts.length}
             </button>
@@ -585,7 +604,7 @@ export function WidgetStudio({
               )}
             </div>
           )}
-          {!draft && (
+          {!panel && !draft && (
             <button
               className="button"
               disabled={!connected}
@@ -593,6 +612,16 @@ export function WidgetStudio({
             >
               <Icon name="plus" />
               新建控件
+            </button>
+          )}
+          {panel && (
+            <button
+              className="icon-button"
+              aria-label="打开主窗口"
+              title="打开主窗口"
+              onClick={() => void window.desktop.openMain()}
+            >
+              <Icon name="open" />
             </button>
           )}
         </div>
@@ -822,13 +851,13 @@ export function WidgetStudio({
         </>
       ) : (snapshot?.widgetGeneration?.widgets.length ?? 0) ? (
         <div>
-          {!panel && layoutEdit && (
+          {layoutEdit && (
             <p className="widget-layout-note">
               拖动控件或用「前移 / 后移」调整顺序，立即生效，不需要保存。
             </p>
           )}
           {/* Progress and success are announced; the moved card itself is the visible result (WB-02). */}
-          {!panel && (
+          {
             <p className="widget-order-announce" role="status">
               {order.notice?.kind === "saving"
                 ? "正在保存顺序…"
@@ -836,30 +865,29 @@ export function WidgetStudio({
                   ? order.notice.text
                   : ""}
             </p>
-          )}
-          {!panel &&
-            (order.notice?.kind === "failed" ||
-              order.notice?.kind === "conflict") && (
-              <div className="widget-order-notice error" role="alert">
-                <span>{order.notice.text}</span>
-                {order.notice.kind === "failed" && order.notice.retry && (
-                  <button
-                    className="button small"
-                    disabled={!connected}
-                    onClick={order.retry}
-                  >
-                    重试
-                  </button>
-                )}
+          }
+          {(order.notice?.kind === "failed" ||
+            order.notice?.kind === "conflict") && (
+            <div className="widget-order-notice error" role="alert">
+              <span>{order.notice.text}</span>
+              {order.notice.kind === "failed" && order.notice.retry && (
                 <button
-                  className="icon-button"
-                  aria-label="关闭顺序提示"
-                  onClick={order.dismiss}
+                  className="button small"
+                  disabled={!connected}
+                  onClick={order.retry}
                 >
-                  ×
+                  重试
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                className="icon-button"
+                aria-label="关闭顺序提示"
+                onClick={order.dismiss}
+              >
+                ×
+              </button>
+            </div>
+          )}
           {snapshot?.widgetGeneration?.layout?.fallback && (
             <p role="alert" className="error">
               {snapshot.widgetGeneration.layout.fallback}
@@ -875,12 +903,12 @@ export function WidgetStudio({
           >
             {order.widgets.map((w, index, list) => (
               <article
-                className={`widget-saved-card ${drag?.id === w.id ? "dragging" : ""} ${drag?.over === w.id ? (drag.after ? "drop-after" : "drop-before") : ""}`}
+                className={`widget-saved-card ${drag?.id === w.id ? "dragging" : ""} ${drag?.over === w.id ? `${drag.after ? "drop-after" : "drop-before"}${drag.vertical ? " drop-vertical" : ""}` : ""}`}
                 key={w.id}
                 data-formal-widget={w.id}
                 tabIndex={-1}
                 aria-label={`控件 ${w.name} ${w.id.slice(0, 8)}`}
-                data-layout-edit={(!panel && layoutEdit) || undefined}
+                data-layout-edit={layoutEdit || undefined}
                 onDragOver={drag ? (event) => dropOn(w.id, event) : undefined}
                 onDrop={
                   drag
@@ -894,7 +922,7 @@ export function WidgetStudio({
                 {/* One row at every card width: text truncates with its full value in title,
                     and narrow cards show the actions as icons with the same names. */}
                 <div className="widget-formal-controls">
-                  {layoutEdit && !panel && (
+                  {layoutEdit && (
                     <span
                       className="widget-order-grip"
                       draggable
@@ -925,10 +953,12 @@ export function WidgetStudio({
                     </span>
                   )}
                   <h2 title={w.name}>{w.name}</h2>
-                  <p title={`已保留 · 版本 ${w.revision}`}>
-                    已保留 · 版本 {w.revision}
-                  </p>
-                  {layoutEdit && !panel ? (
+                  {!panel && (
+                    <p title={`已保留 · 版本 ${w.revision}`}>
+                      已保留 · 版本 {w.revision}
+                    </p>
+                  )}
+                  {layoutEdit ? (
                     <>
                       <button
                         className="button widget-control-action"
@@ -953,7 +983,7 @@ export function WidgetStudio({
                         <span className="widget-control-text">后移</span>
                       </button>
                     </>
-                  ) : (
+                  ) : panel ? null : (
                     <>
                       <label className="widget-target-choice" title="选择修改">
                         <input
@@ -1000,7 +1030,7 @@ export function WidgetStudio({
                       </button>
                     </>
                   )}
-                  {!panel && (
+                  {
                     <div className="widget-order-menu-anchor">
                       <button
                         className="icon-button widget-order-more"
@@ -1080,10 +1110,30 @@ export function WidgetStudio({
                               <small>已在最后</small>
                             )}
                           </button>
+                          {panel && (
+                            <>
+                              <div
+                                className="widget-order-menu-separator"
+                                role="separator"
+                              />
+                              <button
+                                className="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setWidgetMenu(undefined);
+                                  void window.desktop.openMain({
+                                    widgetId: w.id,
+                                  });
+                                }}
+                              >
+                                在主窗口打开
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
+                  }
                 </div>
                 <WidgetWorkspace
                   key={w.candidateId}
@@ -1093,6 +1143,11 @@ export function WidgetStudio({
                   connected={connected}
                   occluded={occluded}
                   contentOnly={full}
+                  openInMain={
+                    panel
+                      ? () => void window.desktop.openMain({ widgetId: w.id })
+                      : undefined
+                  }
                 />
               </article>
             ))}
@@ -1103,15 +1158,15 @@ export function WidgetStudio({
           <span className={panel ? "empty-icon" : "widget-canvas-empty-icon"}>
             <Icon name="grid" />
           </span>
-          <h2>{panel ? "工作台还是空的" : "还没有控件"}</h2>
+          <h2>还没有控件</h2>
           <p>
             {panel
-              ? "在主窗口创建控件，保留后可在工作台查看。"
+              ? "控件在主窗口创建，完成后会显示在这里。"
               : "从一个想法开始，创建属于自己的小工具。"}
           </p>
           <button
             className="button"
-            disabled={!connected}
+            disabled={!panel && !connected}
             onClick={() =>
               panel ? void window.desktop.openMain() : void create()
             }

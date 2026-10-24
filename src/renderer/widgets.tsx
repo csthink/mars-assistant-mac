@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WidgetControl, WidgetLayoutSignal } from "../shared/widget-ui";
+import {
+  widgetStaleMessage,
+  type WidgetControl,
+  type WidgetLayoutSignal,
+} from "../shared/widget-ui";
 import type { WidgetPreview } from "../shared/widget-store";
 import "./widgets.css";
 
@@ -11,6 +15,7 @@ export function WidgetWorkspace({
   onUnconfirmed,
   slot,
   contentOnly = false,
+  openInMain,
 }: {
   occluded: boolean;
   connected: boolean;
@@ -19,6 +24,11 @@ export function WidgetWorkspace({
   slot?: string;
   contentOnly?: boolean;
   onUnconfirmed?: (value: boolean) => void;
+  /**
+   * The menu bar panel's way out (WB-03): a widget that stopped is looked at in the main window, not reopened
+   * in the panel, and nothing is offered while it loads.
+   */
+  openInMain?: () => void;
 }) {
   const control = useCallback(
     (command: WidgetControl) =>
@@ -40,6 +50,12 @@ export function WidgetWorkspace({
   );
   const [failed, setFailed] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState(false);
+  // Input another entry made stale, kept by the host (WB-03, mac-feature-t12:OD-02 A); the person reads or
+  // discards it here while the widget shows the latest saved content.
+  const [conflicts, setConflicts] = useState<string[]>([]);
+  const [showConflicts, setShowConflicts] = useState(false);
+  // Reopening the view from a host signal runs in a fresh render, with the current connection and candidate.
+  const [reopen, setReopen] = useState(0);
   const drafts = useRef<
     Record<
       string,
@@ -136,7 +152,8 @@ export function WidgetWorkspace({
     const id = ++serial.current;
     opening.current = true;
     setBusy(true);
-    setFailed(false);
+    // Input kept from a stale write stays announced while the view reopens on the newer content.
+    setFailed(conflicts.length > 0);
     const reply = await control(
       candidateId
         ? { action: "openGenerated", candidateId }
@@ -160,13 +177,24 @@ export function WidgetWorkspace({
     setPreview(reply.preview);
     acceptDrafts(reply.preview);
     setUnconfirmed(!!reply.unconfirmed);
-    setFailed(!!reply.unconfirmed);
+    const kept = reply.conflicts ?? [];
+    setConflicts(kept);
+    if (!kept.length) setShowConflicts(false);
+    setFailed(!!reply.unconfirmed || kept.length > 0);
     setMessage(
       reply.unconfirmed
         ? "已恢复未确认输入，请先核对保存状态。"
-        : "已读取上次确认的内容",
+        : kept.length
+          ? widgetStaleMessage
+          : "已读取上次确认的内容",
     );
   }
+  useEffect(() => {
+    if (!reopen) return;
+    hide();
+    setWanted(true);
+    void open();
+  }, [reopen]);
   function hide() {
     serial.current++;
     opening.current = false;
@@ -209,18 +237,22 @@ export function WidgetWorkspace({
         element
           ?.closest(".viewport, .right-body")
           ?.scrollBy(signal.x, signal.y);
-      else if (signal.kind === "drag")
-        // Reorder drags over the native view arrive here; the card decides whether one of its own is active.
-        element?.closest<HTMLElement>(".widget-saved-card")?.dispatchEvent(
-          new CustomEvent("widget-native-drag", {
-            bubbles: true,
-            detail: {
-              phase: signal.phase,
-              after: signal.x >= signal.width / 2,
-            },
-          }),
-        );
-      else {
+      else if (signal.kind === "drag") {
+        // Reorder drags over the native view arrive here, in page coordinates; the card decides whether one
+        // of its own is active and where it would land.
+        const view = element?.getBoundingClientRect();
+        if (view)
+          element?.closest<HTMLElement>(".widget-saved-card")?.dispatchEvent(
+            new CustomEvent("widget-native-drag", {
+              bubbles: true,
+              detail: {
+                phase: signal.phase,
+                x: view.left + (signal.x * view.width) / signal.width,
+                y: view.top + (signal.y * view.height) / signal.height,
+              },
+            }),
+          );
+      } else {
         const article = element?.closest<HTMLElement>(".widget-saved-card");
         if (article) {
           if (signal.kind === "hover")
@@ -234,7 +266,17 @@ export function WidgetWorkspace({
       if (signal.generation !== current.current) return;
       setMessage(signal.message);
       setUnconfirmed(signal.unconfirmed);
-      setFailed(signal.state === "failed" || signal.state === "stopped");
+      const kept = signal.conflicts ?? [];
+      setConflicts(kept);
+      if (!kept.length) setShowConflicts(false);
+      setFailed(
+        signal.state === "failed" ||
+          signal.state === "stopped" ||
+          signal.state === "conflict" ||
+          kept.length > 0,
+      );
+      // The stale input left the view's drafts; reopening reads the latest saved content.
+      if (signal.state === "conflict") setReopen((n) => n + 1);
       if (signal.state === "closed" || signal.state === "stopped") {
         current.current = undefined;
         setGeneration(undefined);
@@ -465,27 +507,6 @@ export function WidgetWorkspace({
           ? "配置、数据与草稿按此控件身份保存。"
           : "仅保存本候选的数据与草稿，无法访问网络或本机文件。"}
       </p>
-      {unconfirmed && (
-        <button
-          className="button"
-          onClick={async () => {
-            const reply = await control({
-              action: "recover",
-            });
-            if (!reply.ok) {
-              setMessage(reply.message);
-              return;
-            }
-            setUnconfirmed(false);
-            hide();
-            setSettings(false);
-            setWanted(true);
-            void open();
-          }}
-        >
-          放弃未确认输入并重读
-        </button>
-      )}
       {settings ? (
         <form
           className="widget-settings"
@@ -545,31 +566,44 @@ export function WidgetWorkspace({
         >
           {!generation && (
             <div className="widget-placeholder">
-              <p>
-                {busy
-                  ? candidateId
-                    ? "正在载入控件…"
-                    : "正在载入测试候选…"
-                  : preview
-                    ? "预览已收起"
-                    : candidateId
-                      ? "打开候选，检查实际效果。"
-                      : "打开便笺，试试输入、保存和重新打开。"}
-              </p>
-              <button
-                className="button primary"
-                disabled={busy || !connected}
-                onClick={() => {
-                  setWanted(true);
-                  if (wanted) void open();
-                }}
-              >
-                {preview
-                  ? "重新打开预览"
-                  : candidateId
-                    ? "打开控件预览"
-                    : "载入测试候选"}
-              </button>
+              {openInMain ? (
+                <>
+                  <p>{wanted ? "正在载入控件…" : "控件内容未显示。"}</p>
+                  {!wanted && (
+                    <button className="button" onClick={openInMain}>
+                      在主窗口查看
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p>
+                    {busy
+                      ? candidateId
+                        ? "正在载入控件…"
+                        : "正在载入测试候选…"
+                      : preview
+                        ? "预览已收起"
+                        : candidateId
+                          ? "打开候选，检查实际效果。"
+                          : "打开便笺，试试输入、保存和重新打开。"}
+                  </p>
+                  <button
+                    className="button primary"
+                    disabled={busy || !connected}
+                    onClick={() => {
+                      setWanted(true);
+                      if (wanted) void open();
+                    }}
+                  >
+                    {preview
+                      ? "重新打开预览"
+                      : candidateId
+                        ? "打开控件预览"
+                        : "载入测试候选"}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -607,6 +641,87 @@ export function WidgetWorkspace({
       >
         {message}
       </p>
+      {(unconfirmed || conflicts.length > 0) && (
+        <div className="widget-save-actions">
+          {unconfirmed && (
+            <button
+              className="button"
+              disabled={!connected || !generation}
+              onClick={async () => {
+                // Saves the inputs a failed write left with the host, then reads what was saved (WB-03).
+                const reply = await control({ action: "retry" });
+                if (!reply.ok) {
+                  setMessage(reply.message);
+                  setFailed(true);
+                  return;
+                }
+                if (reply.unconfirmed) return;
+                setUnconfirmed(false);
+                setReopen((n) => n + 1);
+              }}
+            >
+              重试保存
+            </button>
+          )}
+          {unconfirmed && (
+            <button
+              className="button"
+              onClick={async () => {
+                const reply = await control({
+                  action: "recover",
+                });
+                if (!reply.ok) {
+                  setMessage(reply.message);
+                  return;
+                }
+                setUnconfirmed(false);
+                hide();
+                setSettings(false);
+                setWanted(true);
+                void open();
+              }}
+            >
+              放弃未确认输入并重读
+            </button>
+          )}
+          {conflicts.length > 0 && (
+            <>
+              <button
+                className="button"
+                aria-expanded={showConflicts}
+                onClick={() => setShowConflicts(!showConflicts)}
+              >
+                {showConflicts ? "收起未保存输入" : "查看未保存输入"}
+              </button>
+              <button
+                className="button"
+                onClick={async () => {
+                  const reply = await control({ action: "discardConflicts" });
+                  if (!reply.ok) {
+                    setMessage(reply.message);
+                    return;
+                  }
+                  setConflicts([]);
+                  setShowConflicts(false);
+                  setFailed(unconfirmed);
+                  setMessage("未保存的输入已放弃。");
+                }}
+              >
+                放弃未保存输入
+              </button>
+            </>
+          )}
+          {showConflicts && conflicts.length > 0 && (
+            <pre
+              className="widget-retained-input"
+              tabIndex={0}
+              aria-label="未保存的输入"
+            >
+              {conflicts.join("\n\n")}
+            </pre>
+          )}
+        </div>
+      )}
     </section>
   );
 }

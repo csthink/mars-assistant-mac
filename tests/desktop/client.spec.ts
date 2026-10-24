@@ -269,7 +269,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
     return calls;
   });
   const panelOpening = app.waitForEvent("window");
-  await clickAppMenu("打开工作台助手");
+  await clickAppMenu("打开菜单栏面板");
   const panel = await panelOpening;
   await panel.waitForLoadState("domcontentloaded");
   if (process.platform === "darwin")
@@ -279,7 +279,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   expect(
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => w.getTitle() === "工作台助手")
+        .find((w) => w.getTitle() === "菜单栏面板")
         ?.isAlwaysOnTop(),
     ),
   ).toBe(true);
@@ -290,32 +290,22 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
         ?.isAlwaysOnTop(),
     ),
   ).toBe(false);
-  await panel.getByRole("button", { name: "聊天", exact: true }).click();
-  await expect(panel.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
-    "共享同一对话",
-  );
-  await panel.getByRole("textbox", { name: "输入草稿" }).fill("面板更新的中文");
-  await saved(panel);
-  await panel
-    .getByRole("textbox", { name: "输入草稿" })
-    .dispatchEvent("compositionstart", { data: "zhongwen" });
-  await panel
-    .getByRole("textbox", { name: "输入草稿" })
-    .dispatchEvent("keydown", { key: "Enter", isComposing: true });
-  await panel
-    .getByRole("textbox", { name: "输入草稿" })
-    .dispatchEvent("compositionend", { data: "中文" });
-  await expect(panel.getByRole("button", { name: "发送消息" })).toBeDisabled();
+  // The panel shows widgets only (WB-03): no composer; it opens the existing main window, which keeps the draft.
+  await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
+  await expect(panel.getByRole("textbox")).toHaveCount(0);
   await panel.screenshot({ path: "test-results/lifecycle-panel.png" });
-  await panel.getByRole("button", { name: "在主窗口打开原对话" }).click();
+  await panel
+    .locator(".widget-studio-heading")
+    .getByRole("button", { name: "打开主窗口", exact: true })
+    .click();
   // Synthetic windows cannot take native focus; deliver the corresponding blur explicitly.
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()
-      .find((window) => window.getTitle() === "工作台助手")
+      .find((window) => window.getTitle() === "菜单栏面板")
       ?.emit("blur");
   });
   await expect(page.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
-    "面板更新的中文",
+    "共享同一对话",
   );
   const initialId = await (
     await recent(page)
@@ -336,7 +326,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
   await clickAppMenu("打开主窗口");
   page = await opening;
   await expect(page.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
-    "面板更新的中文",
+    "共享同一对话",
   );
   await expect(
     (await recent(page)).locator(".session").first(),
@@ -357,7 +347,7 @@ test("lifecycle: two surfaces, retired windows, composition, service loss, recon
       .getByRole("button", { name: "新建聊天", exact: true }),
   ).toBeEnabled();
   await expect(page.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
-    "面板更新的中文",
+    "共享同一对话",
   );
 });
 
@@ -372,17 +362,13 @@ test("lifecycle: application deactivation hides repeated panels and preserves un
   );
   for (let round = 0; round < 3; round++) {
     const opening = app.waitForEvent("window");
-    await clickAppMenu("打开工作台助手");
+    await clickAppMenu("打开菜单栏面板");
     const panel = await opening;
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    await expect(panel.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
-      "失焦后仍保留的草稿",
-    );
-    await saved(panel);
+    await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
     const id = await app.evaluate(
       ({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().find(
-          (w) => w.getTitle() === "工作台助手",
+          (w) => w.getTitle() === "菜单栏面板",
         )!.id,
     );
     const markDirty = async (dirty: boolean) =>
@@ -413,7 +399,7 @@ test("lifecycle: application deactivation hides repeated panels and preserves un
         ),
       )
       .toEqual({ exists: true, visible: false });
-    await clickAppMenu("打开工作台助手");
+    await clickAppMenu("打开菜单栏面板");
     await expect
       .poll(() =>
         app.evaluate(
@@ -448,23 +434,23 @@ test("lifecycle: application deactivation hides repeated panels and preserves un
   );
 });
 
-test("lifecycle: outside clicks dismiss repeated panels without focus events and pause for file dialogs", async () => {
+test("lifecycle: outside clicks dismiss repeated panels without focus events, and the panel opens no file dialog", async () => {
   await newChat();
-  for (const outcome of ["cancel", "error", "cancel"]) {
+  for (let round = 0; round < 3; round++) {
     const opening = app.waitForEvent("window");
-    await clickAppMenu("打开工作台助手");
+    await clickAppMenu("打开菜单栏面板");
     const panel = await opening;
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    await saved(panel);
+    await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
     const state = () =>
       app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().some(
-          (w) => w.getTitle() === "工作台助手" && w.isVisible(),
+          (w) => w.getTitle() === "菜单栏面板" && w.isVisible(),
         ),
       );
+    // A press inside the panel keeps it.
     await app.evaluate(({ app, BrowserWindow }) => {
       const panel = BrowserWindow.getAllWindows().find(
-        (w) => w.getTitle() === "工作台助手",
+        (w) => w.getTitle() === "菜单栏面板",
       )!;
       const bounds = panel.getBounds();
       app.emit("test-panel-outside-click", {
@@ -473,66 +459,32 @@ test("lifecycle: outside clicks dismiss repeated panels without focus events and
       });
     });
     expect(await state()).toBe(true);
+    // The panel adds no material (WB-03): the host refuses its file dialog without showing one.
     await app.evaluate(({ dialog }) => {
-      dialog.showOpenDialog = () =>
-        new Promise((resolve, reject) => {
-          Object.assign(globalThis, {
-            finishPanelDialog: (fail: boolean) =>
-              fail
-                ? reject(new Error("test dialog error"))
-                : resolve({ canceled: true, filePaths: [] }),
-          });
-        });
+      (globalThis as unknown as { panelDialogs: number }).panelDialogs = 0;
+      dialog.showOpenDialog = (async () => {
+        (globalThis as unknown as { panelDialogs: number }).panelDialogs++;
+        return { canceled: true, filePaths: [] };
+      }) as unknown as typeof dialog.showOpenDialog;
     });
-    await panel.evaluate(() => {
-      void window.desktop
+    const picked = await panel.evaluate(() =>
+      window.desktop
         .pickAttachments("00000000-0000-4000-8000-000000000001")
-        .catch(() => {});
-    });
-    await expect
-      .poll(() =>
-        app.evaluate(
-          () =>
-            typeof (globalThis as unknown as { finishPanelDialog?: unknown })
-              .finishPanelDialog,
+        .then(
+          () => "opened",
+          (error: unknown) => String(error),
         ),
-      )
-      .toBe("function");
+    );
+    expect(picked).toContain("菜单栏面板不提供此操作");
+    expect(
+      await app.evaluate(
+        () => (globalThis as unknown as { panelDialogs: number }).panelDialogs,
+      ),
+    ).toBe(0);
+    // A press outside closes it.
     await app.evaluate(({ app, BrowserWindow }) => {
       const panel = BrowserWindow.getAllWindows().find(
-        (w) => w.getTitle() === "工作台助手",
-      )!;
-      const bounds = panel.getBounds();
-      app.emit("test-panel-outside-click", {
-        x: bounds.x - 10,
-        y: bounds.y + 100,
-      });
-      panel.emit("blur");
-      app.emit("did-resign-active");
-    });
-    expect(await state()).toBe(true);
-    await app.evaluate((_, fail) => {
-      const context = globalThis as unknown as {
-        finishPanelDialog?: (fail: boolean) => void;
-      };
-      context.finishPanelDialog!(fail);
-      delete context.finishPanelDialog;
-    }, outcome === "error");
-    // Wait for the dialog finally block to re-arm outside-click observation.
-    await expect
-      .poll(() =>
-        app.evaluate(() =>
-          (
-            globalThis as unknown as {
-              panelMouseMonitor: { isActive(): boolean };
-            }
-          ).panelMouseMonitor.isActive(),
-        ),
-      )
-      .toBe(true);
-    await app.evaluate(({ app, BrowserWindow }) => {
-      const panel = BrowserWindow.getAllWindows().find(
-        (w) => w.getTitle() === "工作台助手",
+        (w) => w.getTitle() === "菜单栏面板",
       )!;
       const bounds = panel.getBounds();
       app.emit("test-panel-outside-click", {

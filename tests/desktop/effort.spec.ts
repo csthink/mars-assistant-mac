@@ -188,7 +188,7 @@ async function clickAppMenu(label: string) {
   }, label);
 }
 
-test("effort: both surfaces share one level control, the choice lives on the conversation, snapshots and records show it, unrecorded models disable it and a model switch resets it", async ({}, info) => {
+test("effort: the main window composer holds the level control, the choice lives on the conversation, snapshots and records show it, unrecorded models disable it and a model switch resets it", async ({}, info) => {
   await openProvider(page, "Codex");
   const codexSection = await configureCodex();
   await codexSection
@@ -221,18 +221,14 @@ test("effort: both surfaces share one level control, the choice lives on the con
       s.conversations.find((c) => c.id === s.selected.main)!,
     );
   await expect.poll(async () => (await conversation()).effort).toBe("high");
-  // The menu bar panel renders the same composer and the same saved choice.
+  // Only the main window's composer offers the level (U-14); the menu bar panel has no composer.
   const panelOpening = app.waitForEvent("window");
-  await clickAppMenu("打开工作台助手");
+  await clickAppMenu("打开菜单栏面板");
   const panel = await panelOpening;
-  await panel.waitForLoadState("domcontentloaded");
-  await panel.getByRole("button", { name: "聊天", exact: true }).click();
-  const panelLevel = panel.getByRole("combobox", { name: "推理强度" });
-  await expect(panelLevel).toHaveValue("high");
-  await panelLevel.selectOption("low");
-  await expect(level).toHaveValue("low");
+  await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
+  await expect(panel.getByRole("combobox")).toHaveCount(0);
+  await level.selectOption("low");
   await expect.poll(async () => (await conversation()).effort).toBe("low");
-  await panel.screenshot({ path: info.outputPath("panel-effort.png") });
   await page.getByRole("textbox", { name: "输入草稿" }).fill("按 low 档位提问");
   await expect(page.getByTestId("save-state")).toHaveText("草稿已保存");
   await page.getByRole("button", { name: "发送消息", exact: true }).click();

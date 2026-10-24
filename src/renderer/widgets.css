@@ -78,6 +78,27 @@
 .widget-save-status.error {
   color: var(--c-red);
 }
+/* Retry, discard and the stale input a person can read after another entry saved first (WB-03). */
+.widget-save-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 18px;
+}
+.widget-retained-input {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 120px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--c-raised);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .widget-settings {
   padding: 12px 24px 24px;
   max-width: 600px;
@@ -96,21 +117,6 @@
   color: var(--c-muted);
   margin: 12px 0 20px;
 }
-.panel-app .widget-heading {
-  align-items: flex-start;
-  flex-direction: column;
-  padding: 18px 16px 0;
-  gap: 12px;
-}
-.panel-app .widget-scope,
-.panel-app .widget-save-status {
-  padding-left: 16px;
-  padding-right: 16px;
-}
-.panel-app .widget-frame {
-  margin: 0 10px;
-}
-
 .widget-config-field {
   margin-bottom: 18px;
 }

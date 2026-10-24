@@ -30,6 +30,10 @@ CREATE TABLE widget_instances (
 function refuse(message: string): never {
   throw new StoreError("INVALID_COMMAND", message);
 }
+/** A write against an older revision: another entry or instance saved first (WB-03). The host keeps the input. */
+function stale(message: string): never {
+  throw new StoreError("CONFLICT", message);
+}
 export function readWidgetPreview(
   db: DatabaseSync,
   candidateId: string,
@@ -184,7 +188,7 @@ export function applyWidgetHost(
       return { widget: { ok: true, revision: 0, value: preview.drafts } };
     if (request.method === "writeData") {
       if (request.revision !== preview.dataRevision)
-        refuse("数据已在另一入口改变，请重新读取后再保存。");
+        stale("数据已在另一入口改变，请重新读取后再保存。");
       bounded(request.value);
       db.prepare(
         "UPDATE widget_previews SET data=?,data_revision=data_revision+1 WHERE candidate_id=?",
@@ -204,7 +208,7 @@ export function applyWidgetHost(
       refuse("草稿字段未声明。");
     const old = preview.drafts[request.field];
     if (request.revision !== (old?.revision ?? 0))
-      refuse("草稿已在另一入口改变。当前输入尚未保存，请先核对已保存内容。");
+      stale("草稿已在另一入口改变。当前输入尚未保存，请先核对已保存内容。");
     const draft = { text: request.value, revision: request.revision + 1 };
     const drafts = { ...preview.drafts, [request.field]: draft };
     bounded(drafts);
