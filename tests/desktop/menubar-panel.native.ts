@@ -563,7 +563,7 @@ test("native panel: a real pointer drags a widget's grip across the panel's nati
   }
 });
 
-test("native panel: the selected Chinese input method composes in a panel widget's field, the chosen word is what is kept, and the panel does not act on the composing keys", async ({}, info) => {
+test("native panel: the selected Chinese input method composes in a panel widget's field opened from the application menu, the chosen word is what is kept, and the panel does not act on the composing keys", async ({}, info) => {
   gate();
   const inputs: unknown[] = [];
   const input = inputHelper(inputs);
@@ -582,22 +582,54 @@ test("native panel: the selected Chinese input method composes in a panel widget
   });
   const { app, data, ids } = await launch(["随手记"]);
   try {
-    const tray = await trayCentre(app);
-    input("click", tray.x, tray.y);
+    // The panel opens through the application menu item 打开菜单栏面板, clicked by the main process: the
+    // icon itself is checked by the first test, and this one must not depend on which display's menu bar holds
+    // the icon. Everything typed afterwards is real keyboard input through the selected input method.
+    await app.evaluate(({ Menu, app }) => {
+      Menu.getApplicationMenu()!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
+        .click();
+      app.focus({ steal: true });
+    });
     await expect.poll(() => panelVisible(app)).toBe(true);
     const panel = await panelPage(app);
+    await expect
+      .poll(
+        async () =>
+          (await windowState(app)).windows.find((w) => w.title === PANEL)
+            ?.focused,
+      )
+      .toBe(true);
     const view = await widgetView(app, panel, ids[0]);
     const field = view.getByLabel("随手记");
     await expect(field).toBeVisible();
+    // Observation only: composition events, every input event with whether it came during a composition, and
+    // each text of the widget's own status line, in order.
     await view.evaluate(() => {
       const events: string[] = [];
+      const start = performance.now();
+      const at = () => Math.round(performance.now() - start);
       (window as unknown as { imeEvents: string[] }).imeEvents = events;
       for (const type of ["compositionstart", "compositionend", "keydown"])
         document.addEventListener(type, (e) =>
           events.push(
-            `${type}:${(e as CompositionEvent).data ?? (e as KeyboardEvent).key}`,
+            `${at()} ${type}:${(e as CompositionEvent).data ?? (e as KeyboardEvent).key}`,
           ),
         );
+      document.addEventListener("input", (e) =>
+        events.push(
+          `${at()} input:${(e as InputEvent).inputType}:${(e as InputEvent).isComposing ? "composing" : "committed"}:${(e.target as HTMLTextAreaElement).value}`,
+        ),
+      );
+      const status = document.querySelector("[role=status]");
+      if (status)
+        new MutationObserver(() =>
+          events.push(`${at()} status:${status.textContent}`),
+        ).observe(status, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
     });
     const box = (await field.boundingBox())!;
     const frame = await onScreen(
@@ -629,6 +661,24 @@ test("native panel: the selected Chinese input method composes in a panel widget
     const events = await view.evaluate(() =>
       (window as unknown as { imeEvents: string[] }).imeEvents.slice(),
     );
+    const storedDrafts = (() => {
+      const db = new DatabaseSync(join(data, "state.sqlite"), {
+        readOnly: true,
+      });
+      try {
+        return (
+          db.prepare("SELECT drafts FROM widget_previews").all() as {
+            drafts: string;
+          }[]
+        ).map((r) => JSON.parse(r.drafts));
+      } finally {
+        db.close();
+      }
+    })();
+    await info.attach("stored-drafts", {
+      body: JSON.stringify(storedDrafts, null, 1),
+      contentType: "application/json",
+    });
     await info.attach("ime", {
       body: JSON.stringify({ value, events }, null, 1),
       contentType: "application/json",
