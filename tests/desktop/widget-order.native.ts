@@ -19,7 +19,9 @@ import { goTo, ready, requestSize } from "./shell";
  * keyboard, including over the native WebContentsView of each widget. Posting them needs the Accessibility
  * permission for the process that runs this test; the test only reads that permission and never asks for it.
  * The spoken result is checked through the accessibility tree and the live region text; VoiceOver itself is
- * not turned on. No model call, no settings change.
+ * not turned on. No model call, no settings change. mac-feature-t63 (mac-feature-t11:KB-05): right after the drop
+ * on a widget view the host page must hold the system keyboard focus and the moved card the DOM focus, and the
+ * first real keys act in the host without any click in between.
  */
 const names = ["天气", "便笺", "计时", "日程", "汇率"];
 
@@ -143,7 +145,7 @@ async function onScreen(
   };
 }
 
-test("native: a real pointer drags a widget across native widget views, real keys move it with 前移 / 后移, and focus and announcements follow", async ({}, info) => {
+test("native: a real pointer drags a widget across native widget views, the keys stay with the host after the drop, real keys move it with 前移 / 后移, and focus and announcements follow", async ({}, info) => {
   if (
     process.env.CSTHINK_NATIVE_TESTS !== "1" ||
     process.env.CSTHINK_WIDGET_ORDER_NATIVE_AUTHORIZED !== "1"
@@ -259,8 +261,8 @@ test("native: a real pointer drags a widget across native widget views, real key
     await expect(announce).toHaveText("「汇率」已移到第 1 位");
     await expect(announce).toHaveAttribute("role", "status");
 
-    // 2. Real keys: Space on the focused 后移 of 天气 moves it one place, and focus stays on that control.
-    // Which web contents holds the system keyboard focus right after the drop (recorded, not asserted).
+    // 2. Real keys. After the drop the host page holds the system keyboard focus and the moved card the DOM
+    //    focus (mac-feature-t11:KB-05: the drop used to leave the keys on the widget view it landed on).
     const keyboardFocus = async (label: string) => {
       const state = await app.evaluate(({ BrowserWindow, webContents }) => {
         const owner = BrowserWindow.getAllWindows()[0];
@@ -284,50 +286,59 @@ test("native: a real pointer drags a widget across native widget views, real key
       focusLog.push(entry);
       return entry;
     };
-    await keyboardFocus("after drop");
-    // A person returns to the host by clicking a place that does nothing: the 编辑布局 note text.
-    const neutral = await onScreen(app, page, ".widget-layout-note", {
-      x: 0.2,
-      y: 0.5,
-    });
-    const neutralHit = await hitAt(app, neutral);
-    focusLog.push({ label: "neutral point", point: neutral, hit: neutralHit });
-    expect(neutralHit.class).toBe("RenderWidgetHostViewCocoa");
-    expect(neutralHit.width).toBe(1440);
-    input("click", neutral.x, neutral.y);
-    await expect
-      .poll(async () => (await keyboardFocus("after neutral click")).host)
-      .toBe(true);
-    // Before each key press the host page must hold the system keyboard focus and the button the DOM focus.
+    // Before each key press the host page must hold the system keyboard focus.
     const hostHoldsKeys = async (label: string) => {
       const state = await keyboardFocus(label);
       if (!state.keyWindow || !state.host || !state.hostFocused)
         throw new Error(
           `Keyboard focus is not on the host page before the key press: ${JSON.stringify(focusLog)}`,
         );
+      return state;
     };
-    const later = page.getByRole("button", { name: /^后移 天气 / });
-    await later.focus();
-    await expect(later).toBeFocused();
-    await hostHoldsKeys("before space on 后移 天气");
+    const moved = page.locator("[data-formal-widget]").first();
+    await expect(moved).toHaveAttribute("aria-label", /^控件 汇率 /);
+    await expect
+      .poll(async () => (await keyboardFocus("after drop")).host)
+      .toBe(true);
+    expect((await hostHoldsKeys("after drop, settled")).active).toMatch(
+      /^控件 汇率 /,
+    );
+    await expect(moved).toBeFocused();
+    // Without any click: a real Tab goes from the moved card to its first enabled control (前移 is disabled
+    // at the first place), and a real Space on it moves 汇率 back to the second place.
+    input("key", 48);
+    const movedLater = page.getByRole("button", { name: /^后移 汇率 / });
+    await expect(movedLater).toBeFocused();
+    await hostHoldsKeys("before space on 后移 汇率");
     input("key", 49);
     await expect
       .poll(() => stored(data))
-      .toEqual(["汇率", "便笺", "天气", "计时", "日程"]);
+      .toEqual(["天气", "汇率", "便笺", "计时", "日程"]);
+    await expect(movedLater).toBeFocused();
+    await expect(announce).toHaveText("「汇率」已移到第 2 位");
+    // Space on the focused 后移 of 便笺 moves it one place, and focus stays on that control.
+    const later = page.getByRole("button", { name: /^后移 便笺 / });
+    await later.focus();
     await expect(later).toBeFocused();
-    await expect(announce).toHaveText("「天气」已移到第 3 位");
+    await hostHoldsKeys("before space on 后移 便笺");
+    input("key", 49);
+    await expect
+      .poll(() => stored(data))
+      .toEqual(["天气", "汇率", "计时", "便笺", "日程"]);
+    await expect(later).toBeFocused();
+    await expect(announce).toHaveText("「便笺」已移到第 4 位");
     // Return on 前移 moves it back, and focus stays on 前移; the first card's 前移 is disabled.
-    const earlier = page.getByRole("button", { name: /^前移 天气 / });
+    const earlier = page.getByRole("button", { name: /^前移 便笺 / });
     await earlier.focus();
     await expect(earlier).toBeFocused();
-    await hostHoldsKeys("before return on 前移 天气");
+    await hostHoldsKeys("before return on 前移 便笺");
     input("key", 36);
     await expect
       .poll(() => stored(data))
-      .toEqual(["汇率", "天气", "便笺", "计时", "日程"]);
+      .toEqual(["天气", "汇率", "便笺", "计时", "日程"]);
     await expect(earlier).toBeFocused();
-    await expect(announce).toHaveText("「天气」已移到第 2 位");
-    const firstEarlier = page.getByRole("button", { name: /^前移 汇率 / });
+    await expect(announce).toHaveText("「便笺」已移到第 3 位");
+    const firstEarlier = page.getByRole("button", { name: /^前移 天气 / });
     await expect(firstEarlier).toBeDisabled();
 
     // 3. What assistive technology reads: the live region and the named move controls.
@@ -336,13 +347,13 @@ test("native: a real pointer drags a widget across native widget views, real key
       body: tree,
       contentType: "text/plain",
     });
-    expect(tree).toContain("status: 「天气」已移到第 2 位");
-    expect(tree).toMatch(/button "后移 天气 [0-9a-f]{8}"/);
+    expect(tree).toContain("status: 「便笺」已移到第 3 位");
+    expect(tree).toMatch(/button "后移 便笺 [0-9a-f]{8}"/);
     // Leaving 编辑布局 keeps the saved order.
     await page
       .getByRole("button", { name: "完成布局编辑", exact: true })
       .click();
-    await expect(cards.first()).toHaveAttribute("aria-label", /^控件 汇率 /);
+    await expect(cards.first()).toHaveAttribute("aria-label", /^控件 天气 /);
   } finally {
     await info.attach("keyboard-focus", {
       body: JSON.stringify(focusLog, null, 1),

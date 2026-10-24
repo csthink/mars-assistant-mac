@@ -344,6 +344,14 @@ export function WidgetStudio({
   function commitDrop(id: string, over: string, after: boolean) {
     dragSource.current = undefined;
     setDrag(undefined);
+    // The dragged card holds the focus after the drop, wherever it landed (mac-feature-t11:KB-05).
+    requestAnimationFrame(() => {
+      const card = studio.current?.querySelector<HTMLElement>(
+        `[data-formal-widget="${id}"]`,
+      );
+      if (card && document.activeElement !== card)
+        card.focus({ preventScroll: true });
+    });
     if (id === over) return;
     const rest = order.widgets.filter((w) => w.id !== id);
     order.move(id, rest.findIndex((w) => w.id === over) + (after ? 1 : 0));

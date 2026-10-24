@@ -1,5 +1,8 @@
-// Read-only AppKit hit test for the background integration client (mac-feature-t11:KB-04): which view of the
-// window would receive a mouse event at a point given in content coordinates from the top left. No event is sent.
+// Read-only AppKit queries for the background integration client. hit (mac-feature-t11:KB-04): which view of the
+// window would receive a mouse event at a point given in content coordinates from the top left. firstResponder
+// (mac-feature-t11:KB-05): which view of the window takes key events, the system keyboard focus within the window,
+// which a background window holds even though it is never the key window, with the object's address as its identity
+// while it lives. No event is sent, no state is changed.
 #import <AppKit/AppKit.h>
 #include <node_api.h>
 static napi_value Hit(napi_env env, napi_callback_info info) {
@@ -30,9 +33,43 @@ static napi_value Hit(napi_env env, napi_callback_info info) {
   napi_create_string_utf8(env, static_cast<const char*>(json.bytes), json.length, &value);
   return value;
 }
+static NSView* Root(napi_env env, napi_value handle) {
+  void* data = nullptr;
+  size_t size = 0;
+  if (napi_get_buffer_info(env, handle, &data, &size) != napi_ok || size != sizeof(void*)) return nil;
+  return ((__bridge NSView*)(*static_cast<void**>(data))).window.contentView;
+}
+static napi_value FirstResponder(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1];
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  NSView* root = argc == 1 ? Root(env, args[0]) : nil;
+  if (!root) {
+    napi_throw_type_error(env, nullptr, "Expected a live window handle");
+    return nullptr;
+  }
+  NSResponder* responder = root.window.firstResponder;
+  NSView* view = [responder isKindOfClass:NSView.class] ? (NSView*)responder : nil;
+  NSRect frame = view ? [view convertRect:view.bounds toView:root] : NSZeroRect;
+  NSDictionary* result = @{
+    @"class" : responder ? NSStringFromClass(responder.class) : @"",
+    @"identity" : [NSString stringWithFormat:@"%p", responder],
+    @"x" : @(frame.origin.x),
+    @"y" : @(root.bounds.size.height - NSMaxY(frame)),
+    @"width" : @(frame.size.width),
+    @"height" : @(frame.size.height),
+  };
+  NSData* json = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
+  napi_value value;
+  napi_create_string_utf8(env, static_cast<const char*>(json.bytes), json.length, &value);
+  return value;
+}
 static napi_value Init(napi_env env, napi_value exports) {
-  napi_property_descriptor p[] = {{"hit", nullptr, Hit, nullptr, nullptr, nullptr, napi_default, nullptr}};
-  napi_define_properties(env, exports, 1, p);
+  napi_property_descriptor p[] = {
+      {"hit", nullptr, Hit, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"firstResponder", nullptr, FirstResponder, nullptr, nullptr, nullptr, napi_default, nullptr},
+  };
+  napi_define_properties(env, exports, 2, p);
   return exports;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)
