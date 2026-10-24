@@ -434,6 +434,11 @@ export class WidgetRuntime {
         (r.phase === "drop" || performance.now() - lastDrag >= 16)
       ) {
         lastDrag = performance.now();
+        // A real drop gives this view the keyboard focus before its page sees the drop (Chromium's drag
+        // destination focuses the web contents under the pointer). The drop belongs to the host's reorder,
+        // so key events go back to the host page, where the moved card takes the focus (mac-feature-t11:KB-05).
+        if (r.phase === "drop" && !owner.isDestroyed())
+          owner.webContents.focus();
         this.onInput(subject, {
           kind: "drag",
           phase: r.phase,
