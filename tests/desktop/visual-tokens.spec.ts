@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { closeLocal, launchLocal } from "./local-client";
 import { goTo, openConversation, ready, recent } from "./shell";
 import { journeyFixture } from "./project-action-fixture";
+import { seedRetainedWidgets } from "./widget-generation-fixture";
 import { openProvider, providersPage } from "./provider-ui";
 import { Store } from "../../src/service/store";
 import { expectedColors, type Appearance } from "./visual-tokens";
@@ -950,57 +951,16 @@ test("main window: projects, project detail, widgets, pending and run records ta
   }
 });
 
-/** Panel pages probed against the same tokens, and against the main window's value for the same role. */
-const panelPages: [name: string, probes: Probe[]][] = [
-  [
-    "工作台",
-    [
-      [".empty-icon", "background-color", surface],
-      [".empty-icon", "border-top-color", line],
-      [".empty h2", "color", text],
-      [".empty p", "color", muted],
-    ],
-  ],
-  [
-    "聊天",
-    [
-      ...composer,
-      [".panel-conversations", "color", muted],
-      ...field(".panel-conversations select"),
-      [".bubble.user", "background-color", "var(--c-accent-soft)"],
-      [".bubble.user", "border-top-color", "var(--c-accent-edge)"],
-      [".bubble.user p", "color", text],
-      [".bubble.assistant", "background-color", surface],
-    ],
-  ],
-  [
-    "待处理",
-    [
-      [".pending-item", "background-color", surface],
-      [".pending-item", "border-top-color", line],
-      ...secondaryButton(".pending-item .button"),
-    ],
-  ],
-  [
-    "设置",
-    [
-      [".settings-nav button.active", "color", accent],
-      [".settings-nav button.active", "background-color", selected],
-      [".settings-nav button:not(.active)", "color", muted],
-      [".provider-list", "border-top-color", line],
-      [".provider-mark", "background-color", "var(--c-raised)"],
-      [".provider-info small", "color", muted],
-    ],
-  ],
-];
-const panelShell: Probe[] = [
+/** The menu bar panel's one page (WB-03), probed against the same tokens as the main window's widget page. */
+const panelProbes: Probe[] = [
   ["html", "background-color", "var(--c-canvas)"],
-  [".topbar", "border-bottom-color", line],
-  [".topbar .icon-button", "color", muted],
-  [".panel-nav", "border-bottom-color", line],
-  [".panel-nav button.active", "color", accent],
-  [".panel-nav button.active", "background-color", selected],
-  [".panel-nav button:not(.active)", "color", muted],
+  [".widget-studio-heading", "border-bottom-color", line],
+  [".widget-studio-heading h1", "color", text],
+  [".widget-studio-heading .quiet", "color", muted],
+  [".widget-studio-heading .icon-button", "color", muted],
+  ...secondaryButton(".widget-studio-heading .button"),
+  [".widget-saved-card", "background-color", surface],
+  [".widget-saved-card", "border-top-color", line],
 ];
 
 /** Computed colours of the roles both surfaces share, read from each window. */
@@ -1016,16 +976,17 @@ async function sharedRoles(page: Page) {
     };
     return {
       canvas: getComputedStyle(document.documentElement).backgroundColor,
-      composer: read(".composer", "background-color"),
-      composerEdge: read(".composer", "border-top-color"),
-      send: read(".send", "background-color"),
+      heading: read(".widget-studio-heading", "border-bottom-color"),
+      card: read(".widget-saved-card", "background-color"),
+      cardEdge: read(".widget-saved-card", "border-top-color"),
       text: getComputedStyle(document.documentElement).color,
     };
   });
 }
 
-test("menu bar panel: every page takes the semantic colour tokens in light and dark and matches the main window's colours", async ({}, info) => {
+test("menu bar panel: the widget page takes the semantic colour tokens in light and dark and matches the main window's widget page", async ({}, info) => {
   const root = seedConversations();
+  seedRetainedWidgets(root, ["便笺", "计时"]);
   const app = await launchLocal({
     args: [resolve("."), `--data-root=${root}`],
     cwd: resolve("."),
@@ -1033,27 +994,14 @@ test("menu bar panel: every page takes the semantic colour tokens in light and d
   const page = await app.firstWindow();
   try {
     await ready(page);
-    // The panel's chat page shows the main window's conversation: open one with both kinds of message.
-    await openConversation(
-      page,
-      (await (
-        await recent(page)
-      )
-        .locator(".session")
-        .filter({ hasText: "整理读书笔记" })
-        .getAttribute("aria-label"))!,
-    );
-    await expect(page.locator(".bubble.assistant").first()).toBeVisible();
     const opened = app.waitForEvent("window");
     await app.evaluate(({ Menu }) => {
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click();
     });
     const panel = await opened;
-    await expect(
-      panel.getByRole("navigation", { name: "面板导航" }),
-    ).toBeVisible();
+    await expect(panel.locator("[data-formal-widget]")).toHaveCount(2);
     const failures: string[] = [];
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(page, appearance);
@@ -1062,43 +1010,36 @@ test("menu bar panel: every page takes the semantic colour tokens in light and d
         appearance,
       );
       await expectTokens(panel, appearance);
-      await goTo(page, "聊天");
+      await goTo(page, "控件");
       const main = await sharedRoles(page);
-      for (const [name, probes] of panelPages) {
-        await panel
-          .getByRole("navigation", { name: "面板导航" })
-          .getByRole("button", { name, exact: true })
-          .click();
-        await rest(panel);
-        failures.push(
-          ...(await mismatches(panel, [...panelShell, ...probes])).map(
-            (m) => `${appearance} panel ${name} ${m}`,
-          ),
-        );
-        if (name === "聊天") {
-          const own = await sharedRoles(panel);
-          for (const role of [
-            "canvas",
-            "composer",
-            "composerEdge",
-            "send",
-            "text",
-          ] as const)
-            if (own[role] !== main[role])
-              failures.push(
-                `${appearance} panel ${role}: ${own[role]} while the main window has ${main[role]}`,
-              );
-        }
-        await panel.screenshot({
-          path: info.outputPath(`420x600-${appearance}-PN-${name}.png`),
-        });
-        await panel.keyboard.press("Tab");
-        failures.push(
-          ...(await focusRing(panel, ".panel-nav button.active")).map(
-            (m) => `${appearance} panel ${name} ${m}`,
-          ),
-        );
-      }
+      await rest(panel);
+      failures.push(
+        ...(await mismatches(panel, panelProbes)).map(
+          (m) => `${appearance} panel ${m}`,
+        ),
+      );
+      const own = await sharedRoles(panel);
+      for (const role of [
+        "canvas",
+        "heading",
+        "card",
+        "cardEdge",
+        "text",
+      ] as const)
+        if (own[role] !== main[role])
+          failures.push(
+            `${appearance} panel ${role}: ${own[role]} while the main window has ${main[role]}`,
+          );
+      await panel.screenshot({
+        path: info.outputPath(`420x600-${appearance}-PN-控件.png`),
+      });
+      await panel.locator(".widget-studio-heading h1").focus();
+      await panel.keyboard.press("Tab");
+      failures.push(
+        ...(await focusRing(panel, ".widget-studio-heading .button")).map(
+          (m) => `${appearance} panel ${m}`,
+        ),
+      );
     }
     expect(failures).toEqual([]);
   } finally {
@@ -1507,7 +1448,7 @@ test("window background: the main window and the panel take the canvas of the cu
     const opened = app.waitForEvent("window");
     await app.evaluate(({ Menu }) => {
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click();
     });
     const panel = await opened;
@@ -1716,7 +1657,7 @@ async function textLeft(page: Page, selector: string) {
   }, selector);
 }
 
-test("existing page defects: a user bubble sits at the right in the main window and the panel, the search scope note lines up with the group title, and project form fields use the body weight", async ({}, info) => {
+test("existing page defects: a user bubble sits at the right in the main window, the search scope note lines up with the group title, and project form fields use the body weight", async ({}, info) => {
   const root = seedConversations();
   const app = await launchLocal({
     args: [resolve("."), `--data-root=${root}`],
@@ -1736,22 +1677,8 @@ test("existing page defects: a user bubble sits at the right in the main window 
       .getAttribute("aria-label"))!;
     await openConversation(page, conversation);
     await expect(page.locator(".bubble.assistant").first()).toBeVisible();
-    const opened = app.waitForEvent("window");
-    await app.evaluate(({ Menu }) => {
-      Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
-        .click();
-    });
-    const panel = await opened;
-    await panel
-      .getByRole("navigation", { name: "面板导航" })
-      .getByRole("button", { name: "聊天", exact: true })
-      .click();
-    await expect(panel.locator(".bubble.assistant").first()).toBeVisible();
-    for (const [surface, window] of [
-      ["main window", page],
-      ["panel", panel],
-    ] as const) {
+    // The menu bar panel has no conversation or search (WB-03); these checks are the main window's.
+    for (const [surface, window] of [["main window", page]] as const) {
       const e = await bubbleEdges(window);
       if (Math.abs(e.user.right - e.content.right) > 1)
         failures.push(
@@ -1781,12 +1708,6 @@ test("existing page defects: a user bubble sits at the right in the main window 
             .locator("#main-sidebar")
             .getByRole("button", { name: "搜索", exact: true })
             .click(),
-      ],
-      [
-        "panel",
-        panel,
-        () =>
-          panel.getByRole("button", { name: "搜索对话", exact: true }).click(),
       ],
     ] as const) {
       await open();
@@ -2059,15 +1980,6 @@ test("selected states: every current item keeps its selection colours and weight
       .filter({ hasText: "整理读书笔记" })
       .getAttribute("aria-label"))!;
     await page.keyboard.press("Escape");
-    const opened = app.waitForEvent("window");
-    await app.evaluate(({ Menu }) => {
-      Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
-        .click();
-    });
-    const panel = await opened;
-    const panelNav = panel.getByRole("navigation", { name: "面板导航" });
-    await expect(panelNav).toBeVisible();
     for (const appearance of ["light", "dark"] as const) {
       await setAppearance(page, appearance);
       // The rail: the prototype's narrow column keeps its names regular in the selected block.
@@ -2130,29 +2042,6 @@ test("selected states: every current item keeps its selection colours and weight
       );
       await page.keyboard.press("Escape");
       await expect(page.locator("dialog[open]")).toHaveCount(0);
-      // The menu bar panel: tabs stay regular as in its prototype; its settings category is bold.
-      await expect(panel.locator("html")).toHaveAttribute(
-        "data-theme",
-        appearance,
-      );
-      await check(
-        panel,
-        appearance,
-        "panel tab",
-        panelNav.locator('[aria-current="page"]'),
-        "400",
-      );
-      await panelNav.getByRole("button", { name: "设置", exact: true }).click();
-      await check(
-        panel,
-        appearance,
-        "panel settings category",
-        panel.locator('.settings-nav [aria-current="page"]'),
-        "600",
-      );
-      await panelNav
-        .getByRole("button", { name: "工作台", exact: true })
-        .click();
     }
   } finally {
     await closeLocal(app);

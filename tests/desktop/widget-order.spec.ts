@@ -64,7 +64,7 @@ test("widget order: five widgets across columns move by drag, 前移 / 后移 an
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
         .items[0].submenu!.items.find(
-          (item) => item.label === "打开工作台助手",
+          (item) => item.label === "打开菜单栏面板",
         )!
         .click(),
     );
@@ -78,7 +78,6 @@ test("widget order: five widgets across columns move by drag, 前移 / 后移 an
         return !!panel;
       })
       .toBe(true);
-    await panel!.getByRole("button", { name: "工作台", exact: true }).click();
     await expect(panel!.locator("[data-formal-widget]")).toHaveCount(5);
     expect(await shown(panel!)).toEqual(ids);
 

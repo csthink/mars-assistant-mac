@@ -5,14 +5,33 @@ import type { WidgetPreview } from "./widget-store";
  * card onto another card's native content reorders and never inserts anything into that widget.
  */
 export const widgetOrderDragType = "application/x-qingluan-widget-order";
+/** The status of a widget whose input another entry or instance made stale (WB-03, mac-feature-t12:OD-02 A). */
+export const widgetStaleMessage =
+  "数据已在另一入口改变，你的输入未保存。控件已显示最新内容。";
 /** A display input a widget view relays to the host page that shows it. */
 export type WidgetDisplayInput =
   | { kind: "hover" | "focus"; value: boolean }
   | { kind: "scroll"; x: number; y: number }
-  | { kind: "drag"; phase: "over" | "drop"; x: number; width: number };
+  | {
+      kind: "drag";
+      phase: "over" | "drop";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
 export type WidgetControl = { slot?: string } & (
   | { action: "draftConfig"; field: string; revision: number; value: string }
-  | { action: "status" | "open" | "hide" | "recover" | "suspend" }
+  | {
+      action:
+        | "status"
+        | "open"
+        | "hide"
+        | "recover"
+        | "suspend"
+        | "retry"
+        | "discardConflicts";
+    }
   | { action: "openGenerated"; candidateId: string }
   | {
       action: "place";
@@ -38,13 +57,17 @@ export type WidgetUIReply =
       preview?: WidgetPreview;
       generation?: string;
       unconfirmed?: boolean;
+      /** Input another entry made stale (WB-03): kept by the host until the person discards it. */
+      conflicts?: string[];
     }
   | { ok: false; message: string };
 export interface WidgetSignal {
   generation: string;
   unconfirmed: boolean;
-  state: "saving" | "saved" | "failed" | "closed" | "stopped";
+  state: "saving" | "saved" | "failed" | "conflict" | "closed" | "stopped";
   message: string;
+  /** Input rejected as stale and kept by the host; present on every signal of an open instance. */
+  conflicts?: string[];
 }
 
 export interface WidgetLayoutSignal {

@@ -722,7 +722,7 @@ test("preferences: a preference the business service does not save stays for thi
   }
 });
 
-test("menu bar panel keeps its own navigation: the top bar, four tabs in their order, the chat picker and the settings page, without the rail, the sidebar or the right column", async () => {
+test("menu bar panel has one page of widgets: no navigation, chat picker or settings, and none of the rail, the sidebar or the right column", async () => {
   const { root } = seed();
   const { app, page } = await launch(root);
   try {
@@ -730,47 +730,23 @@ test("menu bar panel keeps its own navigation: the top bar, four tabs in their o
     const opening = app.waitForEvent("window");
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click(),
     );
     const panel = await opening;
-    const nav = panel.getByRole("navigation", { name: "面板导航" });
-    await expect(nav.getByRole("button")).toHaveText([
-      "工作台",
-      "聊天",
-      "待处理",
-      "设置",
-    ]);
-    await expect(panel.locator(".topbar")).toBeVisible();
+    await expect(
+      panel.getByRole("heading", { level: 1, name: "控件" }),
+    ).toBeVisible();
     for (const gone of [
-      panel.getByRole("navigation", { name: "全局导航" }),
+      panel.getByRole("navigation"),
+      panel.locator(".topbar"),
+      panel.getByRole("combobox", { name: "选择对话" }),
+      panel.getByRole("heading", { name: "设置" }),
       panel.locator("#main-sidebar"),
       panel.locator("#right-panel"),
       panel.locator(".center-header"),
     ])
       await expect(gone).toHaveCount(0);
-    await expect(
-      panel.getByRole("heading", { level: 1, name: "工作台" }),
-    ).toBeVisible();
-    await nav.getByRole("button", { name: "聊天", exact: true }).click();
-    await expect(
-      panel.getByRole("combobox", { name: "选择对话" }),
-    ).toBeVisible();
-    await nav.getByRole("button", { name: "设置", exact: true }).click();
-    await expect(
-      panel.getByRole("heading", { level: 1, name: "设置" }),
-    ).toBeVisible();
-    await expect(
-      panel.getByRole("navigation", { name: "设置分类" }).getByRole("button"),
-    ).toHaveText([
-      "通用",
-      "模型",
-      "最近删除",
-      "扩展管理",
-      "访问权限",
-      "数据保留",
-      "数据与隐私",
-    ]);
     await expect(panel.getByRole("dialog")).toHaveCount(0);
   } finally {
     await closeLocal(app);

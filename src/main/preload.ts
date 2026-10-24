@@ -111,11 +111,11 @@ const bridge: DesktopBridge = {
   subscribe: (callback) => listen<Snapshot>("business:snapshot", callback),
   onStatus: (callback) => listen<Status>("business:status", callback),
   reportDirty: (dirty) => ipcRenderer.send("window:dirty", dirty),
-  openMain: (conversationId) =>
-    ipcRenderer.invoke("window:open-main", conversationId),
+  openMain: (target) => ipcRenderer.invoke("window:open-main", target),
   reconnect: () => ipcRenderer.invoke("business:reconnect"),
   onOpenConversation: (callback) =>
     listen("window:open-conversation", callback),
+  onOpenWidget: (callback) => listen<string>("window:open-widget", callback),
   saveSecret: (secret) => ipcRenderer.invoke("secret:save", secret),
   discardSecret: (secretRef) => ipcRenderer.invoke("secret:discard", secretRef),
   runConnectionCheck: (kind, connectionId, model) =>

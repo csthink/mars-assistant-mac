@@ -182,12 +182,11 @@ test("widget fullscreen: same instances preserve order, scroll, inputs and data 
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
         .items[0].submenu!.items.find(
-          (item) => item.label === "打开工作台助手",
+          (item) => item.label === "打开菜单栏面板",
         )!
         .click(),
     );
     const panel = await panelReady;
-    await panel.getByRole("button", { name: "工作台", exact: true }).click();
     const panelFirst = await instance(app, panel, widgets[0].id);
     expect(panelFirst.generation).not.toBe(first.generation);
     expect(panelFirst.preview.widgetId).toBe(first.preview.widgetId);

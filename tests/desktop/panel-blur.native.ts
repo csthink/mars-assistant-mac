@@ -31,13 +31,13 @@ test("native: Tray panel activates across applications and hides on external foc
         return;
       }
       const panel = BrowserWindow.getAllWindows().find(
-        (w) => w.getTitle() === "工作台助手",
+        (w) => w.getTitle() === "菜单栏面板",
       );
       if (panel?.isVisible()) panel.close();
       else
         Menu.getApplicationMenu()!
           .items[0].submenu!.items.find(
-            (item) => item.label === "打开工作台助手",
+            (item) => item.label === "打开菜单栏面板",
           )!
           .click();
     }, !!executablePath);
@@ -83,7 +83,7 @@ test("native: Tray panel activates across applications and hides on external foc
       const panelId = await product.evaluate(
         ({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().find(
-            (w) => w.getTitle() === "工作台助手",
+            (w) => w.getTitle() === "菜单栏面板",
           )!.id,
       );
       const state = () =>
@@ -151,7 +151,7 @@ test("native: Tray panel activates across applications and hides on external foc
       .poll(() =>
         product.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().some(
-            (w) => w.getTitle() === "工作台助手" && w.isFocused(),
+            (w) => w.getTitle() === "菜单栏面板" && w.isFocused(),
           ),
         ),
       )
@@ -161,7 +161,7 @@ test("native: Tray panel activates across applications and hides on external foc
       .poll(() =>
         product.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().some(
-            (w) => w.getTitle() === "工作台助手" && w.isVisible(),
+            (w) => w.getTitle() === "菜单栏面板" && w.isVisible(),
           ),
         ),
       )

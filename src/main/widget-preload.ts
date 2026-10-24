@@ -46,6 +46,80 @@ const bridge: WidgetBridge = {
   writeDraft: (revision, field, value) =>
     request({ method: "writeDraft", revision, field, value }),
 };
+// OD-04: text an input method is still composing is not a confirmed value. While a composition is active the
+// widget's own code does not receive its input events, so no widget saves half-typed pinyin as a draft, whatever
+// its own code does; once the composition ends the widget receives one input event carrying the final text and
+// saves that once. When the view loses focus, is hidden or goes away during a composition, the text the system
+// then commits is not handed to the widget, so the last confirmed draft stays. A composition begins only with
+// the browser's own (trusted) compositionstart; input outside a composition is untouched. These capture listeners are added before
+// the widget's code runs, so they run before any of its own listeners.
+if (process.isMainFrame) {
+  let composing: EventTarget | null = null;
+  let ended: EventTarget | null = null;
+  let interrupted = false;
+  const reset = () => {
+    composing = ended = null;
+    interrupted = false;
+  };
+  window.addEventListener(
+    "compositionstart",
+    (event) => {
+      if (!event.isTrusted) return;
+      composing = event.target;
+      ended = null;
+      interrupted = false;
+    },
+    true,
+  );
+  window.addEventListener(
+    "input",
+    (event) => {
+      if (composing || (event.isTrusted && (event as InputEvent).isComposing)) {
+        event.stopImmediatePropagation();
+        return;
+      }
+      // The browser delivered the committed text itself after the composition ended.
+      if (event.isTrusted && ended) ended = null;
+    },
+    true,
+  );
+  window.addEventListener(
+    "compositionend",
+    (event) => {
+      // Blink dispatches compositionend as an untrusted event, so it ends only a composition a trusted
+      // compositionstart began.
+      if (!composing) return;
+      const target = composing;
+      composing = null;
+      if (interrupted) return reset();
+      ended = target;
+      const data = (event as CompositionEvent).data;
+      setTimeout(() => {
+        if (ended !== target) return;
+        const handOver = !interrupted;
+        reset();
+        if (handOver)
+          target.dispatchEvent(
+            new InputEvent("input", {
+              bubbles: true,
+              inputType: "insertFromComposition",
+              data,
+            }),
+          );
+      });
+    },
+    true,
+  );
+  const interrupt = () => {
+    if (composing || ended) interrupted = true;
+  };
+  window.addEventListener("blur", interrupt);
+  window.addEventListener("pagehide", interrupt);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") interrupt();
+  });
+}
+
 if (process.isMainFrame) {
   contextBridge.exposeInMainWorld("widget", bridge);
   ipcRenderer.on("widget:ping", (_event, nonce: unknown) => {
@@ -283,7 +357,9 @@ if (process.isMainFrame) {
         kind: "drag",
         phase,
         x: event.clientX,
+        y: event.clientY,
         width: innerWidth,
+        height: innerHeight,
       });
     };
     for (const [type, phase] of [

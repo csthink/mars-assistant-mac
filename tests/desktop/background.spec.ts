@@ -55,15 +55,12 @@ test("background: initial and subsequent windows stay isolated while input, scre
     await app.evaluate(({ Menu }) => {
       Menu.getApplicationMenu()
         ?.items[0].submenu?.items.find(
-          (item) => item.label === "打开工作台助手",
+          (item) => item.label === "打开菜单栏面板",
         )
         ?.click();
     });
     const panel = await opening;
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    await expect(panel.getByRole("textbox", { name: "输入草稿" })).toHaveValue(
-      "后台输入仍然保存",
-    );
+    await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
     await app.evaluate(({ app }) => app.focus({ steal: true }));
     const windows = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((window) => {
@@ -155,7 +152,7 @@ test("background: the menu bar icon is an in-process stand-in: no system status 
   const panelVisible = () =>
     app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().some(
-        (w) => w.getTitle() === "工作台助手" && w.isVisible(),
+        (w) => w.getTitle() === "菜单栏面板" && w.isVisible(),
       ),
     );
   try {
@@ -185,12 +182,12 @@ test("background: the menu bar icon is an in-process stand-in: no system status 
     const mainVisible = () =>
       app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().some(
-          (w) => w.getTitle() !== "工作台助手" && w.isVisible(),
+          (w) => w.getTitle() !== "菜单栏面板" && w.isVisible(),
         ),
       );
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => w.getTitle() !== "工作台助手")
+        .find((w) => w.getTitle() !== "菜单栏面板")
         ?.close(),
     );
     await expect.poll(mainVisible).toBe(false);

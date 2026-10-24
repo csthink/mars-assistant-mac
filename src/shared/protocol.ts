@@ -1110,9 +1110,15 @@ export interface DesktopBridge {
   subscribe: (callback: (snapshot: Snapshot) => void) => () => void;
   onStatus: (callback: (status: Status) => void) => () => void;
   reportDirty: (dirty: boolean) => void;
-  openMain: (conversationId?: string) => Promise<void>;
+  /**
+   * Opens or activates the existing main window: on a conversation (its id), on a retained widget
+   * ({ widgetId }), or where it was (no argument). The menu bar panel uses the widget form (WB-03).
+   */
+  openMain: (target?: string | { widgetId: string }) => Promise<void>;
   reconnect: () => Promise<void>;
   onOpenConversation: (callback: () => void) => () => void;
+  /** The main window is asked to show a retained widget on its 控件 page. */
+  onOpenWidget: (callback: (widgetId: string) => void) => () => void;
   /** Encrypts the secret in the host and returns a random reference; the secret never returns. */
   saveSecret: (secret: string) => Promise<SecretReply>;
   /** Removes a reference that was never committed to a connection. */

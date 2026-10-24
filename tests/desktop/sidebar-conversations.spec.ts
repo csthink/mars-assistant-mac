@@ -824,21 +824,6 @@ test("inline rename: the sidebar row and the centre title rename in place; Enter
     await field(centre).press("Enter");
     await expect(title).toHaveText("快捷键改的名字");
     await expect(draft).toBeFocused();
-    // The panel still renames in its dialog and shows the same name.
-    const opened = app.waitForEvent("window");
-    await app.evaluate(({ Menu }) =>
-      Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
-        .click(),
-    );
-    const panel = await opened;
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    await panel.evaluate(async (id) => {
-      await window.desktop.command({ type: "select", id });
-    }, ids.today);
-    await expect(
-      panel.getByRole("button", { name: "修改对话名称" }),
-    ).toHaveText("快捷键改的名字");
   } finally {
     await closeLocal(app);
   }

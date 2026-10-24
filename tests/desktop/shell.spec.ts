@@ -713,42 +713,19 @@ test("shell: keyboard order runs the rail, the sidebar, the centre title then co
     await expect(page.getByRole("dialog", { name: "全局搜索" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "全局搜索" })).toHaveCount(0);
-    // The panel keeps its own compact chrome: tabs named like the main window, composition Enter does not send.
+    // The menu bar panel has one page of widgets (WB-03): no navigation, no composer, no global search.
     const opening = app.waitForEvent("window");
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click(),
     );
     const panel = await opening;
-    await expect(
-      panel.getByRole("navigation", { name: "面板导航" }).getByRole("button"),
-    ).toHaveText(["工作台", "聊天", "待处理", "设置"]);
-    await expect(
-      panel.getByRole("navigation", { name: "主要页面" }),
-    ).toHaveCount(0);
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    const panelInput = panel.getByRole("textbox", { name: "输入草稿" });
-    await expect(panelInput).toBeEditable();
-    await panelInput.fill("面板组合前");
-    await expect(panel.getByTestId("save-state")).toHaveText("草稿已保存");
-    await panelInput.dispatchEvent("compositionstart", { data: "zhong" });
-    await panelInput.dispatchEvent("keydown", {
-      key: "Enter",
-      isComposing: true,
-      bubbles: true,
-    });
-    await panelInput.dispatchEvent("compositionend", { data: "中" });
-    await expect(
-      panel.getByRole("button", { name: "发送消息" }),
-    ).toBeDisabled();
-    await expect(panelInput).toHaveValue("面板组合前");
-    await panel.getByRole("button", { name: "搜索对话", exact: true }).click();
-    await expect(panel.getByRole("dialog", { name: "全局搜索" })).toBeVisible();
-    await panel.keyboard.press("Escape");
-    await expect(panel.getByRole("dialog", { name: "全局搜索" })).toHaveCount(
-      0,
-    );
+    await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
+    await expect(panel.getByRole("navigation")).toHaveCount(0);
+    await expect(panel.getByRole("textbox")).toHaveCount(0);
+    await panel.keyboard.press("Meta+k");
+    await expect(panel.getByRole("dialog")).toHaveCount(0);
     await panel.screenshot({ path: info.outputPath("panel-chrome.png") });
   } finally {
     await app.close();

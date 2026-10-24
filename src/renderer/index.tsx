@@ -11,6 +11,7 @@ import { WidgetWorkspace } from "./widgets";
 import { useWidgetDrafts } from "./widget-drafts";
 import { WidgetCandidatePanel } from "./widget-candidate";
 import { WidgetStudio, WidgetTaskCard } from "./widget-studio";
+import { PanelApp } from "./panel-app";
 import { Projects } from "./projects";
 import { useProjectSidebar } from "./project-sidebar";
 import {
@@ -45,11 +46,10 @@ import {
   type RenameOrigin,
   type Renaming,
 } from "./organization";
-import { InlineRename, RenameDialog } from "./conversation-title";
+import { InlineRename } from "./conversation-title";
 import { ArchivedPage } from "./archived-page";
 import { ConversationEvents, ConversationFiles } from "./conversation-panel";
 import { Icon } from "./icons";
-import type { Page } from "./shell";
 import {
   CenterHeader,
   Rail,
@@ -62,7 +62,7 @@ import {
 } from "./main-shell";
 import { columnLayout, expandsAsOverlay } from "./column-layout";
 import { WidgetGenerationSettings } from "./widget-generation-settings";
-import { SettingsDialog, SettingsNav, settingTitles } from "./settings-dialog";
+import { SettingsDialog } from "./settings-dialog";
 import {
   defaultInterfacePreferences,
   titleSourceLabels,
@@ -172,7 +172,6 @@ function App() {
   }
 
   useAppearance(snapshot?.settings.appearance ?? window.desktop.appearance);
-  const panel = window.desktop.surface === "panel";
   const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => window.desktop.onWidgetSearch(() => setSearchOpen(true)), []);
   const [searchTarget, setSearchTarget] = useState<{
@@ -194,18 +193,14 @@ function App() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
-  // The menu bar panel renames in a dialog; the main window renames in place (the sidebar row or the centre
-  // title) and then returns focus to where renaming started.
-  const [renameId, setRenameId] = useState<string>();
-  const renameTarget = snapshot?.conversations.find((c) => c.id === renameId);
+  // The main window renames in place (the sidebar row or the centre title) and then returns focus to where
+  // renaming started.
   const [renaming, setRenaming] = useState<
     Renaming & { returnTo: () => HTMLElement | null; keyboard: boolean }
   >();
-  // The menu bar panel keeps its four pages; the main window shows one object in the centre, settings as a
-  // dialog and the right column beside it.
-  const [page, setPage] = useState<Page>(panel ? "工作台" : "聊天");
+  // The main window shows one object in the centre, settings as a dialog and the right column beside it.
   const [view, setView] = useState<MainView>(() =>
-    !panel && taskRoute() ? "projects" : "chat",
+    taskRoute() ? "projects" : "chat",
   );
   const [projectsKey, setProjectsKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -290,10 +285,9 @@ function App() {
     requestAnimationFrame(() => requestAnimationFrame(() => target()?.focus()));
   // The right column belongs to the conversation and the new-conversation page in this version.
   const rightAvailable =
-    !panel &&
-    (view === "chat" ||
-      (view === "widgets" && !!widgetEditor) ||
-      (["projects", "pending", "records"].includes(view) && projectAvailable));
+    view === "chat" ||
+    (view === "widgets" && !!widgetEditor) ||
+    (["projects", "pending", "records"].includes(view) && projectAvailable);
   const effectiveRight = rightOpen && rightAvailable;
   const layout = columnLayout({
     width,
@@ -320,18 +314,6 @@ function App() {
     }
     if (target === "pending") setPendingScopeId(scope);
     if (target === "records") setRecordScopeId(scope);
-    if (panel) {
-      setPage(
-        target === "chat"
-          ? "聊天"
-          : target === "pending"
-            ? "待处理"
-            : target === "records"
-              ? "运行记录"
-              : "工作台",
-      );
-      return;
-    }
     if (target !== "projects") clearTaskRoute();
     setSettingsOpen(false);
     if (overlay) {
@@ -346,8 +328,7 @@ function App() {
   }
   function openSettings(category: string) {
     setTab(category);
-    if (panel) setPage("设置");
-    else setSettingsOpen(true);
+    setSettingsOpen(true);
   }
   function railSidebar() {
     const floats = expandsAsOverlay({ width, rightOpen: effectiveRight });
@@ -419,7 +400,7 @@ function App() {
   // Escape closes only the innermost layer: menus and dialogs handle their own first, then the floating
   // sidebar, then a right column that took over the centre, then the right column holding focus.
   useEffect(() => {
-    if (panel || projectFull) return;
+    if (projectFull) return;
     const key = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented)
         return;
@@ -703,31 +684,43 @@ function App() {
         ? "草稿已保存"
         : "草稿保存在本机";
   const [widgetTarget, setWidgetTarget] = useState<string>();
+  /**
+   * Shows a retained widget on the 控件 page by its stable identity: from a search result (SEARCH-01) or from
+   * the menu bar panel opening the main window on the same object (WB-03). A vanished widget says so.
+   */
+  async function showRetainedWidget(widgetId: string): Promise<true | string> {
+    if (!snapshot?.widgetGeneration?.widgets.some((w) => w.id === widgetId))
+      return "该控件已不存在。";
+    setWidgetFull(false);
+    setWidgetSection("widgets");
+    if (widgetSelected) await selectWidget();
+    await go("widgets");
+    setWidgetTarget(widgetId);
+    return true;
+  }
+  // The panel asks for a widget before this window may have its first snapshot; the request waits for it.
+  const [openWidgetRequest, setOpenWidgetRequest] = useState<string>();
+  useEffect(() => window.desktop.onOpenWidget(setOpenWidgetRequest), []);
+  useEffect(() => {
+    if (!openWidgetRequest || !snapshot) return;
+    setOpenWidgetRequest(undefined);
+    void showRetainedWidget(openWidgetRequest).then((shown) => {
+      if (shown !== true) setNotice(shown);
+    });
+  }, [openWidgetRequest, snapshot]);
   /** Opens a search result by its stable identity (SEARCH-01); a vanished object says so instead. */
   async function openSearchHit(
     hit: SearchHit,
     query: string,
   ): Promise<boolean | string> {
     if (hit.kind === "project") {
-      if (panel) return "项目详情在主窗口中打开，请在主窗口搜索。";
       if (!snapshot?.projects.some((p) => p.id === hit.objectId))
         return "该项目已不存在。";
       sessionStorage.setItem("project-selected", hit.objectId);
       await go("projects");
       return true;
     }
-    if (hit.kind === "widget") {
-      if (
-        !snapshot?.widgetGeneration?.widgets.some((w) => w.id === hit.objectId)
-      )
-        return "该控件已不存在。";
-      setWidgetFull(false);
-      setWidgetSection("widgets");
-      if (widgetSelected) await selectWidget();
-      await go("widgets");
-      setWidgetTarget(hit.objectId);
-      return true;
-    }
+    if (hit.kind === "widget") return showRetainedWidget(hit.objectId);
     if (!hit.conversationId) return false;
     const selected = await model.select(hit.conversationId);
     if (!selected) return false;
@@ -769,8 +762,8 @@ function App() {
     else go("chat");
   }
   /**
-   * Starts renaming. In the panel it opens the rename dialog. In the main window a sidebar menu edits the row in
-   * place (or the centre title when the row is not on screen), the centre title and ⌥⌘R edit the centre title;
+   * Starts renaming. A sidebar menu edits the row in place (or the centre title when the row is not on screen),
+   * the centre title and ⌥⌘R edit the centre title;
    * afterwards focus returns to the entry, with a ring when the entry was reached by keyboard.
    */
   function startRename(
@@ -779,10 +772,6 @@ function App() {
     keyboard: boolean,
     from?: HTMLElement,
   ) {
-    if (panel) {
-      setRenameId(target);
-      return;
-    }
     const menuButton = () =>
       document.querySelector<HTMLElement>(
         `#main-sidebar [aria-label="对话菜单 ${target.slice(0, 8)}"]`,
@@ -888,8 +877,8 @@ function App() {
     notify: setNotice,
   });
   const organization = useOrganization({
-    page: panel ? page : view,
-    highlightCurrent: panel || view === "chat",
+    page: view,
+    highlightCurrent: view === "chat",
     snapshot,
     connected: status.connected && !model.switching,
     currentId: id,
@@ -902,7 +891,7 @@ function App() {
     renderPinnedProject: projectSidebar.renderPinnedProject,
     renaming: renaming?.where === "sidebar" ? renaming : undefined,
     onRenameDone: finishRename,
-    onArchived: panel ? undefined : () => go("archived"),
+    onArchived: () => go("archived"),
   });
   const conversationList = organization.list;
   const chatProject = snapshot?.projects.find((p) =>
@@ -925,17 +914,13 @@ function App() {
           <button
             className="button"
             onClick={() => {
-              if (panel) {
-                void window.desktop.openMain(id);
-                return;
-              }
               sessionStorage.setItem("project-selected", chatProject.id);
               if (id)
                 sessionStorage.setItem(`project-chat:${chatProject.id}`, id);
               go("projects");
             }}
           >
-            {panel ? "在主窗口查看" : "打开项目"}
+            打开项目
           </button>
         </section>
       )}
@@ -1251,31 +1236,10 @@ function App() {
       </div>
     </div>
   );
-  function emptyPage(
-    title: string,
-    description: string,
-    icon: string,
-    action?: { label: string; run: () => void },
-  ) {
-    return (
-      <div className="empty">
-        <div className="empty-icon">
-          <Icon name={icon} />
-        </div>
-        <h2>{title}</h2>
-        <p>{description}</p>
-        {action && (
-          <button className="button" onClick={action.run}>
-            {action.label}
-          </button>
-        )}
-      </div>
-    );
-  }
   function chatContent() {
     return (
       <div className="chat-layout">
-        {!panel && current?.archivedAt && (
+        {current?.archivedAt && (
           <div className="archived-banner" role="status">
             <Icon name="archive" />
             <span>这段对话已归档。发送新消息后会自动取消归档。</span>
@@ -1323,7 +1287,7 @@ function App() {
                     className="suggestion"
                     disabled={!status.connected || model.switching}
                     onClick={() => {
-                      if (index === 3 && !panel) void newWidgetFromChat();
+                      if (index === 3) void newWidgetFromChat();
                       else void suggestion(value);
                     }}
                   >
@@ -1350,7 +1314,7 @@ function App() {
             </div>
           )}
         </div>
-        {!panel && current && (
+        {current && (
           <div className="widget-source-tasks">
             {(snapshot?.widgetGeneration?.tasks ?? [])
               .filter(
@@ -1375,58 +1339,24 @@ function App() {
       </div>
     );
   }
-  /**
-   * The widget page: the main window reaches it from the rail as 控件, the panel from its 工作台 page; the empty
-   * state names the page the person is on.
-   */
+  /** The widget page, reached from the rail as 控件. The acceptance build shows its fixture widget instead. */
   useEffect(() => {
     if (view !== "widgets" || widgetSelected || widgetSection !== "widgets")
       setWidgetFull(false);
   }, [view, widgetSelected, widgetSection]);
-  function widgetsContent(title: string, detail?: string) {
-    if (panel && !window.desktop.widgetEnabled)
-      return (
-        <WidgetStudio
-          panel
-          snapshot={snapshot}
-          connected={status.connected}
-          model={widgetDrafts}
-          section="widgets"
-          onSelect={() => void window.desktop.openMain()}
-          onSection={() => void window.desktop.openMain()}
-          openSettings={() => void window.desktop.openMain()}
-          occluded={searchOpen || overlayOpen || overlay}
-          focusWidget={widgetTarget}
-          onFocused={() => setWidgetTarget(undefined)}
-        />
-      );
+  function widgetsContent() {
     if (window.desktop.widgetEnabled)
       return (
         <div className="page">
           <div className="page-heading">
             <h1 tabIndex={-1} data-center-title>
-              {title}
+              控件
             </h1>
-            {detail && <p>{detail}</p>}
           </div>
-          {window.desktop.widgetEnabled ? (
-            <WidgetWorkspace
-              occluded={searchOpen || overlayOpen || overlay}
-              connected={status.connected}
-            />
-          ) : (
-            emptyPage(
-              "工作台还是空的",
-              "在主窗口创建控件，保留后可在工作台查看。",
-              "grid",
-              {
-                label: "打开主窗口",
-                run: () => {
-                  void window.desktop.openMain();
-                },
-              },
-            )
-          )}
+          <WidgetWorkspace
+            occluded={searchOpen || overlayOpen || overlay}
+            connected={status.connected}
+          />
         </div>
       );
     return (
@@ -1540,7 +1470,7 @@ function App() {
       </div>
     );
   }
-  /** The content of the chosen settings category; the dialog and the panel's settings page share it. */
+  /** The content of the chosen settings category, shown in the settings dialog. */
   function settingsBody() {
     return (
       <>
@@ -1667,30 +1597,6 @@ function App() {
       </>
     );
   }
-  function panelContent() {
-    if (page === "聊天") return chatContent();
-    if (page === "工作台")
-      return widgetsContent("工作台", "你的常用工具，都在这里。");
-    if (page === "待处理") return pendingContent();
-    if (page === "运行记录") return recordsContent();
-    return (
-      <div className="page settings-page">
-        <div className="page-heading">
-          <div>
-            <h1>设置</h1>
-            <p>管理连接、偏好与本地数据。</p>
-          </div>
-        </div>
-        <div className="settings-layout">
-          <SettingsNav tab={tab} onTab={setTab} />
-          <section className="settings-content" aria-label={tab}>
-            <h2>{settingTitles[tab] ?? tab}</h2>
-            {settingsBody()}
-          </section>
-        </div>
-      </div>
-    );
-  }
   function mainContent() {
     if (view === "archived")
       return (
@@ -1704,7 +1610,7 @@ function App() {
           onUnarchive={(c) => organization.act(c, "unarchive")}
         />
       );
-    if (view === "widgets") return widgetsContent("控件");
+    if (view === "widgets") return widgetsContent();
     if (view === "projects") return projectsContent();
     if (view === "pending") return pendingContent();
     if (view === "records") return recordsContent();
@@ -1745,125 +1651,6 @@ function App() {
       )}
     </>
   );
-  if (panel)
-    return (
-      <div className="app panel-app">
-        {organization.overlays}
-        {searchOpen && (
-          <SearchDialog
-            onClose={() => setSearchOpen(false)}
-            onOpen={openSearchHit}
-          />
-        )}
-        {renameTarget && (
-          <RenameDialog
-            key={renameTarget.id}
-            conversation={renameTarget}
-            onClose={() => setRenameId(undefined)}
-          />
-        )}
-        <main className="shell">
-          <>
-            <header className="topbar">
-              <div className="breadcrumb">
-                {page === "聊天" && (
-                  <button
-                    className="icon-button"
-                    disabled={!status.connected || model.switching}
-                    aria-label="新建对话"
-                    onClick={() => {
-                      void newConversation();
-                    }}
-                  >
-                    <Icon name="edit" />
-                  </button>
-                )}
-                {page === "聊天" && current ? (
-                  <button
-                    className="conversation-title"
-                    aria-label="修改对话名称"
-                    title={current.title}
-                    disabled={!status.connected || model.switching}
-                    onClick={() => setRenameId(current.id)}
-                  >
-                    {current.title}
-                  </button>
-                ) : (
-                  <strong>工作台助手</strong>
-                )}
-                {page === "聊天" && current && (
-                  <button
-                    className="icon-button conversation-menu-trigger"
-                    aria-label="当前对话菜单"
-                    disabled={!status.connected}
-                    onClick={(event) => {
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      organization.openMenu(current, rect.left, rect.bottom);
-                    }}
-                  >
-                    ⋯
-                  </button>
-                )}
-              </div>
-              <div className="top-actions">
-                <button
-                  className="icon-button"
-                  aria-label="搜索对话"
-                  onClick={() => setSearchOpen(true)}
-                >
-                  <Icon name="search" />
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label="在主窗口打开原对话"
-                  onClick={() => {
-                    void window.desktop.openMain(id);
-                  }}
-                >
-                  <Icon name="panel" />
-                </button>
-              </div>
-            </header>
-            <nav className="panel-nav" aria-label="面板导航">
-              {(["工作台", "聊天", "待处理", "设置"] as Page[]).map((name) => (
-                <button
-                  key={name}
-                  className={page === name ? "active" : ""}
-                  aria-current={page === name ? "page" : undefined}
-                  onClick={() => setPage(name)}
-                >
-                  {name}
-                </button>
-              ))}
-            </nav>
-            {page === "聊天" && (
-              <label className="panel-conversations">
-                对话
-                <select
-                  aria-label="选择对话"
-                  value={id ?? ""}
-                  disabled={!status.connected || model.switching}
-                  onChange={(e) => {
-                    void model.select(e.target.value);
-                  }}
-                >
-                  {!snapshot?.conversations.length && (
-                    <option value="">还没有对话</option>
-                  )}
-                  {snapshot?.conversations.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.title} · {c.id.slice(0, 8)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </>
-          {banners}
-          <div className="viewport">{panelContent()}</div>
-        </main>
-      </div>
-    );
   const showSidebar = layout.sidebar === "expanded" || overlay;
   // The right column reads the selected conversation's messages, turns and attachments from the snapshot;
   // a conversation viewed read only while disconnected is not in it.
@@ -2207,7 +1994,9 @@ function App() {
 // appearance and the window title are set first and the page mounts once the body exists.
 applyInitialAppearance();
 document.title =
-  window.desktop.surface === "panel" ? "工作台助手" : displayName;
+  window.desktop.surface === "panel" ? "菜单栏面板" : displayName;
 document.addEventListener("DOMContentLoaded", () => {
-  createRoot(document.getElementById("root")!).render(<App />);
+  createRoot(document.getElementById("root")!).render(
+    window.desktop.surface === "panel" ? <PanelApp /> : <App />,
+  );
 });

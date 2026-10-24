@@ -93,11 +93,14 @@ test("widget store: candidate isolation, exact host identity, revocation and con
     });
     assert(saved.ok && saved.widget?.ok);
     assert.equal(saved.widget.revision, 1);
-    assert.equal(
-      request(store, { method: "writeData", revision: 0, value: { count: 2 } })
-        .ok,
-      false,
-    );
+    // A write on an older revision is a conflict, which the host keeps for the person (WB-03).
+    const staleData = request(store, {
+      method: "writeData",
+      revision: 0,
+      value: { count: 2 },
+    });
+    assert(!staleData.ok);
+    assert.equal(staleData.code, "CONFLICT");
     const second = identity("candidate-b", "generation-b");
     assert(bind(store, second).ok);
     const untouched = request(store, { method: "readData" }, second);
@@ -111,15 +114,14 @@ test("widget store: candidate isolation, exact host identity, revocation and con
         value: "已确认草稿",
       }).ok,
     );
-    assert.equal(
-      request(store, {
-        method: "writeDraft",
-        revision: 0,
-        field: "note",
-        value: "旧输入",
-      }).ok,
-      false,
-    );
+    const staleDraft = request(store, {
+      method: "writeDraft",
+      revision: 0,
+      field: "note",
+      value: "旧输入",
+    });
+    assert(!staleDraft.ok);
+    assert.equal(staleDraft.code, "CONFLICT");
     assert.deepEqual(store.snapshot().conversations, conversations);
     store.close();
     store = new Store(root);

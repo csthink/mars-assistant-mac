@@ -484,23 +484,6 @@
   margin-left: 8px;
 }
 
-.widget-studio[data-entry="panel"]
-  .widget-studio-heading
-  > .widget-studio-actions,
-.widget-studio[data-entry="panel"] .widget-formal-controls,
-.widget-studio[data-entry="panel"] .widget-empty > .button {
-  display: none;
-}
-.widget-studio[data-entry="panel"] .widget-studio-heading {
-  flex-wrap: wrap;
-}
-.widget-studio[data-entry="panel"] .widget-studio-heading > .button {
-  margin-left: auto;
-}
-.widget-studio[data-entry="panel"] .widget-empty {
-  padding: 24px;
-}
-
 .widget-formal-controls {
   display: flex;
   flex-wrap: nowrap;
@@ -533,8 +516,11 @@
   margin: 0;
 }
 .widget-saved-card .widget-save-status {
-  padding: 12px 0 0;
+  padding: 12px 16px 0;
   min-height: 28px;
+}
+.widget-saved-card .widget-save-actions {
+  padding: 8px 16px 14px;
 }
 
 .widget-wait-status {
@@ -683,6 +669,12 @@
 .widget-saved-card.drop-after {
   box-shadow: 3px 0 0 var(--c-accent);
 }
+.widget-saved-card.drop-vertical.drop-before {
+  box-shadow: 0 -3px 0 var(--c-accent);
+}
+.widget-saved-card.drop-vertical.drop-after {
+  box-shadow: 0 3px 0 var(--c-accent);
+}
 .widget-order-menu-anchor {
   position: relative;
   flex: none;
@@ -712,6 +704,12 @@
 .widget-order-menu small {
   font-size: 11px;
   color: var(--c-muted);
+}
+/* The panel's menu also opens the main window on this widget, apart from the moves (WB-03). */
+.widget-order-menu-separator {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--c-line-soft);
 }
 /* Aligned with the 24-point inset of the card grid below. */
 .widget-layout-note {

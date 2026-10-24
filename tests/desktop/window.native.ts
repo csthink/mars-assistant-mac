@@ -80,7 +80,7 @@ test("native: production window activation and focus transfer", async ({}, info)
     await app.evaluate(({ Menu }) => {
       Menu.getApplicationMenu()!
         .items[0].submenu!.items.find(
-          (item) => item.label === "打开工作台助手",
+          (item) => item.label === "打开菜单栏面板",
         )!
         .click();
     });
@@ -89,7 +89,7 @@ test("native: production window activation and focus transfer", async ({}, info)
     const panelId = await app.evaluate(
       ({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().find(
-          (w) => w.getTitle() === "工作台助手",
+          (w) => w.getTitle() === "菜单栏面板",
         )!.id,
     );
     await expect

@@ -426,11 +426,17 @@ export class WidgetRuntime {
         r.kind === "drag" &&
         (r.phase === "over" || r.phase === "drop") &&
         typeof r.x === "number" &&
+        typeof r.y === "number" &&
         typeof r.width === "number" &&
+        typeof r.height === "number" &&
         Number.isFinite(r.x) &&
+        Number.isFinite(r.y) &&
         Number.isFinite(r.width) &&
+        Number.isFinite(r.height) &&
         r.width > 0 &&
         r.width <= 8192 &&
+        r.height > 0 &&
+        r.height <= 65536 &&
         (r.phase === "drop" || performance.now() - lastDrag >= 16)
       ) {
         lastDrag = performance.now();
@@ -443,7 +449,9 @@ export class WidgetRuntime {
           kind: "drag",
           phase: r.phase,
           x: Math.max(0, Math.min(r.width, r.x)),
+          y: Math.max(0, Math.min(r.height, r.y)),
           width: r.width,
+          height: r.height,
         });
       }
     });

@@ -278,19 +278,20 @@ test("capabilities: rejection and cancellation keep content local, original even
   expect((await snapshot()).toolOperations[0].state).toBe("cancelled");
 });
 
-test("capabilities: both windows share authorization, stale confirmations are refused and expired permissions require a new explicit scope", async ({}, info) => {
+test("capabilities: authorization stays in the main window, the menu bar panel can neither show nor confirm it, stale confirmations are refused and expired permissions require a new explicit scope", async ({}, info) => {
   await requestRead();
   const ready = app.waitForEvent("window");
   await app.evaluate(({ Menu }) =>
     Menu.getApplicationMenu()!
-      .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+      .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
       .click(),
   );
   const panel = await ready;
-  await panel.getByRole("button", { name: "待处理", exact: true }).click();
+  // The panel shows widgets only (WB-03): no pending page, no authorization control.
+  await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
   await expect(
     panel.getByRole("button", { name: "允许本次读取", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("checkbox", {
       name: "记住这份已选资料的读取授权（30天）",
@@ -319,14 +320,27 @@ test("capabilities: both windows share authorization, stale confirmations are re
   );
   expect(expired.ok).toBe(true);
   await goTo(page, "设置");
-  await panel.getByRole("button", { name: "设置", exact: true }).click();
-  for (const window of [page, panel])
-    await window.getByRole("button", { name: "访问权限", exact: true }).click();
-  for (const window of [page, panel])
-    await window.getByRole("button", { name: /已关闭或不可用的授权/ }).click();
+  await page.getByRole("button", { name: "访问权限", exact: true }).click();
+  await page.getByRole("button", { name: /已关闭或不可用的授权/ }).click();
   await expect(page.getByText("已到期", { exact: true })).toBeVisible();
-  await expect(panel.getByText("已到期", { exact: true })).toBeVisible();
-  const stale = await panel.evaluate(
+  // The panel's renderer cannot confirm a permission even with the current revision.
+  const current = (await snapshot()).permissions[0];
+  const fromPanel = await panel.evaluate(
+    async (p) =>
+      window.desktop.command({
+        type: "setPermission",
+        id: p.id,
+        revision: p.revision,
+        enabled: true,
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+        confirmUntil: new Date(Date.now() + 60000).toISOString(),
+      }),
+    current,
+  );
+  expect(fromPanel.ok).toBe(false);
+  expect(fromPanel.ok ? "" : fromPanel.message).toContain("菜单栏面板");
+  // A confirmation made on an older revision is refused.
+  const stale = await page.evaluate(
     async (p) =>
       window.desktop.command({
         type: "setPermission",
@@ -351,7 +365,7 @@ test("capabilities: both windows share authorization, stale confirmations are re
   await expect(dialog).toContainText("新的有效期限");
   await dialog.getByRole("button", { name: "确认授权", exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  for (const window of [page, panel]) {
+  for (const window of [page]) {
     const permission = window.getByRole("article", {
       name: "授权 资料.txt",
       exact: true,
@@ -372,10 +386,12 @@ test("capabilities: both windows share authorization, stale confirmations are re
         w.getBounds().width > 700 ? 680 : 600,
       );
   });
-  for (const [name, window] of [
-    ["main", page],
-    ["panel", panel],
-  ] as const) {
+  expect(
+    await panel.evaluate(
+      () => document.documentElement.scrollWidth <= globalThis.innerWidth,
+    ),
+  ).toBe(true);
+  for (const [name, window] of [["main", page]] as const) {
     expect(
       await window.evaluate(
         () => document.documentElement.scrollWidth <= globalThis.innerWidth,

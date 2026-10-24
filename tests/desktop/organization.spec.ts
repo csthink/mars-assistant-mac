@@ -314,7 +314,7 @@ test("appearance: light dark and automatic synchronize across windows and preser
     const panelReady = app.waitForEvent("window");
     await app.evaluate(({ Menu }) => {
       const item = Menu.getApplicationMenu()!.items[0].submenu!.items.find(
-        (i) => i.label === "打开工作台助手",
+        (i) => i.label === "打开菜单栏面板",
       )!;
       item.click();
     });
@@ -412,7 +412,7 @@ test("appearance: a new data root starts light, and a choice the business servic
   }
 });
 
-test("organization: header title edits synchronize across surfaces and keep identity, cancellation and restart", async ({}, info) => {
+test("organization: header title edits keep identity, cancellation and restart; the menu bar panel has no conversation title", async ({}, info) => {
   const { root, ids } = seed();
   let app = await launchLocal({
     args: [resolve("."), `--data-root=${root}`],
@@ -462,28 +462,19 @@ test("organization: header title edits synchronize across surfaces and keep iden
     const ready = app.waitForEvent("window");
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click(),
     );
     const panel = await ready;
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    await panel.evaluate(async (id) => {
-      const r = await window.desktop.command({ type: "select", id });
-      if (!r.ok) throw new Error(r.message);
-    }, ids[1]);
-    const panelHeading = panel.getByRole("button", {
-      name: "修改对话名称",
-      exact: true,
-    });
-    await expect(panelHeading).toHaveText("主窗口编辑的名称");
-    await panelHeading.click();
-    const panelDialog = panel.getByRole("dialog", { name: "重命名对话" });
-    await panelDialog.getByLabel("对话标题", { exact: true }).fill(longTitle);
-    await panelDialog
-      .getByRole("button", { name: "保存标题", exact: true })
-      .click();
+    // The menu bar panel shows widgets only (WB-03): no conversation title to rename there.
+    await expect(panel.getByRole("heading", { level: 1 })).toHaveText("控件");
+    await expect(
+      panel.getByRole("button", { name: "修改对话名称", exact: true }),
+    ).toHaveCount(0);
+    await heading.click();
+    await field.fill(longTitle);
+    await field.press("Enter");
     await expect(heading).toHaveText(longTitle);
-    await expect(panelHeading).toHaveText(longTitle);
     await expect(draft).toHaveValue("改名时保留这段草稿");
     await app.evaluate(({ BrowserWindow }) => {
       for (const w of BrowserWindow.getAllWindows())
@@ -492,7 +483,7 @@ test("organization: header title edits synchronize across surfaces and keep iden
           w.getBounds().width > 700 ? 680 : 600,
         );
     });
-    for (const p of [page, panel]) {
+    for (const p of [page]) {
       const title = p.getByRole("button", {
         name: "修改对话名称",
         exact: true,
@@ -504,29 +495,18 @@ test("organization: header title edits synchronize across surfaces and keep iden
       expect(box).not.toBeNull();
       expect(menu).not.toBeNull();
       expect(box!.x + box!.width).toBeLessThanOrEqual(menu!.x);
-      // In the main window the title source sits between the title and the menu button.
-      const before =
-        p === page
-          ? (await p.locator(".center-header .title-source").boundingBox())!
-          : box!;
-      if (p === page) expect(box!.x + box!.width).toBeLessThanOrEqual(before.x);
+      // The title source sits between the title and the menu button.
+      const before = (await p
+        .locator(".center-header .title-source")
+        .boundingBox())!;
+      expect(box!.x + box!.width).toBeLessThanOrEqual(before.x);
       expect(before.x + before.width).toBeLessThanOrEqual(menu!.x);
       expect(menu!.x - before.x - before.width).toBeLessThanOrEqual(8);
-      // The main window's title sits in the centre title row; the panel keeps its compact toolbar with
-      // the create button beside the title.
-      const header = p.locator(p === page ? ".center-header" : ".topbar");
-      if (p === panel) {
-        const create = await header
-          .getByRole("button", { name: "新建对话", exact: true })
-          .boundingBox();
-        expect(create!.x + create!.width).toBeLessThanOrEqual(box!.x);
-        expect(box!.x - create!.x - create!.width).toBeLessThanOrEqual(8);
-        expect((await header.boundingBox())!.height).toBe(44);
-      } else {
-        const row = (await header.boundingBox())!;
-        expect(box!.y).toBeGreaterThanOrEqual(row.y);
-        expect(box!.y + box!.height).toBeLessThanOrEqual(row.y + row.height);
-      }
+      // The title sits in the centre title row.
+      const header = p.locator(".center-header");
+      const row = (await header.boundingBox())!;
+      expect(box!.y).toBeGreaterThanOrEqual(row.y);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(row.y + row.height);
       await expect(header).not.toContainText("本地数据");
       const menuButton = p.getByRole("button", {
         name: "当前对话菜单",
@@ -555,16 +535,10 @@ test("organization: header title edits synchronize across surfaces and keep iden
     await field.press("Escape");
     await expect(field).toHaveCount(0);
     await expect(heading).toHaveText(longTitle);
-    await expect(panelHeading).toHaveText(longTitle);
     await openConversation(page, `对话 ${ids[0].slice(0, 8)}`);
     await expect(heading).toHaveText("松果计划");
-    await expect(panelHeading).toHaveText(longTitle);
     await page.screenshot({
       path: info.outputPath("header-main.png"),
-      scale: "css",
-    });
-    await panel.screenshot({
-      path: info.outputPath("header-panel.png"),
       scale: "css",
     });
     await app.close();
@@ -686,21 +660,17 @@ test("organization: deletion reminder expires, undo remains safe and navigation 
     const ready = app.waitForEvent("window");
     await app.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()!
-        .items[0].submenu!.items.find((i) => i.label === "打开工作台助手")!
+        .items[0].submenu!.items.find((i) => i.label === "打开菜单栏面板")!
         .click(),
     );
     const panel = await ready;
-    const panelCreate = panel
-      .locator(".topbar")
-      .getByRole("button", { name: "新建对话", exact: true });
+    // The menu bar panel creates no conversation (WB-03).
     await expect(
-      panel.getByRole("heading", { name: "工作台", exact: true }),
+      panel.getByRole("heading", { level: 1, name: "控件", exact: true }),
     ).toBeVisible();
-    await expect(panelCreate).toHaveCount(0);
-    await panel.getByRole("button", { name: "聊天", exact: true }).click();
-    await expect(panelCreate).toBeEnabled();
-    await panel.getByRole("button", { name: "设置", exact: true }).click();
-    await expect(panelCreate).toHaveCount(0);
+    await expect(
+      panel.getByRole("button", { name: "新建对话", exact: true }),
+    ).toHaveCount(0);
   } finally {
     await app.close();
   }
