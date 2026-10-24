@@ -21,6 +21,8 @@ app.on("browser-window-created", (_event, win) => {
 });
 const originalOn = Tray.prototype.on;
 Tray.prototype.on = function (event, listener) {
+  // The real menu bar icon, so a native test can post real clicks at its bounds.
+  globalThis.nativeTray = this;
   if (event === "click")
     app.on("native-test-tray-click", () => this.emit("click"));
   return originalOn.call(this, event, listener);

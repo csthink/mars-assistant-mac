@@ -1,4 +1,4 @@
-// Test-side input helper for the scheduled widget order native test (mac-feature-t11 V-15). It posts macOS HID
+// Test-side input helper for the scheduled native tests (mac-feature-t11 V-15, mac-feature-t12 V-15). It posts macOS HID
 // mouse and key events through Core Graphics and reports, after every event, where the system cursor is, which
 // application is frontmost and which application owns the topmost window under the cursor. It never asks for a
 // permission: it reads whether posting events and accessibility are already allowed and refuses otherwise.
@@ -33,12 +33,13 @@ static NSDictionary *State(void) {
     @"underCursorLayer" : layer,
   };
 }
-static void Post(CGEventType type, CGPoint p, int clicks) {
-  CGEventRef e = CGEventCreateMouseEvent(NULL, type, p, kCGMouseButtonLeft);
+static void PostButton(CGEventType type, CGPoint p, int clicks, CGMouseButton button) {
+  CGEventRef e = CGEventCreateMouseEvent(NULL, type, p, button);
   if (clicks) CGEventSetIntegerValueField(e, kCGMouseEventClickState, clicks);
   CGEventPost(kCGHIDEventTap, e);
   CFRelease(e);
 }
+static void Post(CGEventType type, CGPoint p, int clicks) { PostButton(type, p, clicks, kCGMouseButtonLeft); }
 static void Emit(NSMutableArray *log, NSString *event, CGPoint p) {
   NSMutableDictionary *entry = [State() mutableCopy];
   entry[@"event"] = event;
@@ -75,6 +76,21 @@ int main(int argc, const char *argv[]) {
       }
       usleep(300000);
       Post(kCGEventLeftMouseUp, b, 1); Emit(log, @"up", b); usleep(300000);
+    } else if ([command isEqualToString:@"rightclick"] && argc == 4) {
+      CGPoint p = CGPointMake(atof(argv[2]), atof(argv[3]));
+      Post(kCGEventMouseMoved, p, 0); Emit(log, @"moved", p); usleep(200000);
+      PostButton(kCGEventRightMouseDown, p, 1, kCGMouseButtonRight); Emit(log, @"right down", p); usleep(80000);
+      PostButton(kCGEventRightMouseUp, p, 1, kCGMouseButtonRight); Emit(log, @"right up", p); usleep(300000);
+    } else if ([command isEqualToString:@"windows"] && argc == 3) {
+      // Read-only: the on-screen windows of one process, front to back (a sheet is a window of its own).
+      pid_t pid = (pid_t)atoi(argv[2]);
+      NSMutableArray *list = [NSMutableArray array];
+      CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+      for (NSDictionary *w in (__bridge NSArray *)windows)
+        if ([w[(id)kCGWindowOwnerPID] intValue] == pid)
+          [list addObject:@{@"bounds" : w[(id)kCGWindowBounds] ?: @{}, @"layer" : w[(id)kCGWindowLayer] ?: @0, @"name" : w[(id)kCGWindowName] ?: @""}];
+      if (windows) CFRelease(windows);
+      out[@"windows"] = list;
     } else if ([command isEqualToString:@"key"] && argc == 3) {
       CGKeyCode code = (CGKeyCode)atoi(argv[2]);
       for (int down = 1; down >= 0; down--) {
@@ -85,7 +101,7 @@ int main(int argc, const char *argv[]) {
       }
       Emit(log, @"key", CGPointZero);
     } else {
-      out[@"refused"] = @"usage: info | click x y | drag x1 y1 x2 y2 steps | key code";
+      out[@"refused"] = @"usage: info | click x y | rightclick x y | drag x1 y1 x2 y2 steps | key code | windows pid";
     }
     out[@"log"] = log;
     NSData *json = [NSJSONSerialization dataWithJSONObject:out options:0 error:nil];
