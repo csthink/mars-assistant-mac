@@ -262,6 +262,24 @@ const stored = (data: string) => {
   }
 };
 const settle = () => new Promise((done) => setTimeout(done, 400));
+/** The stored note draft of the one seeded widget: its text and how many confirmed writes it has had. */
+const noteDraft = (data: string) => {
+  const db = new DatabaseSync(join(data, "state.sqlite"), { readOnly: true });
+  try {
+    const notes = (
+      db.prepare("SELECT drafts FROM widget_previews").all() as {
+        drafts: string;
+      }[]
+    )
+      .map((r) => (JSON.parse(r.drafts) as Record<string, unknown>).note)
+      .filter(Boolean) as { text: string; revision: number }[];
+    return notes.length === 1
+      ? { text: notes[0].text, revision: notes[0].revision }
+      : { text: "", revision: 0 };
+  } finally {
+    db.close();
+  }
+};
 
 test("native panel: the real menu bar icon shows and hides the panel, an outside click and the main window take it away, its native menu has two items and opens the existing main window, and quitting with unsaved input keeps the native confirmation and its cancel", async ({}, info) => {
   gate();
@@ -646,15 +664,19 @@ test("native panel: the selected Chinese input method composes in a panel widget
     );
     await expect(field).toBeFocused();
     const order = stored(data);
+    const before = noteDraft(data);
     for (const code of [45, 34, 4, 0, 31]) input("key", code); // n i h a o
     await settle();
     const composing = await view.evaluate(() =>
       (window as unknown as { imeEvents: string[] }).imeEvents.slice(),
     );
-    if (!composing.some((e) => e.startsWith("compositionstart")))
+    // Each observation carries a millisecond prefix ("749 compositionstart:"), so match inside it (KB-01).
+    if (!composing.some((e) => e.includes(" compositionstart:")))
       throw new Error(
         `NOT RUN: the selected input method produced no composition for real key presses (it is in a Latin mode); switching it would change a setting. Events: ${JSON.stringify(composing)}`,
       );
+    // OD-04: nothing of the composition is saved while it lasts.
+    const duringComposition = noteDraft(data);
     input("key", KEY.space); // choose the first candidate
     await settle();
     const value = await field.inputValue();
@@ -680,35 +702,32 @@ test("native panel: the selected Chinese input method composes in a panel widget
       contentType: "application/json",
     });
     await info.attach("ime", {
-      body: JSON.stringify({ value, events }, null, 1),
+      body: JSON.stringify(
+        { value, events, before, duringComposition, after: noteDraft(data) },
+        null,
+        1,
+      ),
       contentType: "application/json",
     });
     expect(value).toMatch(/[一-鿿]/);
     expect(value).not.toMatch(/[a-z]/);
-    expect(events.some((e) => e.startsWith("compositionend"))).toBe(true);
+    expect(events.some((e) => e.includes(" compositionend:"))).toBe(true);
+    expect(duringComposition).toEqual(before);
     // The panel itself did nothing with the keys: same order, still open, no menu, no notice.
     expect(stored(data)).toEqual(order);
     expect(await panelVisible(app)).toBe(true);
     await expect(panel.getByRole("menu")).toHaveCount(0);
     await expect(panel.locator(".widget-order-notice")).toHaveCount(0);
-    // The chosen word is what the widget keeps.
+    // The chosen word is what the widget keeps, saved once.
     await expect(view.getByRole("status")).toHaveText("草稿已确认保存");
     await expect
-      .poll(() => {
-        const db = new DatabaseSync(join(data, "state.sqlite"), {
-          readOnly: true,
-        });
-        try {
-          return (
-            db.prepare("SELECT drafts FROM widget_previews").all() as {
-              drafts: string;
-            }[]
-          ).some((r) => r.drafts.includes(JSON.stringify(value).slice(1, -1)));
-        } finally {
-          db.close();
-        }
-      })
-      .toBe(true);
+      .poll(() => noteDraft(data))
+      .toEqual({ text: value, revision: before.revision + 1 });
+    await settle();
+    expect(noteDraft(data)).toEqual({
+      text: value,
+      revision: before.revision + 1,
+    });
   } finally {
     await info.attach("input-events", {
       body: JSON.stringify(inputs, null, 1),

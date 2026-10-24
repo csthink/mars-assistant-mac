@@ -514,3 +514,99 @@ test("menu bar panel: an input whose save fails stays with the host, returns aft
     await closeLocal(app);
   }
 });
+
+/** The stored note draft of the one seeded widget: its text and how many confirmed writes it has had. */
+const noteDraft = (dir: string) => {
+  const db = new DatabaseSync(join(dir, "state.sqlite"), { readOnly: true });
+  try {
+    const rows = db.prepare("SELECT drafts FROM widget_previews").all() as {
+      drafts: string;
+    }[];
+    const notes = rows
+      .map((r) => (JSON.parse(r.drafts) as Record<string, unknown>).note)
+      .filter(Boolean) as { text: string; revision: number }[];
+    return notes.length === 1
+      ? { text: notes[0].text, revision: notes[0].revision }
+      : { text: "", revision: 0 };
+  } finally {
+    db.close();
+  }
+};
+
+test("widget views in the panel and the main window: while an input method composes nothing is saved, the chosen text is saved once, and hiding the panel mid-composition keeps the last confirmed text (OD-04)", async () => {
+  const dir = root();
+  const [widget] = seedRetainedWidgets(dir, ["随手记"]);
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${dir}`],
+  });
+  try {
+    const main = await app.firstWindow();
+    await goTo(main, "控件");
+    // The main window first, then the panel opened afterwards, so each view starts on the latest revision.
+    let panel: Page | undefined;
+    const compose = async (view: Page, steps: string[]) => {
+      const cdp = await app.context().newCDPSession(view);
+      for (const text of steps)
+        await cdp.send("Input.imeSetComposition", {
+          text,
+          selectionStart: text.length,
+          selectionEnd: text.length,
+        });
+      return cdp;
+    };
+    let typed = "";
+    for (const entry of ["主窗口", "面板"] as const) {
+      if (entry === "面板") panel = await openPanel(app, main);
+      const view = await widgetView(
+        app,
+        entry === "面板" ? panel! : main,
+        widget.id,
+      );
+      const field = view.getByLabel("随手记");
+      // Input outside a composition saves as before.
+      typed = `${entry}已确认`;
+      await field.fill(typed);
+      await expect(view.getByRole("status")).toHaveText("草稿已确认保存");
+      await expect.poll(() => noteDraft(dir).text).toBe(typed);
+      const before = noteDraft(dir);
+      await field.focus();
+      const cdp = await compose(view, ["n", "ni", "ni'h", "ni'hao"]);
+      await expect(field).toHaveValue(`${typed}ni'hao`);
+      await view.waitForTimeout(400);
+      // Nothing of the composition reached the widget's code or the store.
+      expect(noteDraft(dir)).toEqual(before);
+      await expect(view.getByRole("status")).toHaveText("草稿已确认保存");
+      await cdp.send("Input.insertText", { text: "你好" });
+      typed = `${typed}你好`;
+      await expect(field).toHaveValue(typed);
+      await expect
+        .poll(() => noteDraft(dir))
+        .toEqual({ text: typed, revision: before.revision + 1 });
+      await expect(view.getByRole("status")).toHaveText("草稿已确认保存");
+      await view.waitForTimeout(400);
+      expect(noteDraft(dir)).toEqual({
+        text: typed,
+        revision: before.revision + 1,
+      });
+      await cdp.detach();
+    }
+
+    // Hiding the panel during a composition writes nothing; the reopened view reads the last confirmed text.
+    const view = await widgetView(app, panel!, widget.id);
+    await expect(view.getByLabel("随手记")).toHaveValue(typed);
+    const before = noteDraft(dir);
+    await view.getByLabel("随手记").focus();
+    await compose(view, ["z", "zh", "zhong"]);
+    await expect(view.getByLabel("随手记")).toHaveValue(`${typed}zhong`);
+    await hidePanel(app, panel!);
+    await main.waitForTimeout(400);
+    expect(noteDraft(dir)).toEqual(before);
+    panel = await openPanel(app, main);
+    const reopened = await widgetView(app, panel, widget.id);
+    await expect(reopened.getByLabel("随手记")).toHaveValue(typed);
+    await expect(panel.locator(".widget-save-actions")).toHaveCount(0);
+    expect(noteDraft(dir)).toEqual(before);
+  } finally {
+    await closeLocal(app);
+  }
+});
