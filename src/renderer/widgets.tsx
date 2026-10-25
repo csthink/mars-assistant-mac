@@ -215,6 +215,7 @@ export function WidgetWorkspace({
           (node) => node.getBoundingClientRect().bottom > top,
         );
       const before = anchor?.getBoundingClientRect().top;
+      const scrolled = viewport?.scrollTop ?? 0;
       setLayout(signal);
       if (openedVersion.current)
         measured.current = {
@@ -226,7 +227,12 @@ export function WidgetWorkspace({
       );
       if (anchor && viewport && before !== undefined)
         requestAnimationFrame(() => {
-          const delta = anchor.getBoundingClientRect().top - before;
+          // Only the layout's shift is compensated: a scroll of the person (or the view) before this frame moved
+          // the anchor too, and undoing it would jump the page back.
+          const delta =
+            anchor.getBoundingClientRect().top -
+            before +
+            (viewport.scrollTop - scrolled);
           if (Math.abs(delta) >= 1) viewport.scrollTop += delta;
         });
     });
