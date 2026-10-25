@@ -9,6 +9,8 @@ import type {
 import { refocus } from "./modal-focus";
 import { Icon } from "./icons";
 import { ProjectForm, ProjectMenu } from "./projects";
+import { useProjectDeletion } from "./project-delete";
+import { focusAfterDialog } from "./deletion-dialogs";
 import { orderedSidebarProjects, pinnedObjects } from "./project-lists";
 import type { PinnedProjectDrag } from "./organization";
 
@@ -27,7 +29,11 @@ export function useProjectSidebar({
   open,
   newChat,
   notify,
+  openRecentlyDeleted,
+  openRecords,
 }: {
+  openRecentlyDeleted?: () => void;
+  openRecords?: (projectId: string) => void;
   snapshot: Snapshot | undefined;
   connected: boolean;
   sort: ProjectSort;
@@ -62,6 +68,17 @@ export function useProjectSidebar({
     undefined,
   );
   const target = projects.find((project) => project.id === menu?.id);
+  const deletion = useProjectDeletion({
+    snapshot,
+    connected,
+    openRecentlyDeleted,
+    openRecords,
+    noticeClass: "project-sidebar-notice",
+    onDeleted: () =>
+      focusAfterDialog(() =>
+        document.querySelector<HTMLElement>(".center [data-center-title]"),
+      ),
+  });
   useEffect(() => {
     if (menu && !target) setMenu(undefined);
   }, [menu, target]);
@@ -339,9 +356,18 @@ export function useProjectSidebar({
           }}
           pin={() => void command(target, "pin")}
           archive={() => void command(target, "archive")}
+          remove={() => {
+            const current = menu;
+            closeMenu(false);
+            deletion.start(target, () =>
+              current.anchor.isConnected ? current.anchor : null,
+            );
+          }}
           move={moveOptions}
         />
       )}
+      {deletion.dialog}
+      {deletion.notice}
       {form !== undefined && (
         <ProjectForm
           project={form}

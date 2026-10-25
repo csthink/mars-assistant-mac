@@ -63,6 +63,7 @@ import {
 import { columnLayout, expandsAsOverlay } from "./column-layout";
 import { WidgetGenerationSettings } from "./widget-generation-settings";
 import { SettingsDialog } from "./settings-dialog";
+import { RecentlyDeleted } from "./recently-deleted";
 import {
   defaultInterfacePreferences,
   titleSourceLabels,
@@ -853,6 +854,8 @@ function App() {
       sessionStorage.setItem("project-selected", projectId);
       go("projects");
     },
+    openRecentlyDeleted: () => openSettings("最近删除"),
+    openRecords: (projectId) => go("records", projectId),
     newChat: async (projectId) => {
       const conversationId = crypto.randomUUID();
       try {
@@ -1272,6 +1275,7 @@ function App() {
               workbenchActions={(snapshot?.workbenchActions ?? []).filter(
                 (a) => a.conversationId === id,
               )}
+              deletedWidgets={snapshot?.recentlyDeleted?.widgets}
             />
           ) : (
             <div className="welcome">
@@ -1393,6 +1397,7 @@ function App() {
           connected={status.connected}
           model={model}
           onOpenSettings={openSettings}
+          onOpenRecords={(projectId) => go("records", projectId)}
         />
       </div>
     );
@@ -1545,7 +1550,9 @@ function App() {
             <ExtensionGrants snapshot={snapshot} connected={status.connected} />
           </>
         )}
-        {tab === "最近删除" && organization.trash}
+        {tab === "最近删除" && (
+          <RecentlyDeleted snapshot={snapshot} connected={status.connected} />
+        )}
         {tab === "数据与隐私" && (
           <>
             <SearchIndexSettings connected={status.connected} />

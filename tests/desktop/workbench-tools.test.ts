@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { Store } from "../../src/service/store";
 import type { Command, HostCommand, Reply } from "../../src/shared/protocol";
 import {
+  deleteWidgetToolName,
   listWidgetsToolName,
   moveWidgetToolName,
 } from "../../src/shared/workbench-tools";
@@ -282,6 +283,92 @@ test("workbench tools: malformed arguments, unknown tools, ended turns and proje
     assert.equal(ended.ok, false);
     assert.deepEqual(f.order(), ids);
     assert.equal(f.store.snapshot().workbenchActions.length, 0);
+  } finally {
+    f.close();
+  }
+});
+
+test("workbench tools: an Agent's deletion moves one named widget to recently deleted; same names are asked first, a stale revision or an unknown name deletes nothing, and the result card can undo it", () => {
+  const f = fixture();
+  try {
+    const ids = f.widgets.map((w) => w.id);
+    const trash = () => f.store.snapshot().recentlyDeleted!.widgets;
+    // Same name: nothing deleted, the candidates go back to the model so it asks first.
+    const ambiguous = f.result(
+      f.run(deleteWidgetToolName, { name: "便笺", orderRevision: 5 }),
+    );
+    assert.equal(ambiguous.status, "ambiguous");
+    assert.deepEqual(
+      ambiguous.candidates.map((c: { widgetId: string }) => c.widgetId),
+      [ids[1], ids[3]],
+    );
+    assert.equal(
+      f.result(f.run(deleteWidgetToolName, { name: "股票", orderRevision: 5 }))
+        .status,
+      "not_found",
+    );
+    assert.equal(
+      f.result(f.run(deleteWidgetToolName, { name: "汇率", orderRevision: 4 }))
+        .status,
+      "stale",
+    );
+    assert.deepEqual(f.order(), ids);
+    assert.equal(trash().length, 0);
+    // Arguments beyond the declared shape, or a position, are refused before anything runs.
+    assert.equal(
+      f.run(deleteWidgetToolName, {
+        name: "汇率",
+        orderRevision: 5,
+        toPosition: 1,
+      }).ok,
+      false,
+    );
+    assert.equal(f.run(deleteWidgetToolName, { orderRevision: 5 }).ok, false);
+    const deleted = f.result(
+      f.run(
+        deleteWidgetToolName,
+        { widgetId: ids[3], orderRevision: 5 },
+        "call_delete",
+      ),
+    );
+    assert.equal(deleted.status, "deleted");
+    assert.deepEqual(f.order(), [ids[0], ids[1], ids[2], ids[4]]);
+    assert.deepEqual(
+      trash().map((w) => w.id),
+      [ids[3]],
+    );
+    // The same call identity returns the recorded result without deleting again.
+    assert.deepEqual(
+      f.result(
+        f.run(
+          deleteWidgetToolName,
+          { widgetId: ids[1], orderRevision: 6 },
+          "call_delete",
+        ),
+      ),
+      deleted,
+    );
+    assert.deepEqual(f.order(), [ids[0], ids[1], ids[2], ids[4]]);
+    const actions = f.store.snapshot().workbenchActions;
+    assert.deepEqual(
+      actions.map((a) => [a.tool, a.status]),
+      [
+        ["delete", "ambiguous"],
+        ["delete", "not_found"],
+        ["delete", "stale"],
+        ["delete", "deleted"],
+      ],
+    );
+    // The card's undo is the ordinary restore: same identity, between its former neighbours.
+    ok(
+      f.command({
+        type: "restoreDeleted",
+        kind: "widget",
+        id: ids[3],
+        revision: trash()[0].trashRevision,
+      }),
+    );
+    assert.deepEqual(f.order(), ids);
   } finally {
     f.close();
   }

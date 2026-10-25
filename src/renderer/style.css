@@ -2463,6 +2463,291 @@ dialog::backdrop {
   max-height: calc(100dvh - 40px);
   overflow: auto;
 }
+/* Deletion and permanent deletion confirmations (WB-04, PROJECT-03): the rename dialog's surface, a neutral note,
+   the list of what the action touches, then Cancel and the destructive action. */
+.deletion-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 24px 20px;
+  font-size: 14px;
+}
+.deletion-dialog[open] {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+.deletion-dialog > * {
+  margin: 0;
+}
+.deletion-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.deletion-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.deletion-heading .icon-button {
+  flex-shrink: 0;
+}
+.deletion-dialog p {
+  margin: 0;
+}
+.deletion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.deletion-callout {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  background: var(--c-raised);
+  font-size: 13px;
+}
+.deletion-callout > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--c-muted);
+}
+.deletion-callout > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.deletion-callout p {
+  color: var(--c-muted);
+  overflow-wrap: anywhere;
+}
+.deletion-callout.amber {
+  border-color: var(--c-amber-edge);
+  background: var(--c-amber-bg);
+}
+.deletion-callout.amber > svg {
+  color: var(--c-amber);
+}
+.deletion-callout.amber b {
+  color: var(--c-amber);
+}
+.deletion-callout .button {
+  justify-self: start;
+}
+.impact-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.impact-list li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--c-line-soft);
+  overflow-wrap: anywhere;
+}
+.impact-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.impact-list b {
+  color: var(--c-muted);
+  font-weight: 500;
+}
+.deletion-hint {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+/* Settings 最近删除: the three kinds in one list, filtered by kind (MAP-42). */
+.recently-deleted {
+  container-type: inline-size;
+}
+.settings-lead {
+  margin: 0 0 14px;
+  color: var(--c-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.settings-note {
+  margin-top: 14px;
+  color: var(--c-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.recently-deleted .deletion-callout {
+  margin-bottom: 10px;
+}
+.recently-deleted-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 12px;
+}
+.recently-deleted-filters [role="radio"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid var(--c-line);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.recently-deleted-filters [role="radio"].selected {
+  border-color: var(--c-accent-edge);
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+.recently-deleted-filters b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.recently-deleted-notice {
+  margin: 0 0 10px;
+  color: var(--c-muted);
+  font-size: 13px;
+}
+.recently-deleted-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+}
+.recently-deleted-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.recently-deleted-row + .recently-deleted-row {
+  border-top: 1px solid var(--c-line-soft);
+}
+.recently-deleted-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--c-raised);
+  color: var(--c-muted);
+}
+.recently-deleted-icon svg {
+  width: 17px;
+  height: 17px;
+}
+.recently-deleted-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+}
+.recently-deleted-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recently-deleted-text small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--c-muted);
+  font-size: 12px;
+}
+.recently-deleted-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--c-raised);
+  font-size: 11px;
+}
+.recently-deleted-text .warn {
+  color: var(--c-amber);
+  font-weight: 600;
+}
+.recently-deleted-guard svg {
+  width: 13px;
+  height: 13px;
+  color: var(--c-amber);
+}
+.recently-deleted-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.recently-deleted-actions .button {
+  padding: 6px 10px;
+}
+/* A destructive entry that only opens its own confirmation: red text, not the solid confirmation button. */
+.button.danger-ghost {
+  color: var(--c-red);
+}
+.button.danger-ghost:hover:not(:disabled) {
+  background: var(--c-red-bg);
+}
+@container (max-width: 560px) {
+  .recently-deleted-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .recently-deleted-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+.recently-deleted-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 36px 16px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  color: var(--c-muted);
+  text-align: center;
+}
+.recently-deleted-empty svg {
+  width: 26px;
+  height: 26px;
+}
+.recently-deleted-empty h3 {
+  margin: 0;
+  color: var(--c-text);
+  font-size: 15px;
+}
+.recently-deleted-empty p {
+  margin: 0;
+  font-size: 13px;
+}
 .organization-heading {
   display: flex;
   justify-content: space-between;

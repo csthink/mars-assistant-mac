@@ -140,7 +140,14 @@ import {
 
 import { migrateWidgetOrder } from "./widget-order";
 import {
+  migrateRecentlyDeleted,
+  recentlyDeletedSnapshot,
+  applyRecentlyDeleted,
+} from "./recently-deleted";
+import { validRecentlyDeletedCommand } from "../shared/recently-deleted";
+import {
   migrateToolCalls,
+  migrateWorkbenchActionTool,
   runWorkbenchTool,
   workbenchActionSchema,
   workbenchActions,
@@ -155,7 +162,7 @@ import {
 } from "./organization";
 
 export { StoreError };
-export const schemaVersion = 35;
+export const schemaVersion = 36;
 /** Stored preference text as preferences; text that is not an object reads as the defaults. */
 function storedInterfacePreferences(text: string) {
   try {
@@ -234,6 +241,11 @@ export const migrations: Record<number, string | ((db: DatabaseSync) => void)> =
     28: widgetGenerationSchema,
     // Version 35: the workbench order revision of retained widgets (WB-02) and the index over conversations,
     // projects and retained widgets with its generation (SEARCH-01).
+    // Version 36: recently deleted retained widgets and projects (WB-04, PROJECT-03).
+    35: (db) => {
+      migrateRecentlyDeleted(db);
+      migrateWorkbenchActionTool(db);
+    },
     34: (db) => {
       migrateWidgetOrder(db);
       upgradeSearchIndex(db);
@@ -524,6 +536,7 @@ export class Store {
       ...meta,
       dataRoot: this.root,
       projects: projectSnapshot(this.db),
+      recentlyDeleted: recentlyDeletedSnapshot(this.db),
       widgetGeneration: widgetGenerationSnapshot(this.db),
       workbenchActions: workbenchActions(this.db),
       selected,
@@ -734,6 +747,10 @@ export class Store {
         toolText?: string;
         widget?: import("../shared/widget-runtime").WidgetReply;
         widgetPreview?: import("../shared/widget-store").WidgetPreview;
+        restoredWidget?: {
+          id: string;
+          placement: import("../shared/recently-deleted").WidgetPlacement;
+        };
         runtimeEvent?: import("../shared/runtime-host").EventOutcome;
       } = {};
       if (host && validWidgetGenerationHostCommand(input))
@@ -744,6 +761,12 @@ export class Store {
         );
       else if (host && validWorkbenchToolCommand(input))
         toolResult = runWorkbenchTool(this.db, input, new Date().toISOString());
+      else if (!host && validRecentlyDeletedCommand(input))
+        toolResult = applyRecentlyDeleted(
+          this.db,
+          input,
+          new Date().toISOString(),
+        );
       else if (!host && validWidgetGenerationCommand(input))
         applyWidgetGeneration(
           this.db,

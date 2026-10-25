@@ -80,6 +80,20 @@ export function WidgetCandidatePanel({
     candidate.members?.find((m) => m.id === selectedMember) ??
     candidate.members?.[0];
   const available = candidate.state === "preview" && changed;
+  // A target that left the workbench (recently deleted or permanently deleted): the candidate cannot bring it back.
+  const targetIds = draft.targetIds.length
+    ? draft.targetIds
+    : draft.widgetId
+      ? [draft.widgetId]
+      : [];
+  const gone = targetIds.filter(
+    (id) => !snapshot.widgetGeneration?.widgets.some((w) => w.id === id),
+  );
+  const goneNames = gone.map(
+    (id) =>
+      snapshot.recentlyDeleted?.widgets.find((w) => w.id === id)?.name ??
+      "已永久删除的控件",
+  );
   return (
     <div className="widget-candidate-panel">
       <div className="widget-candidate-summary">
@@ -93,6 +107,15 @@ export function WidgetCandidatePanel({
                 ? "没有实际变化，无需保留。"
                 : `${draft.widgetId ? "修改" : "新增"} ${candidate.members?.length ?? 1} 个控件 · ${candidate.differences.length} 个文件变化`}
         </p>
+        {gone.length > 0 && candidate.state === "preview" && (
+          <div className="error" role="alert">
+            <strong>冲突：目标控件已删除</strong>
+            <p>
+              「{goneNames.join("」「")}
+              」已删除，过期候选不能复活已删除的控件。可以撤销预览；需要时先从设置「最近删除」恢复控件，再重新生成。
+            </p>
+          </div>
+        )}
         {stale && candidate.state === "preview" && (
           <p className="error" role="alert">
             需求已更新，此候选不能保留。可继续检查或撤销。
@@ -154,6 +177,7 @@ export function WidgetCandidatePanel({
               disabled={
                 !connected ||
                 stale ||
+                gone.length > 0 ||
                 task?.state !== "completed" ||
                 unconfirmed
               }

@@ -2,10 +2,12 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { StoreError } from "./errors";
 import { moveWidget, widgetOrderRevision } from "./widget-order";
+import { deleteRetainedWidget } from "./recently-deleted";
 import { normalizeSearch } from "../shared/search";
 import {
   listWidgetsToolName,
   moveWidgetToolName,
+  deleteWidgetToolName,
   parseWorkbenchArguments,
   type WorkbenchAction,
   type WorkbenchToolCommand,
@@ -55,6 +57,18 @@ export const workbenchActionSchema = `CREATE TABLE IF NOT EXISTS workbench_actio
  turn_id TEXT NOT NULL, status TEXT NOT NULL, widget_id TEXT, widget_name TEXT, position INTEGER,
  reference TEXT, candidates TEXT NOT NULL DEFAULT '[]', result TEXT NOT NULL, created_at TEXT NOT NULL,
  UNIQUE(execution_id, call_id));`;
+/** Version 36: which tool the Agent called (an older row is a move). */
+export function migrateWorkbenchActionTool(db: DatabaseSync) {
+  const columns = (
+    db.prepare("PRAGMA table_info(workbench_actions)").all() as {
+      name: string;
+    }[]
+  ).map((c) => c.name);
+  if (!columns.includes("tool"))
+    db.exec(
+      "ALTER TABLE workbench_actions ADD COLUMN tool TEXT NOT NULL DEFAULT 'move' CHECK(tool IN ('move','delete'))",
+    );
+}
 
 function refuse(message: string): never {
   throw new StoreError("CONFLICT", message);
@@ -130,7 +144,10 @@ export function runWorkbenchTool(
         widgets: widgets(db),
       }),
     };
-  if (args.tool !== moveWidgetToolName) refuse("未知工具未执行。");
+  if (args.tool !== moveWidgetToolName && args.tool !== deleteWidgetToolName)
+    refuse("未知工具未执行。");
+  const tool = args.tool === deleteWidgetToolName ? "delete" : "move";
+  const nothing = tool === "delete" ? "Nothing was deleted." : "Nothing moved.";
   const prior = db
     .prepare(
       "SELECT result FROM workbench_actions WHERE execution_id=? AND call_id=?",
@@ -153,6 +170,7 @@ export function runWorkbenchTool(
   const current = widgetOrderRevision(db);
   if (matches.length > 1) {
     action = {
+      tool,
       status: "ambiguous",
       widgetId: null,
       widgetName: null,
@@ -166,12 +184,12 @@ export function runWorkbenchTool(
     };
     result = {
       status: "ambiguous",
-      message:
-        "Several widgets have this name. Nothing moved. Ask the user which one they mean; do not choose by order.",
+      message: `Several widgets have this name. ${nothing} Ask the user which one they mean; do not choose by order.`,
       candidates: action.candidates,
     };
   } else if (!matches.length) {
     action = {
+      tool,
       status: "not_found",
       widgetId: null,
       widgetName: null,
@@ -181,12 +199,16 @@ export function runWorkbenchTool(
     };
     result = {
       status: "not_found",
-      message: "No retained widget matches. Nothing moved.",
+      message: `No retained widget matches. ${nothing}`,
       orderRevision: current,
       widgets: list,
     };
-  } else if (args.toPosition > list.length) {
+  } else if (
+    args.tool === moveWidgetToolName &&
+    args.toPosition > list.length
+  ) {
     action = {
+      tool,
       status: "invalid",
       widgetId: matches[0].widgetId,
       widgetName: matches[0].name,
@@ -200,6 +222,7 @@ export function runWorkbenchTool(
     };
   } else if (args.orderRevision !== current) {
     action = {
+      tool,
       status: "stale",
       widgetId: matches[0].widgetId,
       widgetName: matches[0].name,
@@ -209,10 +232,30 @@ export function runWorkbenchTool(
     };
     result = {
       status: "stale",
-      message:
-        "The order changed after you listed it. Nothing moved. Confirm the move with the user against the current order.",
+      message: `The order changed after you listed it. ${nothing} Confirm with the user against the current order.`,
       orderRevision: current,
       widgets: list,
+    };
+  } else if (args.tool === deleteWidgetToolName) {
+    const target = matches[0];
+    // The same ordinary deletion as the widget menu's: recently deleted, undoable, never permanent.
+    deleteRetainedWidget(db, target.widgetId, now);
+    action = {
+      tool,
+      status: "deleted",
+      widgetId: target.widgetId,
+      widgetName: target.name,
+      position: target.position,
+      reference,
+      candidates: [],
+    };
+    result = {
+      status: "deleted",
+      widgetId: target.widgetId,
+      name: target.name,
+      message:
+        "Moved to Recently Deleted. The user can undo it or restore it from Recently Deleted.",
+      orderRevision: widgetOrderRevision(db),
     };
   } else {
     const target = matches[0];
@@ -222,6 +265,7 @@ export function runWorkbenchTool(
       orderRevision: current,
     });
     action = {
+      tool,
       status: target.position === args.toPosition ? "unchanged" : "moved",
       widgetId: target.widgetId,
       widgetName: target.name,
@@ -239,7 +283,7 @@ export function runWorkbenchTool(
   }
   const toolText = JSON.stringify(result);
   db.prepare(
-    "INSERT INTO workbench_actions(id,execution_id,call_id,conversation_id,turn_id,status,widget_id,widget_name,position,reference,candidates,result,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO workbench_actions(id,execution_id,call_id,conversation_id,turn_id,status,widget_id,widget_name,position,reference,candidates,result,created_at,tool) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   ).run(
     randomUUID(),
     c.executionId,
@@ -254,6 +298,7 @@ export function runWorkbenchTool(
     JSON.stringify(action.candidates),
     toolText,
     now,
+    action.tool,
   );
   return { toolText };
 }
@@ -261,7 +306,7 @@ export function runWorkbenchTool(
 export function workbenchActions(db: DatabaseSync): WorkbenchAction[] {
   return db
     .prepare(
-      "SELECT id,conversation_id AS conversationId,turn_id AS turnId,status,widget_id AS widgetId,widget_name AS widgetName,position,reference,candidates,created_at AS createdAt FROM workbench_actions ORDER BY created_at,rowid",
+      "SELECT id,conversation_id AS conversationId,turn_id AS turnId,tool,status,widget_id AS widgetId,widget_name AS widgetName,position,reference,candidates,created_at AS createdAt FROM workbench_actions ORDER BY created_at,rowid",
     )
     .all()
     .map(

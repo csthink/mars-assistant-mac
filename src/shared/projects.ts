@@ -26,6 +26,8 @@ export interface Project extends ProjectWork {
   archivedAt: string | null;
   pinnedAt: string | null;
   manualPosition: number;
+  /** Runtime work of the project's scope a deletion must not hide: results unknown, and still running (PROJECT-03). */
+  openWork: { unknown: number; active: number };
 }
 export interface ProjectUndo {
   token: string;

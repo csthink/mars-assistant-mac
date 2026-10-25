@@ -313,7 +313,7 @@ test("project menus: sidebar, list and detail keep same-name project identities 
     ).toBeVisible();
     await page.keyboard.press("End");
     await expect(
-      page.getByRole("menuitem", { name: "归档项目" }),
+      page.getByRole("menuitem", { name: "删除项目" }),
     ).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(first.locator(".project-side-more")).toBeFocused();
@@ -339,7 +339,7 @@ test("project menus: sidebar, list and detail keep same-name project identities 
     ).toContainText(ids[1]);
     await page.locator(".project-detail-heading .project-more").click();
     await expect(page.getByRole("menuitem", { name: "删除项目" })).toHaveCount(
-      0,
+      1,
     );
     await page.getByRole("menuitem", { name: "归档项目" }).click();
     await expect(page.locator(".project-tag")).toHaveText("已归档");

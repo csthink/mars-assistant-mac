@@ -243,3 +243,84 @@ export function seedRetainedWidgets(root: string, names: string[]) {
     store.close();
   }
 }
+
+/**
+ * Offline fixture: an edit draft of one retained widget with a finished candidate (or, with `finish` false, a
+ * generation still running). No model produced it.
+ */
+export function seedEditCandidate(
+  root: string,
+  widgetId: string,
+  finish = true,
+) {
+  const store = new Store(root);
+  const command = (c: Command | HostCommand, host = false) => {
+    const r = store.execute(c, "main", host ? "host" : "renderer");
+    if (!r.ok) throw new Error(r.message);
+  };
+  try {
+    const widget = store
+      .snapshot()
+      .widgetGeneration!.widgets.find((w) => w.id === widgetId)!;
+    const draftId = randomUUID();
+    command({
+      type: "createWidgetEditDraft",
+      id: draftId,
+      widgetIds: [widgetId],
+    });
+    command({
+      type: "saveWidgetDraft",
+      id: draftId,
+      revision: 0,
+      name: widget.name,
+      input: "把字号改大",
+    });
+    command({
+      type: "submitWidgetGeneration",
+      draftId,
+      requestId: randomUUID(),
+      revision: 1,
+      connectionId: store.snapshot().connections[0].id,
+      model: "offline-only",
+    });
+    const t = store
+      .snapshot()
+      .widgetGeneration!.tasks.find((t) => t.draftId === draftId)!;
+    command(
+      {
+        type: "claimWidgetGeneration",
+        taskId: t.id,
+        executionId: t.executionId,
+      },
+      true,
+    );
+    if (finish) {
+      const source = JSON.parse(widgetFixture);
+      source.name = widget.name;
+      source.view.css = `${source.view.css} body{font-size:20px}`;
+      command(
+        {
+          type: "receiveWidgetCandidate",
+          taskId: t.id,
+          executionId: t.executionId,
+          build: buildWidgetPackage(JSON.stringify(source)),
+        },
+        true,
+      );
+      command(
+        {
+          type: "finishWidgetGeneration",
+          taskId: t.id,
+          executionId: t.executionId,
+          state: "completed",
+          error: null,
+        },
+        true,
+      );
+    }
+    command({ type: "selectWidgetDraft", id: null });
+    return { draftId, taskId: t.id, executionId: t.executionId };
+  } finally {
+    store.close();
+  }
+}

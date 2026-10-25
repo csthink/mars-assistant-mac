@@ -14,7 +14,7 @@ INSERT OR IGNORE INTO widget_order(id,revision) VALUES(1,0);`;
  * already carries the table (partly downgraded test data) keeps its revision. */
 export function migrateWidgetOrder(db: DatabaseSync) {
   db.exec(widgetOrderSchema);
-  renumber(
+  renumberWidgetOrder(
     db,
     (
       db
@@ -39,7 +39,8 @@ export function advanceWidgetOrder(db: DatabaseSync) {
   db.prepare("UPDATE widget_order SET revision=revision+1 WHERE id=1").run();
 }
 
-function renumber(db: DatabaseSync, ids: string[]) {
+/** Rewrites the positions as 1..N in the given order. Caller owns the transaction. */
+export function renumberWidgetOrder(db: DatabaseSync, ids: string[]) {
   const update = db.prepare("UPDATE saved_widgets SET position=? WHERE id=?");
   // Two passes keep any future uniqueness constraint on position satisfied during the rewrite.
   ids.forEach((id, index) => update.run(-(index + 1), id));
@@ -71,6 +72,6 @@ export function moveWidget(
   if (from === c.toIndex) return;
   ids.splice(from, 1);
   ids.splice(c.toIndex, 0, c.widgetId);
-  renumber(db, ids);
+  renumberWidgetOrder(db, ids);
   advanceWidgetOrder(db);
 }

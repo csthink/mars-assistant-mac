@@ -761,7 +761,7 @@ test("三类索引重建失败保留上一代索引与原数据，成功后代�
           user_version: number;
         }
       ).user_version,
-      35,
+      36,
     );
     assert.deepEqual(
       search(store, "重建").hits.map((h) => [h.kind, h.objectId]),
