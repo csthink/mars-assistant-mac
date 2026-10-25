@@ -2001,6 +2001,16 @@
   margin-top: 16px;
 }
 
-.project-deletion-notice {
-  flex-wrap: wrap;
+/* The deletion notice: the text takes the room and wraps; its actions and the close button stay on its row. */
+.project-deletion-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+.project-deletion-notice > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.project-deletion-notice > button[aria-label="关闭删除提示"] {
+  text-decoration: none;
+  color: var(--c-muted);
 }
