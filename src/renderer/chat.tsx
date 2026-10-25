@@ -1,6 +1,6 @@
 import { Highlight } from "./search";
 import { matchRanges } from "../shared/search";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   errorClassLabels,
   stateLabels,
@@ -12,6 +12,7 @@ import {
 } from "../shared/protocol";
 import { MessageAttachments } from "./attachments";
 import type { WorkbenchAction } from "../shared/workbench-tools";
+import type { DeletedWidget } from "../shared/recently-deleted";
 
 /** The level actually passed to the executor; nothing is shown when no parameter was sent. */
 function effortSuffix(effort: string | null | undefined) {
@@ -34,7 +35,10 @@ export function Transcript({
   focus,
   onClearFocus,
   workbenchActions = [],
+  deletedWidgets = [],
 }: {
+  /** Widgets in recently deleted, so a deletion's card can undo it while the widget is still there. */
+  deletedWidgets?: DeletedWidget[];
   /** Workbench moves the Agent asked for in this conversation (WB-02); drawn from the committed results. */
   workbenchActions?: WorkbenchAction[];
   focus?: { messageId: string; query: string };
@@ -115,6 +119,7 @@ export function Transcript({
             {message.role === "user" && turn && (
               <WorkbenchActionCards
                 actions={workbenchActions.filter((a) => a.turnId === turn.id)}
+                deletedWidgets={deletedWidgets}
               />
             )}
             {message.role === "user" &&
@@ -217,31 +222,85 @@ function TurnCard({
  * The product's own record of what an Agent's workbench request did (WB-02): a move the business service
  * committed, or the reason nothing moved. The Agent's text is never the evidence of a move.
  */
-function WorkbenchActionCards({ actions }: { actions: WorkbenchAction[] }) {
+function WorkbenchActionCards({
+  actions,
+  deletedWidgets,
+}: {
+  actions: WorkbenchAction[];
+  deletedWidgets: DeletedWidget[];
+}) {
+  const [undo, setUndo] = useState<{ id: string; error: string }>();
   if (!actions.length) return null;
+  const refused = (a: WorkbenchAction) =>
+    a.tool === "delete" ? "未删除" : "未移动";
   return (
     <ul className="workbench-actions" aria-label="工作台操作结果">
-      {actions.map((a) => (
-        <li
-          key={a.id}
-          className={`workbench-action ${a.status === "moved" || a.status === "unchanged" ? "" : "refused"}`}
-          data-status={a.status}
-        >
-          {a.status === "moved"
-            ? `已将「${a.widgetName}」移到第 ${a.position} 位`
-            : a.status === "unchanged"
-              ? `「${a.widgetName}」已在第 ${a.position} 位，顺序未变`
-              : a.status === "ambiguous"
-                ? `未移动：有 ${a.candidates.length} 个名为「${a.reference}」的控件（${a.candidates
-                    .map((c) => `第 ${c.position} 位 ${c.widgetId.slice(0, 8)}`)
-                    .join("、")}），需要先说明是哪一个`
-                : a.status === "stale"
-                  ? `未移动：控件顺序已在之后被改动，「${a.widgetName}」保持在第 ${a.position} 位`
-                  : a.status === "not_found"
-                    ? `未移动：没有名为「${a.reference ?? ""}」的控件`
-                    : `未移动：目标位置超出控件数量`}
-        </li>
-      ))}
+      {actions.map((a) => {
+        const deleted =
+          a.status === "deleted"
+            ? deletedWidgets.find((w) => w.id === a.widgetId)
+            : undefined;
+        return (
+          <li
+            key={a.id}
+            className={`workbench-action ${["moved", "unchanged", "deleted"].includes(a.status) ? "" : "refused"}`}
+            data-status={a.status}
+          >
+            {a.status === "moved"
+              ? `已将「${a.widgetName}」移到第 ${a.position} 位`
+              : a.status === "unchanged"
+                ? `「${a.widgetName}」已在第 ${a.position} 位，顺序未变`
+                : a.status === "deleted"
+                  ? `已将「${a.widgetName}」移入最近删除，至少保留 30 天`
+                  : a.status === "ambiguous"
+                    ? `${refused(a)}：有 ${a.candidates.length} 个名为「${a.reference}」的控件（${a.candidates
+                        .map(
+                          (c) =>
+                            `第 ${c.position} 位 ${c.widgetId.slice(0, 8)}`,
+                        )
+                        .join("、")}），需要先说明是哪一个`
+                    : a.status === "stale"
+                      ? a.tool === "delete"
+                        ? `未删除：控件顺序已在之后被改动，「${a.widgetName}」保留`
+                        : `未移动：控件顺序已在之后被改动，「${a.widgetName}」保持在第 ${a.position} 位`
+                      : a.status === "not_found"
+                        ? `${refused(a)}：没有名为「${a.reference ?? ""}」的控件`
+                        : `未移动：目标位置超出控件数量`}
+            {deleted && (
+              <button
+                className="button small"
+                onClick={async () => {
+                  const reply = await window.desktop
+                    .command({
+                      type: "restoreDeleted",
+                      kind: "widget",
+                      id: deleted.id,
+                      revision: deleted.trashRevision,
+                    })
+                    .catch(() => null);
+                  setUndo(
+                    reply?.ok
+                      ? undefined
+                      : {
+                          id: a.id,
+                          error:
+                            reply?.message ??
+                            "撤销结果未确认，请在设置「最近删除」中核对。",
+                        },
+                  );
+                }}
+              >
+                撤销
+              </button>
+            )}
+            {undo?.id === a.id && (
+              <span className="error" role="alert">
+                {undo.error}
+              </span>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

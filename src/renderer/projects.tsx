@@ -7,6 +7,8 @@ import type { Project, ProjectFolder, ProjectUndo } from "../shared/projects";
 import { validProjectName } from "../shared/projects";
 import type { Snapshot } from "../shared/protocol";
 import { Icon } from "./icons";
+import { useProjectDeletion } from "./project-delete";
+import { focusAfterDialog } from "./deletion-dialogs";
 import { openModal } from "./modal-focus";
 import "./projects.css";
 
@@ -306,6 +308,7 @@ export function ProjectMenu({
   edit,
   pin,
   archive,
+  remove,
   move,
 }: {
   project: Project;
@@ -314,6 +317,8 @@ export function ProjectMenu({
   edit: () => void;
   pin: () => void;
   archive: () => void;
+  /** Opens the separate confirmation of moving the project to recently deleted (PROJECT-03). */
+  remove: () => void;
   move?: { up: () => void; down: () => void; first: boolean; last: boolean };
 }) {
   const ref = useRef<HTMLDivElement>(null),
@@ -324,7 +329,7 @@ export function ProjectMenu({
   );
   const top = Math.max(
     12,
-    Math.min(rect.bottom + 6, window.innerHeight - (move ? 260 : 170)),
+    Math.min(rect.bottom + 6, window.innerHeight - (move ? 300 : 210)),
   );
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -395,6 +400,11 @@ export function ProjectMenu({
         <Icon name="archive" />
         {project.archivedAt ? "取消归档项目" : "归档项目"}
       </button>
+      <hr />
+      <button role="menuitem" className="danger" onClick={remove}>
+        <Icon name="trash" />
+        删除项目
+      </button>
       {move && (
         <>
           <hr />
@@ -415,11 +425,13 @@ export function Projects({
   connected,
   model,
   onOpenSettings,
+  onOpenRecords,
 }: {
   snapshot: Snapshot | undefined;
   connected: boolean;
   model: Business;
-  onOpenSettings?: (tab: "扩展管理" | "访问权限") => void;
+  onOpenSettings?: (tab: "扩展管理" | "访问权限" | "最近删除") => void;
+  onOpenRecords?: (projectId: string) => void;
 }) {
   const columns = useProjectColumns();
   const projects = snapshot?.projects ?? [];
@@ -453,6 +465,28 @@ export function Projects({
   const composing = useRef(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const project = projects.find((p) => p.id === selected);
+  const deletedProject = selected
+    ? snapshot?.recentlyDeleted?.projects.find((p) => p.id === selected)
+    : undefined;
+  const newProject = useRef<HTMLButtonElement>(null);
+  const deletion = useProjectDeletion({
+    snapshot,
+    connected,
+    openRecentlyDeleted: onOpenSettings
+      ? () => onOpenSettings("最近删除")
+      : undefined,
+    openRecords: onOpenRecords,
+    onDeleted: (id) => {
+      // Deleted from the detail: back to the list, focus on its first action.
+      if (id === selected) setSelected(null);
+      focusAfterDialog(() => newProject.current);
+    },
+  });
+  // A project open here that another entry (the sidebar) deleted: back to the list as well, so a restore does
+  // not reopen it here.
+  useEffect(() => {
+    if (!project && deletedProject) setSelected(null);
+  }, [project, deletedProject]);
   const setAvailable = columns?.setAvailable;
   useEffect(() => {
     setAvailable?.(!!project);
@@ -579,6 +613,7 @@ export function Projects({
           {error}
         </div>
       )}
+      {deletion.notice}
       {notice && (
         <div className="project-notice" role="status">
           {notice.text}
@@ -715,6 +750,7 @@ export function Projects({
                 {archived ? "返回未归档" : "已归档"}
               </button>
               <button
+                ref={newProject}
                 className="button project-primary"
                 disabled={!connected}
                 onClick={() => setForm({ project: null })}
@@ -846,8 +882,14 @@ export function Projects({
           }}
           pin={() => void pin(menu.project)}
           archive={() => void archive(menu.project)}
+          remove={() => {
+            const { project: target, anchor } = menu;
+            setMenu(null);
+            deletion.start(target, () => (anchor.isConnected ? anchor : null));
+          }}
         />
       )}
+      {deletion.dialog}
       {form && (
         <ProjectForm
           {...form}

@@ -48,7 +48,9 @@ export function applyProjectWork(
   c: Exclude<ProjectRequest, { type: "read" }>,
 ) {
   const project = db
-    .prepare("SELECT name,goal,folder_json,revision FROM projects WHERE id=?")
+    .prepare(
+      "SELECT name,goal,folder_json,revision FROM projects WHERE id=? AND deleted_at IS NULL AND purged_at IS NULL",
+    )
     .get(c.projectId);
   if (!project) fail("项目已不存在。");
   const work = projectWork(db, c.projectId),
@@ -197,6 +199,16 @@ export function captureProjectTurn(
     )
     .get(conversationId);
   if (!row) return null;
+  // While its project is in recently deleted (or permanently deleted) the conversation is an ordinary one: no
+  // project context is captured, and the association comes back with a restore.
+  if (
+    db
+      .prepare(
+        "SELECT 1 FROM projects WHERE id=? AND (deleted_at IS NOT NULL OR purged_at IS NOT NULL)",
+      )
+      .get(row.project_id)
+  )
+    return null;
   if (row.revision !== revision)
     fail("讨论对象选择已变化，请重新核对后发送；草稿已保留。");
   validateProjectHistory(db, conversationId);

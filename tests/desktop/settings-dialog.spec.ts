@@ -33,7 +33,7 @@ async function pressOutside(page: Page) {
 const categories = [
   ["通用", (d: Locator) => d.getByRole("group", { name: "外观" })],
   ["模型", (d: Locator) => d.locator(".provider-list")],
-  ["最近删除", (d: Locator) => d.getByRole("heading", { name: "对话" })],
+  ["最近删除", (d: Locator) => d.getByRole("radiogroup", { name: "类型" })],
   [
     "扩展管理",
     (d: Locator) => d.getByRole("heading", { name: "扩展", exact: true }),

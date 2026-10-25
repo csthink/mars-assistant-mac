@@ -122,7 +122,7 @@ test("projects: create, edit, archive and undo preserve project identity and ren
     });
     await page.keyboard.press("End");
     await expect(
-      page.getByRole("menuitem", { name: "归档项目", exact: true }),
+      page.getByRole("menuitem", { name: "删除项目", exact: true }),
     ).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(

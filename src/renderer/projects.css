@@ -2000,3 +2000,7 @@
   padding-top: 16px;
   margin-top: 16px;
 }
+
+.project-deletion-notice {
+  flex-wrap: wrap;
+}

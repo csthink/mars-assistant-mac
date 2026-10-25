@@ -130,29 +130,25 @@ test("organization: deletion confirmation, search exclusion, restoration and sep
       expect(results.hits.map((h) => h.conversationId)).toEqual([ids[0]]);
     await goTo(page, "设置");
     await page.getByRole("button", { name: "最近删除", exact: true }).click();
-    await page.getByRole("button", { name: "延长30天", exact: true }).click();
-    await page.getByRole("button", { name: "恢复", exact: true }).click();
+    await page.getByRole("button", { name: /^恢复 对话 / }).click();
     await expectSessionCount(page, 2);
     await remove();
     await dialog.getByRole("button", { name: "确认删除", exact: true }).click();
     await closeRecent(page);
     await goTo(page, "设置");
     await page.getByRole("button", { name: "最近删除", exact: true }).click();
-    await page.getByRole("button", { name: "永久删除…", exact: true }).click();
-    const permanent = page.getByRole("dialog", {
-      name: "永久删除对话",
-      exact: true,
-    });
+    await page.getByRole("button", { name: /^永久删除 对话 / }).click();
+    const permanent = page.getByRole("dialog", { name: /^永久删除「/ });
     await permanent.getByRole("button", { name: "取消", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "恢复", exact: true }),
+      page.getByRole("button", { name: /^恢复 对话 / }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "永久删除…", exact: true }).click();
+    await page.getByRole("button", { name: /^永久删除 对话 / }).click();
     await permanent
-      .getByRole("button", { name: "确认永久删除", exact: true })
+      .getByRole("button", { name: "永久删除", exact: true })
       .click();
     await expect(
-      page.getByText("没有已删除的对话。", { exact: true }),
+      page.getByText("没有已删除的内容", { exact: true }),
     ).toBeVisible();
     await page.screenshot({ path: info.outputPath("recently-deleted.png") });
   } finally {
@@ -614,7 +610,7 @@ test("organization: deletion reminder expires, undo remains safe and navigation 
     const restore = async () => {
       await goTo(page, "设置");
       await page.getByRole("button", { name: "最近删除", exact: true }).click();
-      await page.getByRole("button", { name: "恢复", exact: true }).click();
+      await page.getByRole("button", { name: /^恢复 对话 / }).click();
       await goTo(page, "聊天");
       await openConversation(page, `对话 ${ids[1].slice(0, 8)}`);
     };

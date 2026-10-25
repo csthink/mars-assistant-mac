@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { StoreError } from "./errors";
 import { dropPinnedOrder } from "./conversation-order";
+import { projectOpenWork } from "./recently-deleted";
 import type {
   Project,
   ProjectCommand,
@@ -36,7 +37,7 @@ export function migrateProjectOrganization(db: DatabaseSync) {
 export function projectSnapshot(db: DatabaseSync): Project[] {
   return db
     .prepare(
-      "SELECT p.id,p.name,p.goal,p.folder_json AS folderJson,p.revision,p.created_at AS createdAt,p.updated_at AS updatedAt,p.archived_at AS archivedAt,p.pinned_at AS pinnedAt,o.position AS manualPosition FROM projects p LEFT JOIN project_order o ON o.project_id=p.id ORDER BY p.created_at DESC,p.id",
+      "SELECT p.id,p.name,p.goal,p.folder_json AS folderJson,p.revision,p.created_at AS createdAt,p.updated_at AS updatedAt,p.archived_at AS archivedAt,p.pinned_at AS pinnedAt,o.position AS manualPosition FROM projects p LEFT JOIN project_order o ON o.project_id=p.id WHERE p.deleted_at IS NULL AND p.purged_at IS NULL ORDER BY p.created_at DESC,p.id",
     )
     .all()
     .map((row) => {
@@ -45,6 +46,7 @@ export function projectSnapshot(db: DatabaseSync): Project[] {
         ...rest,
         folder: JSON.parse(String(folderJson)),
         ...projectWork(db, String(row.id)),
+        openWork: projectOpenWork(db, String(row.id)),
       } as unknown as Project;
     });
 }
@@ -130,7 +132,7 @@ export function applyProject(
           );
         const rows = db
           .prepare(
-            `SELECT p.id,p.archived_at AS archivedAt,p.pinned_at AS pinnedAt
+            `SELECT p.id,p.archived_at AS archivedAt,p.pinned_at AS pinnedAt,p.deleted_at AS deletedAt
           FROM project_order o JOIN projects p ON p.id=o.project_id
           ORDER BY o.position,p.id`,
           )
@@ -138,9 +140,10 @@ export function applyProject(
           id: string;
           archivedAt: string | null;
           pinnedAt: string | null;
+          deletedAt: string | null;
         }[];
         const visible = rows
-          .filter((row) => !row.archivedAt && !row.pinnedAt)
+          .filter((row) => !row.archivedAt && !row.pinnedAt && !row.deletedAt)
           .map((row) => row.id);
         if (c.before !== null && !visible.includes(c.before))
           throw new StoreError(

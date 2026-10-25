@@ -99,6 +99,35 @@ function state(
   ).run(next, ended, t.executionId);
   event(db, t, next, now, { from: t.state, error });
 }
+/**
+ * A retained widget left the workbench (WB-04): the generation tasks whose drafts target it are asked to stop,
+ * the way the person's stop does. A queued task stops at once; a running one is stopping until the executor
+ * confirms, and a stop it cannot confirm stays visible as unconfirmed. Drafts and their input stay.
+ */
+export function stopGenerationsForWidget(
+  db: DatabaseSync,
+  widgetId: string,
+  now: string,
+) {
+  const rows = db
+    .prepare(
+      `SELECT t.id FROM widget_generation_tasks t JOIN widget_drafts d ON d.id=t.draft_id
+       WHERE t.state IN ('queued','running')
+       AND (d.widget_id=? OR EXISTS(SELECT 1 FROM json_each(d.target_ids) WHERE value=?))`,
+    )
+    .all(widgetId, widgetId) as { id: string }[];
+  for (const row of rows) {
+    const t = task(db, row.id);
+    state(
+      db,
+      t,
+      t.state === "queued" ? "stopped" : "stopping",
+      now,
+      "目标控件已移入最近删除，生成已停止。",
+    );
+  }
+  return rows.length;
+}
 export function waitingCount(db: DatabaseSync) {
   return Number(
     db

@@ -11,6 +11,13 @@ import { Icon } from "./icons";
 import { openModal } from "./modal-focus";
 import { useWidgetOrder } from "./widget-order";
 import { widgetOrderDragType } from "../shared/widget-ui";
+import {
+  Callout,
+  DeletionDialog,
+  ImpactList,
+  deletionNoticeMs,
+  focusAfterDialog,
+} from "./deletion-dialogs";
 import "./widget-studio.css";
 export const generationLabels = {
   queued: "等待生成",
@@ -412,6 +419,47 @@ export function WidgetStudio({
     };
   }, []);
   const [deletingDraft, setDeletingDraft] = useState<WidgetDraft>();
+  const [deletingWidget, setDeletingWidget] = useState<string>();
+  /** The notice after a retained widget moved to recently deleted, with its undo (WB-04). */
+  const [widgetUndo, setWidgetUndo] = useState<{
+    id: string;
+    name: string;
+    error?: string;
+  }>();
+  useEffect(() => {
+    if (!widgetUndo || widgetUndo.error) return;
+    const timer = setTimeout(() => setWidgetUndo(undefined), deletionNoticeMs);
+    return () => clearTimeout(timer);
+  }, [widgetUndo]);
+  async function undoWidgetDeletion() {
+    if (!widgetUndo) return;
+    const entry = snapshot?.recentlyDeleted?.widgets.find(
+      (w) => w.id === widgetUndo.id,
+    );
+    if (!entry) return setWidgetUndo(undefined);
+    const id = widgetUndo.id;
+    try {
+      const reply = await window.desktop.command({
+        type: "restoreDeleted",
+        kind: "widget",
+        id,
+        revision: entry.trashRevision,
+      });
+      if (!reply.ok)
+        return setWidgetUndo({ ...widgetUndo, error: reply.message });
+      setWidgetUndo(undefined);
+      focusAfterDialog(() =>
+        studio.current?.querySelector<HTMLElement>(
+          `[data-formal-widget="${id}"]`,
+        ),
+      );
+    } catch {
+      setWidgetUndo({
+        ...widgetUndo,
+        error: "撤销结果未确认，请在设置「最近删除」中核对。",
+      });
+    }
+  }
   const [undo, setUndo] = useState<{ id: string; token: string }>();
   const [query, setQuery] = useState("");
   const [targets, setTargets] = useState<string[]>([]);
@@ -607,6 +655,7 @@ export function WidgetStudio({
           {!panel && !draft && (
             <button
               className="button"
+              data-widget-create
               disabled={!connected}
               onClick={() => void create()}
             >
@@ -648,6 +697,51 @@ export function WidgetStudio({
             ×
           </button>
         </div>
+      )}
+      {widgetUndo && (
+        <div className="widget-undo" role="status">
+          <span>
+            {widgetUndo.error ??
+              `已删除「${widgetUndo.name}」；可在设置「最近删除」恢复。`}
+          </span>
+          {!widgetUndo.error && (
+            <button
+              className="button"
+              disabled={!connected}
+              onClick={() => void undoWidgetDeletion()}
+            >
+              撤销
+            </button>
+          )}
+          <button
+            className="icon-button"
+            aria-label="关闭删除提示"
+            onClick={() => setWidgetUndo(undefined)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {deletingWidget && snapshot && (
+        <WidgetDeletion
+          snapshot={snapshot}
+          id={deletingWidget}
+          back={() =>
+            studio.current?.querySelector<HTMLElement>(
+              `[data-formal-widget="${deletingWidget}"] .widget-order-more`,
+            )
+          }
+          close={() => setDeletingWidget(undefined)}
+          deleted={(name) => {
+            setDeletingWidget(undefined);
+            setWidgetUndo({ id: deletingWidget, name });
+            focusAfterDialog(() =>
+              studio.current?.querySelector<HTMLElement>(
+                "[data-widget-create]",
+              ),
+            );
+          }}
+        />
       )}
       {deletingDraft && (
         <DraftDeletion
@@ -1130,6 +1224,26 @@ export function WidgetStudio({
                               </button>
                             </>
                           )}
+                          {!panel && (
+                            <>
+                              <div
+                                className="widget-order-menu-separator"
+                                role="separator"
+                              />
+                              <button
+                                className="button danger"
+                                role="menuitem"
+                                aria-disabled={!connected}
+                                onClick={() => {
+                                  if (!connected) return;
+                                  setWidgetMenu(undefined);
+                                  setDeletingWidget(w.id);
+                                }}
+                              >
+                                删除控件…
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1244,5 +1358,76 @@ function DraftDeletion({
         </div>
       </form>
     </dialog>
+  );
+}
+
+/**
+ * Confirms moving a retained widget to recently deleted (WB-04). The business service commits it against the
+ * widget's revision; both entries then drop the widget and its views stop reading or writing its data.
+ */
+function WidgetDeletion({
+  snapshot,
+  id,
+  back,
+  close,
+  deleted,
+}: {
+  snapshot: Snapshot;
+  id: string;
+  back: () => HTMLElement | null | undefined;
+  close: () => void;
+  deleted: (name: string) => void;
+}) {
+  const widget = snapshot.widgetGeneration?.widgets.find((w) => w.id === id);
+  const drafts = (snapshot.widgetGeneration?.drafts ?? []).filter(
+    (d) =>
+      !d.deleted &&
+      (d.widgetId === id || d.targetIds.includes(id)) &&
+      visibleWidgetDraft(d, snapshot),
+  );
+  const running = (snapshot.widgetGeneration?.tasks ?? []).filter(
+    (t) =>
+      drafts.some((d) => d.id === t.draftId) &&
+      ["queued", "running"].includes(t.state),
+  ).length;
+  if (!widget) return null;
+  return (
+    <DeletionDialog
+      title={`删除控件「${widget.name}」`}
+      confirmLabel="移入最近删除"
+      back={back}
+      close={close}
+      confirm={async () => {
+        const reply = await window.desktop.command({
+          type: "deleteWidget",
+          id,
+          revision: widget.revision,
+          confirmed: true,
+        });
+        if (!reply.ok) return reply.message;
+        deleted(widget.name);
+        return "";
+      }}
+    >
+      <Callout icon="shield" title="移入最近删除，至少保留 30 天">
+        <p>
+          可在设置「最近删除」恢复；恢复保持原身份、配置与数据，按原邻接控件放回。
+        </p>
+      </Callout>
+      <ImpactList
+        rows={[
+          ["后台活动", "没有运行中的后台活动"],
+          [
+            "修改草稿",
+            drafts.length
+              ? `${drafts.length} 个草稿保留${running ? `；进行中的 ${running} 个生成将停止，停止确认前显示「正在停止」` : ""}；之后保留其候选时按冲突处理，不复活已删除的控件`
+              : "无",
+          ],
+          ["关联对话", "保留，不随控件删除"],
+          ["数据与配置", "随控件进入最近删除"],
+          ["两个入口", "主窗口与菜单栏同时移除"],
+        ]}
+      />
+    </DeletionDialog>
   );
 }

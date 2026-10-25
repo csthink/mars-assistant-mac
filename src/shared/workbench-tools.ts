@@ -6,7 +6,12 @@
  */
 export const listWidgetsToolName = "list_workbench_widgets";
 export const moveWidgetToolName = "move_workbench_widget";
-export const workbenchToolNames = [listWidgetsToolName, moveWidgetToolName];
+export const deleteWidgetToolName = "delete_workbench_widget";
+export const workbenchToolNames = [
+  listWidgetsToolName,
+  moveWidgetToolName,
+  deleteWidgetToolName,
+];
 export const workbenchTools = [
   {
     name: listWidgetsToolName,
@@ -34,10 +39,31 @@ export const workbenchTools = [
       additionalProperties: false,
     },
   },
+  {
+    name: deleteWidgetToolName,
+    description:
+      "Move one retained widget to Recently Deleted, only when the user explicitly asked to delete that widget. Identify it by widgetId from list_workbench_widgets, or by its exact name. If the user's reference could mean more than one widget, ask the user first; never choose by order. Quote the orderRevision you listed; a stale revision is refused. The user can undo the deletion or restore the widget from Recently Deleted; this never deletes permanently.",
+    parameters: {
+      type: "object",
+      properties: {
+        widgetId: { type: "string" },
+        name: { type: "string" },
+        orderRevision: { type: "integer", minimum: 0 },
+      },
+      required: ["orderRevision"],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 export type WorkbenchToolArguments =
   | { tool: typeof listWidgetsToolName }
+  | {
+      tool: typeof deleteWidgetToolName;
+      widgetId?: string;
+      name?: string;
+      orderRevision: number;
+    }
   | {
       tool: typeof moveWidgetToolName;
       widgetId?: string;
@@ -60,8 +86,30 @@ export function parseWorkbenchArguments(
   const v = value as Record<string, unknown>;
   if (tool === listWidgetsToolName)
     return Object.keys(v).length === 0 ? { tool } : null;
-  if (tool !== moveWidgetToolName) return null;
   const keys = Object.keys(v);
+  const reference =
+    (v.widgetId === undefined) !== (v.name === undefined) &&
+    (v.widgetId === undefined ||
+      (typeof v.widgetId === "string" &&
+        /^[a-zA-Z0-9-]{1,80}$/.test(v.widgetId))) &&
+    (v.name === undefined ||
+      (typeof v.name === "string" && !!v.name.trim() && v.name.length <= 160));
+  const orderRevision =
+    Number.isSafeInteger(v.orderRevision) && Number(v.orderRevision) >= 0;
+  if (tool === deleteWidgetToolName)
+    return keys.every((k) =>
+      ["widgetId", "name", "orderRevision"].includes(k),
+    ) &&
+      reference &&
+      orderRevision
+      ? {
+          tool,
+          ...(v.widgetId !== undefined ? { widgetId: String(v.widgetId) } : {}),
+          ...(v.name !== undefined ? { name: String(v.name) } : {}),
+          orderRevision: Number(v.orderRevision),
+        }
+      : null;
+  if (tool !== moveWidgetToolName) return null;
   if (
     keys.some(
       (k) => !["widgetId", "name", "toPosition", "orderRevision"].includes(k),
@@ -87,13 +135,21 @@ export function parseWorkbenchArguments(
   };
 }
 
-/** One move an Agent asked for in a conversation turn, as the business service settled it. */
+/** One move or deletion an Agent asked for in a conversation turn, as the business service settled it. */
 export interface WorkbenchAction {
   id: string;
   conversationId: string;
   turnId: string;
+  /** Which tool the Agent called. */
+  tool: "move" | "delete";
   status:
-    "moved" | "unchanged" | "ambiguous" | "not_found" | "stale" | "invalid";
+    | "moved"
+    | "unchanged"
+    | "deleted"
+    | "ambiguous"
+    | "not_found"
+    | "stale"
+    | "invalid";
   /** The resolved widget, or null when no single widget was resolved. */
   widgetId: string | null;
   widgetName: string | null;

@@ -149,7 +149,7 @@ function match(db: DatabaseSync, normalized: string) {
  LEFT JOIN saved_widgets s ON d.kind='widget' AND s.id=d.object_id
  WHERE ${fts ? "d.rowid IN (SELECT rowid FROM search_fts WHERE search_fts MATCH ?)" : "instr(d.normalized,?)>0"}
  AND (d.kind<>'conversation' OR (c.id IS NOT NULL AND c.deleted_at IS NULL AND c.purged_at IS NULL))
- AND (d.kind<>'project' OR p.id IS NOT NULL) AND (d.kind<>'widget' OR s.id IS NOT NULL)`,
+ AND (d.kind<>'project' OR (p.id IS NOT NULL AND p.deleted_at IS NULL AND p.purged_at IS NULL)) AND (d.kind<>'widget' OR s.id IS NOT NULL)`,
     )
     .all(fts ? '"' + normalized.replace(/"/g, '""') + '"' : normalized) as {
     kind: SearchKind;
@@ -208,7 +208,7 @@ function details(db: DatabaseSync, chosen: Match[], query: string) {
       .prepare(
         `SELECT d.id,d.object_id AS conversationId,d.message_id AS messageId,d.body,c.title,c.archived_at AS archivedAt,c.updated_at AS updatedAt,p.name AS projectName
  FROM search_documents d JOIN conversations c ON c.id=d.object_id
- LEFT JOIN project_chats pc ON pc.conversation_id=c.id LEFT JOIN projects p ON p.id=pc.project_id
+ LEFT JOIN project_chats pc ON pc.conversation_id=c.id LEFT JOIN projects p ON p.id=pc.project_id AND p.deleted_at IS NULL AND p.purged_at IS NULL
  WHERE d.id IN (SELECT value FROM json_each(?))`,
       )
       .all(ids("conversation"))
@@ -301,7 +301,7 @@ function recentConversations(db: DatabaseSync, cursor: string | null) {
   const rows = db
     .prepare(
       `SELECT c.id,c.title,c.archived_at AS archivedAt,c.updated_at AS updatedAt,p.name AS projectName FROM conversations c
- LEFT JOIN project_chats pc ON pc.conversation_id=c.id LEFT JOIN projects p ON p.id=pc.project_id
+ LEFT JOIN project_chats pc ON pc.conversation_id=c.id LEFT JOIN projects p ON p.id=pc.project_id AND p.deleted_at IS NULL AND p.purged_at IS NULL
  WHERE c.deleted_at IS NULL AND c.purged_at IS NULL AND c.archived_at IS NULL
  ORDER BY (c.pinned_at IS NOT NULL) DESC,c.pinned_at DESC,c.creation_order DESC LIMIT ? OFFSET ?`,
     )

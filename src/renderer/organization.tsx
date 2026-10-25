@@ -89,7 +89,7 @@ export interface Renaming {
   where: "sidebar" | "center";
 }
 /** The current date, moving on at each local midnight so the date groups follow the calendar. */
-function useToday() {
+export function useToday() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = setTimeout(
@@ -597,54 +597,6 @@ export function useOrganization({
       })}
     </div>
   ) : null;
-  const trash = (
-    <>
-      <p>至少保留30天。到期后由你选择清理或延长，不会自动永久删除。</p>
-      <h3>对话</h3>
-      {deleted.length ? (
-        <ul className="organized-list">
-          {deleted.map((c) => (
-            <li key={c.id}>
-              <strong>{c.title}</strong>
-              <small>
-                {short(c.id)} ·{" "}
-                {Date.parse(c.retainUntil!) < Date.now()
-                  ? "已到期，可延长或清理"
-                  : `保留至 ${date(c.retainUntil!)}`}
-              </small>
-              <div className="row">
-                <button
-                  className="button"
-                  disabled={!connected || busy}
-                  onClick={() => void act(c, "restore")}
-                >
-                  恢复
-                </button>
-                <button
-                  className="button"
-                  disabled={!connected || busy}
-                  onClick={() => void act(c, "extend")}
-                >
-                  延长30天
-                </button>
-                <button
-                  className="button danger"
-                  disabled={!connected || busy}
-                  onClick={() => void act(c, "purge")}
-                >
-                  永久删除…
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>没有已删除的对话。</p>
-      )}
-      <h3>控件</h3>
-      <p>暂无已删除控件。</p>
-    </>
-  );
   // Up and down are the keyboard way to reorder the pinned section in manual order.
   const pinnedIndex =
     menu?.origin === "pinned" && manual && target
@@ -920,7 +872,6 @@ export function useOrganization({
   return {
     list,
     pinned: pinnedList,
-    trash,
     overlays,
     openMenu,
     act,

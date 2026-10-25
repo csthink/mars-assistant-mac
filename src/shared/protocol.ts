@@ -1,4 +1,10 @@
 import {
+  validRecentlyDeletedCommand,
+  type RecentlyDeletedCommand,
+  type RecentlyDeletedSnapshot,
+  type WidgetPlacement,
+} from "./recently-deleted";
+import {
   validWorkbenchToolCommand,
   type WorkbenchAction,
   type WorkbenchToolCommand,
@@ -729,7 +735,10 @@ export interface MessageAttachment {
 }
 export interface Snapshot {
   widgetGeneration?: WidgetGenerationSnapshot;
+  /** Projects in the organization; deleted and permanently deleted ones are not listed here. */
   projects: Project[];
+  /** Deleted projects and retained widgets kept for restore (WB-04, PROJECT-03); deleted conversations stay in conversations. */
+  recentlyDeleted?: RecentlyDeletedSnapshot;
   permissions: Permission[];
   toolOperations: ToolOperation[];
   /** Workbench moves Agents asked for in conversation turns, as committed or refused (WB-02). */
@@ -785,6 +794,7 @@ export interface ConnectionInput {
   clearDefault?: boolean;
 }
 export type Command =
+  | RecentlyDeletedCommand
   | WidgetGenerationCommand
   | ProjectCommand
   | CapabilityCommand
@@ -1034,6 +1044,8 @@ export type Reply =
       projectContext?: string | null;
       projectId?: string;
       projectUndo?: ProjectUndo;
+      /** Where a restored widget went in the order (WB-04). */
+      restoredWidget?: { id: string; placement: WidgetPlacement };
       /** Outcome of one applied projection event (runtimeEventApply). */
       runtimeEvent?: EventOutcome;
       /** Current projection of one scope (runtimeProjectionRead). */
@@ -1225,6 +1237,7 @@ export function validConnectionInput(value: unknown): value is ConnectionInput {
   );
 }
 export function validCommand(value: unknown): value is Command {
+  if (validRecentlyDeletedCommand(value)) return true;
   if (validWidgetGenerationCommand(value)) return true;
   if (validProjectCommand(value)) return true;
   if (validCapabilityCommand(value)) return true;

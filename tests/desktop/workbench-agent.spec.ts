@@ -108,7 +108,7 @@ test("workbench agent: a Claude Code turn moves a widget by name and is refused 
     // The session allowed only the product's workbench tools; the shared name returned candidates to the model.
     const calls = readFileSync(fixture.calls, "utf8");
     expect(calls).toContain(
-      "mcp__csthink_assistant__list_workbench_widgets,mcp__csthink_assistant__move_workbench_widget",
+      "mcp__csthink_assistant__list_workbench_widgets,mcp__csthink_assistant__move_workbench_widget,mcp__csthink_assistant__delete_workbench_widget",
     );
     expect(calls).toMatch(/workbenchResult.*ambiguous/);
     await goTo(page, "控件");
@@ -178,6 +178,67 @@ test("workbench agent: a Codex turn quoting an old order revision moves nothing,
     );
     // The stale request moved nothing; the second call quoted the current revision and moved once.
     expect(stored(data)).toEqual([ids[4], ids[0], ids[1], ids[2], ids[3]]);
+  } finally {
+    await closeLocal(app);
+  }
+});
+
+test("workbench agent: a Codex turn deletes a widget by name into recently deleted, a shared name deletes nothing, and the card's undo puts it back", async () => {
+  const { root, data, ids } = setup("workbench-delete");
+  const fixture = createCodexFixture(join(root, "cli"));
+  fixture.update({
+    mode: "turn_workbench",
+    workbenchCalls: [
+      {
+        tool: "delete_workbench_widget",
+        arguments: { name: "便笺", orderRevision: 5 },
+      },
+      {
+        tool: "delete_workbench_widget",
+        arguments: { name: "汇率", orderRevision: 5 },
+      },
+    ],
+  });
+  const app = await launchLocal({
+    args: [resolve("."), `--data-root=${data}`],
+    cwd: resolve("."),
+    env: {
+      ...process.env,
+      PATH: `${fixture.bin}:/usr/bin:/bin`,
+      HOME: root,
+      CODEX_HOME: join(root, "codex-home"),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await expect(
+      page
+        .locator("#main-sidebar")
+        .getByRole("button", { name: "新建聊天", exact: true }),
+    ).toBeEnabled();
+    await openProvider(page, "Codex");
+    const section = page.getByRole("region", { name: "Codex 连接" });
+    await section
+      .getByRole("button", { name: "配置 Codex", exact: true })
+      .click();
+    await page
+      .getByRole("region", { name: "确认 Codex 连接" })
+      .getByRole("button", { name: "确认配置 Codex", exact: true })
+      .click();
+    await expect(section.getByText("已配置", { exact: true })).toBeVisible();
+    await section
+      .getByRole("button", { name: "设为默认模型", exact: true })
+      .click();
+    await ask(page, "删掉汇率，再删掉便笺");
+    const cards = page.getByRole("list", { name: "工作台操作结果" });
+    await expect(cards.getByRole("listitem")).toHaveText([
+      `未删除：有 2 个名为「便笺」的控件（第 2 位 ${ids[1].slice(0, 8)}、第 4 位 ${ids[3].slice(0, 8)}），需要先说明是哪一个`,
+      "已将「汇率」移入最近删除，至少保留 30 天撤销",
+    ]);
+    expect(stored(data)).toEqual(ids.slice(0, 4));
+    await cards.getByRole("button", { name: "撤销", exact: true }).click();
+    await expect.poll(() => stored(data)).toEqual(ids);
+    await expect(cards.getByRole("button", { name: "撤销" })).toHaveCount(0);
   } finally {
     await closeLocal(app);
   }
@@ -269,7 +330,11 @@ test("workbench agent: an API model gets the workbench tools only after its tool
       (offered[0].body.tools as { function: { name: string } }[]).map(
         (t) => t.function.name,
       ),
-    ).toEqual(["list_workbench_widgets", "move_workbench_widget"]);
+    ).toEqual([
+      "list_workbench_widgets",
+      "move_workbench_widget",
+      "delete_workbench_widget",
+    ]);
     expect(stored(data)).toEqual([ids[4], ids[0], ids[1], ids[2], ids[3]]);
   } finally {
     await closeLocal(app);

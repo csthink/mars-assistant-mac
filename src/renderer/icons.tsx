@@ -4,6 +4,10 @@ const icons: Record<string, string> = {
   fullscreenExit:
     "M3 8h5V3M8 8 3 3M16 3v5h5M16 8l5-5M3 16h5v5M8 16l-5 5M16 21v-5h5M16 16l5 5",
   folder: "M3 7V5h7l2 3h9v12H3Z",
+  trash:
+    "M4.5 7h15M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2M6.5 7l.8 11.7a1.5 1.5 0 0 0 1.5 1.3h6.4a1.5 1.5 0 0 0 1.5-1.3L17.5 7",
+  shield: "M12 3.5 19 6v5.5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z",
+  alert: "M12 4.5 20.5 19h-17zM12 10v4M12 16.8v.2",
   chevronDown: "m6 9 6 6 6-6",
   grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",
   archive: "M3 3h18v5H3ZM5 8v13h14V8M9 12h6",
